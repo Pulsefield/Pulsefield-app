@@ -7,6 +7,7 @@ Pulsefield is a SwiftUI scaffold for a future music-reactive rhythm app. The cur
 - a mock recognition flow for UI and architecture work
 - app-owned domain models and service abstractions
 - a reserved beatmap-generation interface for future `mania4k` work
+- documented live-provider architecture for a future `ShazamKit -> ACRCloud` pipeline
 
 ## Current milestone
 
@@ -30,7 +31,10 @@ The live-recognition seam is reserved behind `RecognitionServiceProtocol`. The a
 - `MicrophonePermissionService` uses `AVCaptureDevice` for real authorization checks and prompts.
 - `MockRecognitionService` simulates a recognition round-trip and returns a stable sample song.
 - `UnavailableLiveRecognitionService` marks the future live-recognition milestone without blocking today’s prototype.
+- `CascadingRecognitionService` and related provider-domain models define the intended live architecture: capture once, then try `ShazamKit` followed by `ACRCloud`.
 - `BeatmapGenerationProviding` and related models reserve the handoff boundary for future `mania4k` generation work.
+
+See [`docs/recognition-architecture.md`](docs/recognition-architecture.md) for the provider architecture and minimal live-setup checklist.
 
 ## What is not implemented yet
 

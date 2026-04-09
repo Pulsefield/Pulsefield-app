@@ -9,7 +9,10 @@
 /* Begin PBXBuildFile section */
 		02BD03125AEA567B23286D53 /* PulsefieldCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */; };
 		0ABC189AFA3C01F5D2DB858A /* PulsefieldCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		0FF3A89698A64FC665C1EA12 /* RecognitionArchitecture.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEA92F2BB55484B411AD9D77 /* RecognitionArchitecture.swift */; };
 		21096D7481D661923189989A /* RecognitionDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6265F3B2B8D2593A91289482 /* RecognitionDashboardView.swift */; };
+		2AD790A5ACB1EFFDA192D181 /* CascadingRecognitionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9C0AFD64ABA7C7C86048235 /* CascadingRecognitionServiceTests.swift */; };
+		2B05FC1CF3FF0DC5F76D63D0 /* UnavailableRecognitionProviderClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AD875058E105B569F3F3F40 /* UnavailableRecognitionProviderClient.swift */; };
 		45A98DB9677287374091F460 /* RecognitionAppModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A37495C7C03786C6C70AF14 /* RecognitionAppModelTests.swift */; };
 		48A3D8B5531B9260CBA06768 /* PulsefieldCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		49BD393871163EE821A80748 /* BeatmapGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 728B90249B2A0A72FCD3580B /* BeatmapGenerationService.swift */; };
@@ -17,6 +20,7 @@
 		7752F7EAFF1D57B9A8657190 /* RecognitionServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = E522B477DC378F5CF8AB9C4C /* RecognitionServiceProtocol.swift */; };
 		7967A26C548181415B1FA43F /* PulsefieldCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */; };
 		79A78B41EC226018D2E55F11 /* RecognitionDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE86054D09DCC083F246CB0C /* RecognitionDomain.swift */; };
+		92E245E5EFD540B91AC38971 /* CascadingRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED4A20CA439FE4F3513DB1A2 /* CascadingRecognitionService.swift */; };
 		9D8A7FC07558045972D8C6C1 /* MockRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6AE855CD84CDFD620DA302F /* MockRecognitionService.swift */; };
 		C17F41D81265605E799B3FB8 /* PulsefieldApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAD98D4D7CE5EBA467367D41 /* PulsefieldApp.swift */; };
 		D3A932DF8385FDF6983710EB /* RecognitionAppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ECCDB69F561441CFB7369B2 /* RecognitionAppModel.swift */; };
@@ -78,12 +82,16 @@
 		6265F3B2B8D2593A91289482 /* RecognitionDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionDashboardView.swift; sourceTree = "<group>"; };
 		728B90249B2A0A72FCD3580B /* BeatmapGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeatmapGenerationService.swift; sourceTree = "<group>"; };
 		78ACE1CB799708B529D40F93 /* PreviewFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewFixtures.swift; sourceTree = "<group>"; };
+		9AD875058E105B569F3F3F40 /* UnavailableRecognitionProviderClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnavailableRecognitionProviderClient.swift; sourceTree = "<group>"; };
 		A387EEA1983387E2E36565AD /* PulsefieldCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = PulsefieldCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		A9C0AFD64ABA7C7C86048235 /* CascadingRecognitionServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CascadingRecognitionServiceTests.swift; sourceTree = "<group>"; };
 		AE86054D09DCC083F246CB0C /* RecognitionDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionDomain.swift; sourceTree = "<group>"; };
 		BAD98D4D7CE5EBA467367D41 /* PulsefieldApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PulsefieldApp.swift; sourceTree = "<group>"; };
 		C01A60D735C381292553A5F8 /* UnavailableLiveRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnavailableLiveRecognitionService.swift; sourceTree = "<group>"; };
+		CEA92F2BB55484B411AD9D77 /* RecognitionArchitecture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionArchitecture.swift; sourceTree = "<group>"; };
 		D6AE855CD84CDFD620DA302F /* MockRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockRecognitionService.swift; sourceTree = "<group>"; };
 		E522B477DC378F5CF8AB9C4C /* RecognitionServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionServiceProtocol.swift; sourceTree = "<group>"; };
+		ED4A20CA439FE4F3513DB1A2 /* CascadingRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CascadingRecognitionService.swift; sourceTree = "<group>"; };
 		F45F8208B52EF6BC2629EBDD /* MicrophonePermissionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophonePermissionService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -118,9 +126,11 @@
 		1D472204F12C62EEB1A0E71D /* Recognition */ = {
 			isa = PBXGroup;
 			children = (
+				ED4A20CA439FE4F3513DB1A2 /* CascadingRecognitionService.swift */,
 				D6AE855CD84CDFD620DA302F /* MockRecognitionService.swift */,
 				E522B477DC378F5CF8AB9C4C /* RecognitionServiceProtocol.swift */,
 				C01A60D735C381292553A5F8 /* UnavailableLiveRecognitionService.swift */,
+				9AD875058E105B569F3F3F40 /* UnavailableRecognitionProviderClient.swift */,
 			);
 			path = Recognition;
 			sourceTree = "<group>";
@@ -171,6 +181,7 @@
 		70F14B3A6C3F27005D113EB5 /* PulsefieldCoreTests */ = {
 			isa = PBXGroup;
 			children = (
+				A9C0AFD64ABA7C7C86048235 /* CascadingRecognitionServiceTests.swift */,
 				4A37495C7C03786C6C70AF14 /* RecognitionAppModelTests.swift */,
 			);
 			path = PulsefieldCoreTests;
@@ -236,6 +247,7 @@
 			children = (
 				40490916DA33124F9DB0B512 /* BeatmapDomain.swift */,
 				78ACE1CB799708B529D40F93 /* PreviewFixtures.swift */,
+				CEA92F2BB55484B411AD9D77 /* RecognitionArchitecture.swift */,
 				AE86054D09DCC083F246CB0C /* RecognitionDomain.swift */,
 			);
 			path = Domain;
@@ -356,6 +368,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2AD790A5ACB1EFFDA192D181 /* CascadingRecognitionServiceTests.swift in Sources */,
 				45A98DB9677287374091F460 /* RecognitionAppModelTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -374,14 +387,17 @@
 			files = (
 				E2A8570789AC186771AAE508 /* BeatmapDomain.swift in Sources */,
 				49BD393871163EE821A80748 /* BeatmapGenerationService.swift in Sources */,
+				92E245E5EFD540B91AC38971 /* CascadingRecognitionService.swift in Sources */,
 				FCC100D6A0B140451439956B /* MicrophonePermissionService.swift in Sources */,
 				9D8A7FC07558045972D8C6C1 /* MockRecognitionService.swift in Sources */,
 				DB02F5130C3C9A526C48CED9 /* PreviewFixtures.swift in Sources */,
 				D3A932DF8385FDF6983710EB /* RecognitionAppModel.swift in Sources */,
+				0FF3A89698A64FC665C1EA12 /* RecognitionArchitecture.swift in Sources */,
 				21096D7481D661923189989A /* RecognitionDashboardView.swift in Sources */,
 				79A78B41EC226018D2E55F11 /* RecognitionDomain.swift in Sources */,
 				7752F7EAFF1D57B9A8657190 /* RecognitionServiceProtocol.swift in Sources */,
 				4B59F19EC0E3380CE1A99D4E /* UnavailableLiveRecognitionService.swift in Sources */,
+				2B05FC1CF3FF0DC5F76D63D0 /* UnavailableRecognitionProviderClient.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

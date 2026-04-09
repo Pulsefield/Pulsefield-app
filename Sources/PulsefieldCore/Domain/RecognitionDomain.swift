@@ -10,6 +10,7 @@ public enum MicrophonePermissionStatus: String, CaseIterable, Sendable {
 public enum RecognitionSource: String, Sendable {
     case mockCatalog
     case shazamKit
+    case acrCloud
 }
 
 public struct RecognizedTrack: Identifiable, Equatable, Sendable {
@@ -80,11 +81,18 @@ public struct RecognitionFailure: Error, Equatable, Sendable {
     public let title: String
     public let message: String
     public let recoverySuggestion: String?
+    public let allowsFallback: Bool
 
-    public init(title: String, message: String, recoverySuggestion: String? = nil) {
+    public init(
+        title: String,
+        message: String,
+        recoverySuggestion: String? = nil,
+        allowsFallback: Bool = false
+    ) {
         self.title = title
         self.message = message
         self.recoverySuggestion = recoverySuggestion
+        self.allowsFallback = allowsFallback
     }
 
     public static let permissionRequired = RecognitionFailure(
@@ -96,7 +104,8 @@ public struct RecognitionFailure: Error, Equatable, Sendable {
     public static let liveRecognitionUnavailable = RecognitionFailure(
         title: "Live Recognition Is Gated",
         message: "The ShazamKit milestone is intentionally deferred in this scaffold.",
-        recoverySuggestion: "Keep using the mock catalog until capability and signing work is scheduled."
+        recoverySuggestion: "Keep using the mock catalog until capability and signing work is scheduled.",
+        allowsFallback: true
     )
 
     public static let emptyMockCatalog = RecognitionFailure(
@@ -104,6 +113,21 @@ public struct RecognitionFailure: Error, Equatable, Sendable {
         message: "No more scripted mock outcomes are available.",
         recoverySuggestion: "Refill the mock queue or recreate the service."
     )
+
+    public static func providerConfigurationMissing(
+        providerName: String,
+        missingFields: [String]
+    ) -> RecognitionFailure {
+        let missingList = missingFields.joined(separator: ", ")
+        return RecognitionFailure(
+            title: "\(providerName) Not Configured",
+            message: missingFields.isEmpty
+                ? "\(providerName) is selected but its setup is incomplete."
+                : "\(providerName) is missing required configuration: \(missingList).",
+            recoverySuggestion: "Provide the required provider credentials before enabling live recognition.",
+            allowsFallback: true
+        )
+    }
 }
 
 public enum RecognitionOutcome: Equatable, Sendable {
