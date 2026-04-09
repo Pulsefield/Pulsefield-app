@@ -1,0 +1,705 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		02BD03125AEA567B23286D53 /* PulsefieldCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */; };
+		0ABC189AFA3C01F5D2DB858A /* PulsefieldCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		21096D7481D661923189989A /* RecognitionDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6265F3B2B8D2593A91289482 /* RecognitionDashboardView.swift */; };
+		45A98DB9677287374091F460 /* RecognitionAppModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A37495C7C03786C6C70AF14 /* RecognitionAppModelTests.swift */; };
+		48A3D8B5531B9260CBA06768 /* PulsefieldCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		49BD393871163EE821A80748 /* BeatmapGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 728B90249B2A0A72FCD3580B /* BeatmapGenerationService.swift */; };
+		4B59F19EC0E3380CE1A99D4E /* UnavailableLiveRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C01A60D735C381292553A5F8 /* UnavailableLiveRecognitionService.swift */; };
+		7752F7EAFF1D57B9A8657190 /* RecognitionServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = E522B477DC378F5CF8AB9C4C /* RecognitionServiceProtocol.swift */; };
+		7967A26C548181415B1FA43F /* PulsefieldCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */; };
+		79A78B41EC226018D2E55F11 /* RecognitionDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE86054D09DCC083F246CB0C /* RecognitionDomain.swift */; };
+		9D8A7FC07558045972D8C6C1 /* MockRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6AE855CD84CDFD620DA302F /* MockRecognitionService.swift */; };
+		C17F41D81265605E799B3FB8 /* PulsefieldApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAD98D4D7CE5EBA467367D41 /* PulsefieldApp.swift */; };
+		D3A932DF8385FDF6983710EB /* RecognitionAppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ECCDB69F561441CFB7369B2 /* RecognitionAppModel.swift */; };
+		D46F277B68C8F973A3FE9529 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 56EB7BD2459DEAB60737DD1E /* AVFoundation.framework */; };
+		DB02F5130C3C9A526C48CED9 /* PreviewFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78ACE1CB799708B529D40F93 /* PreviewFixtures.swift */; };
+		E2A8570789AC186771AAE508 /* BeatmapDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40490916DA33124F9DB0B512 /* BeatmapDomain.swift */; };
+		FCC100D6A0B140451439956B /* MicrophonePermissionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F45F8208B52EF6BC2629EBDD /* MicrophonePermissionService.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B814EA14241F206096421DD4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F9B722C391474AD55EB39B2E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = ED46F20630734EA83BA6607D;
+			remoteInfo = PulsefieldCore;
+		};
+		E6FDF5B13B0789665F57AB94 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F9B722C391474AD55EB39B2E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = ED46F20630734EA83BA6607D;
+			remoteInfo = PulsefieldCore;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		2E837931135F327BBAD0F0F2 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				48A3D8B5531B9260CBA06768 /* PulsefieldCore.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		68A97FD0AD6C4125AC32E77B /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				0ABC189AFA3C01F5D2DB858A /* PulsefieldCore.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		17DCB31FB4118757EAD79704 /* PulsefieldCoreTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PulsefieldCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		40490916DA33124F9DB0B512 /* BeatmapDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeatmapDomain.swift; sourceTree = "<group>"; };
+		44DCDD1FC066A9894608CD58 /* Pulsefield.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Pulsefield.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4A37495C7C03786C6C70AF14 /* RecognitionAppModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionAppModelTests.swift; sourceTree = "<group>"; };
+		56EB7BD2459DEAB60737DD1E /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
+		5ECCDB69F561441CFB7369B2 /* RecognitionAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionAppModel.swift; sourceTree = "<group>"; };
+		6265F3B2B8D2593A91289482 /* RecognitionDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionDashboardView.swift; sourceTree = "<group>"; };
+		728B90249B2A0A72FCD3580B /* BeatmapGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeatmapGenerationService.swift; sourceTree = "<group>"; };
+		78ACE1CB799708B529D40F93 /* PreviewFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewFixtures.swift; sourceTree = "<group>"; };
+		A387EEA1983387E2E36565AD /* PulsefieldCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = PulsefieldCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		AE86054D09DCC083F246CB0C /* RecognitionDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionDomain.swift; sourceTree = "<group>"; };
+		BAD98D4D7CE5EBA467367D41 /* PulsefieldApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PulsefieldApp.swift; sourceTree = "<group>"; };
+		C01A60D735C381292553A5F8 /* UnavailableLiveRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnavailableLiveRecognitionService.swift; sourceTree = "<group>"; };
+		D6AE855CD84CDFD620DA302F /* MockRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockRecognitionService.swift; sourceTree = "<group>"; };
+		E522B477DC378F5CF8AB9C4C /* RecognitionServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionServiceProtocol.swift; sourceTree = "<group>"; };
+		F45F8208B52EF6BC2629EBDD /* MicrophonePermissionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophonePermissionService.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		1A79BFCE7ADA34A1F3CF00A1 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				02BD03125AEA567B23286D53 /* PulsefieldCore.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6EDD0CDE2A9703B04FBAC27A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7967A26C548181415B1FA43F /* PulsefieldCore.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CF2599EC66054B0A859650AC /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D46F277B68C8F973A3FE9529 /* AVFoundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1D472204F12C62EEB1A0E71D /* Recognition */ = {
+			isa = PBXGroup;
+			children = (
+				D6AE855CD84CDFD620DA302F /* MockRecognitionService.swift */,
+				E522B477DC378F5CF8AB9C4C /* RecognitionServiceProtocol.swift */,
+				C01A60D735C381292553A5F8 /* UnavailableLiveRecognitionService.swift */,
+			);
+			path = Recognition;
+			sourceTree = "<group>";
+		};
+		28F7FF2DE7BB92A62ABE0429 /* Permissions */ = {
+			isa = PBXGroup;
+			children = (
+				F45F8208B52EF6BC2629EBDD /* MicrophonePermissionService.swift */,
+			);
+			path = Permissions;
+			sourceTree = "<group>";
+		};
+		3467BAE7E553589AB7891349 /* Apps */ = {
+			isa = PBXGroup;
+			children = (
+				BAD98D4D7CE5EBA467367D41 /* PulsefieldApp.swift */,
+			);
+			path = Apps;
+			sourceTree = "<group>";
+		};
+		3D7D427117265907596493ED /* Beatmap */ = {
+			isa = PBXGroup;
+			children = (
+				728B90249B2A0A72FCD3580B /* BeatmapGenerationService.swift */,
+			);
+			path = Beatmap;
+			sourceTree = "<group>";
+		};
+		5A25F763B47C30D8730EBB14 = {
+			isa = PBXGroup;
+			children = (
+				3467BAE7E553589AB7891349 /* Apps */,
+				8531547808AB3132D551D011 /* Sources */,
+				FDD1267957FCCE37D053068C /* Tests */,
+				5A7DF3A0D35EC3422DBA0737 /* Frameworks */,
+				996234DD38B53E20B19FD62A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		5A7DF3A0D35EC3422DBA0737 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				56EB7BD2459DEAB60737DD1E /* AVFoundation.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		70F14B3A6C3F27005D113EB5 /* PulsefieldCoreTests */ = {
+			isa = PBXGroup;
+			children = (
+				4A37495C7C03786C6C70AF14 /* RecognitionAppModelTests.swift */,
+			);
+			path = PulsefieldCoreTests;
+			sourceTree = "<group>";
+		};
+		83234DA22C958E2413A6EACA /* Recognition */ = {
+			isa = PBXGroup;
+			children = (
+				5ECCDB69F561441CFB7369B2 /* RecognitionAppModel.swift */,
+				6265F3B2B8D2593A91289482 /* RecognitionDashboardView.swift */,
+			);
+			path = Recognition;
+			sourceTree = "<group>";
+		};
+		8531547808AB3132D551D011 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				E883E0B129D3970E0690A2FE /* PulsefieldCore */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		90B5ECB7826DB43DCCBB5377 /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				83234DA22C958E2413A6EACA /* Recognition */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+		996234DD38B53E20B19FD62A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				44DCDD1FC066A9894608CD58 /* Pulsefield.app */,
+				A387EEA1983387E2E36565AD /* PulsefieldCore.framework */,
+				17DCB31FB4118757EAD79704 /* PulsefieldCoreTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		C257E42A6DDD088636F2F66F /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				3D7D427117265907596493ED /* Beatmap */,
+				28F7FF2DE7BB92A62ABE0429 /* Permissions */,
+				1D472204F12C62EEB1A0E71D /* Recognition */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		E883E0B129D3970E0690A2FE /* PulsefieldCore */ = {
+			isa = PBXGroup;
+			children = (
+				F6107D7E1803E9CBD19ACA2E /* Domain */,
+				90B5ECB7826DB43DCCBB5377 /* Features */,
+				C257E42A6DDD088636F2F66F /* Services */,
+			);
+			path = PulsefieldCore;
+			sourceTree = "<group>";
+		};
+		F6107D7E1803E9CBD19ACA2E /* Domain */ = {
+			isa = PBXGroup;
+			children = (
+				40490916DA33124F9DB0B512 /* BeatmapDomain.swift */,
+				78ACE1CB799708B529D40F93 /* PreviewFixtures.swift */,
+				AE86054D09DCC083F246CB0C /* RecognitionDomain.swift */,
+			);
+			path = Domain;
+			sourceTree = "<group>";
+		};
+		FDD1267957FCCE37D053068C /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				70F14B3A6C3F27005D113EB5 /* PulsefieldCoreTests */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0CC12B3E30EBEFF66D15DD49 /* PulsefieldCoreTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FBE8E274776345283A4DA9DB /* Build configuration list for PBXNativeTarget "PulsefieldCoreTests" */;
+			buildPhases = (
+				607AE61E0D64B8DAC37A7D4E /* Sources */,
+				1A79BFCE7ADA34A1F3CF00A1 /* Frameworks */,
+				2E837931135F327BBAD0F0F2 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				4E210BF95BD44D5633084C54 /* PBXTargetDependency */,
+			);
+			name = PulsefieldCoreTests;
+			packageProductDependencies = (
+			);
+			productName = PulsefieldCoreTests;
+			productReference = 17DCB31FB4118757EAD79704 /* PulsefieldCoreTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		B74B2DE794551BE128ECCEDB /* Pulsefield */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 45CE3E7FF90599250B7FE7AD /* Build configuration list for PBXNativeTarget "Pulsefield" */;
+			buildPhases = (
+				B3A61F5CE2ECABE95AD9418F /* Sources */,
+				6EDD0CDE2A9703B04FBAC27A /* Frameworks */,
+				68A97FD0AD6C4125AC32E77B /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				74E4339A92B080AA84B734C6 /* PBXTargetDependency */,
+			);
+			name = Pulsefield;
+			packageProductDependencies = (
+			);
+			productName = Pulsefield;
+			productReference = 44DCDD1FC066A9894608CD58 /* Pulsefield.app */;
+			productType = "com.apple.product-type.application";
+		};
+		ED46F20630734EA83BA6607D /* PulsefieldCore */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8628596D952745E7858C995A /* Build configuration list for PBXNativeTarget "PulsefieldCore" */;
+			buildPhases = (
+				FAC9BF46436F9973979F911C /* Sources */,
+				CF2599EC66054B0A859650AC /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PulsefieldCore;
+			packageProductDependencies = (
+			);
+			productName = PulsefieldCore;
+			productReference = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		F9B722C391474AD55EB39B2E /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					0CC12B3E30EBEFF66D15DD49 = {
+						ProvisioningStyle = Automatic;
+					};
+					B74B2DE794551BE128ECCEDB = {
+						ProvisioningStyle = Automatic;
+					};
+					ED46F20630734EA83BA6607D = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = BACD41B0B560D9A848CF294E /* Build configuration list for PBXProject "Pulsefield" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 5A25F763B47C30D8730EBB14;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 996234DD38B53E20B19FD62A /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B74B2DE794551BE128ECCEDB /* Pulsefield */,
+				ED46F20630734EA83BA6607D /* PulsefieldCore */,
+				0CC12B3E30EBEFF66D15DD49 /* PulsefieldCoreTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		607AE61E0D64B8DAC37A7D4E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				45A98DB9677287374091F460 /* RecognitionAppModelTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B3A61F5CE2ECABE95AD9418F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C17F41D81265605E799B3FB8 /* PulsefieldApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FAC9BF46436F9973979F911C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E2A8570789AC186771AAE508 /* BeatmapDomain.swift in Sources */,
+				49BD393871163EE821A80748 /* BeatmapGenerationService.swift in Sources */,
+				FCC100D6A0B140451439956B /* MicrophonePermissionService.swift in Sources */,
+				9D8A7FC07558045972D8C6C1 /* MockRecognitionService.swift in Sources */,
+				DB02F5130C3C9A526C48CED9 /* PreviewFixtures.swift in Sources */,
+				D3A932DF8385FDF6983710EB /* RecognitionAppModel.swift in Sources */,
+				21096D7481D661923189989A /* RecognitionDashboardView.swift in Sources */,
+				79A78B41EC226018D2E55F11 /* RecognitionDomain.swift in Sources */,
+				7752F7EAFF1D57B9A8657190 /* RecognitionServiceProtocol.swift in Sources */,
+				4B59F19EC0E3380CE1A99D4E /* UnavailableLiveRecognitionService.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		4E210BF95BD44D5633084C54 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = ED46F20630734EA83BA6607D /* PulsefieldCore */;
+			targetProxy = E6FDF5B13B0789665F57AB94 /* PBXContainerItemProxy */;
+		};
+		74E4339A92B080AA84B734C6 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = ED46F20630734EA83BA6607D /* PulsefieldCore */;
+			targetProxy = B814EA14241F206096421DD4 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		09259B5E7C65218A050EAC16 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		38C2C0DA844AE6BEEA49EDF6 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = io.pulsefield.core.tests;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				TARGETED_DEVICE_FAMILY = "";
+			};
+			name = Debug;
+		};
+		4ADF2DDCAE510114277A5DA2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = io.pulsefield.core;
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
+		};
+		8343444A4973C27D3F87E94B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		90A4BD3106EDC2D1EEB11917 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = io.pulsefield.core.tests;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				TARGETED_DEVICE_FAMILY = "";
+			};
+			name = Release;
+		};
+		9F5CA1C75C67601410083B2E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_KEY_CFBundleDisplayName = Pulsefield;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Pulsefield uses the microphone to prototype nearby music recognition flows.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = io.pulsefield.app;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		ABDC775650A067959FCE7565 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "";
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_KEY_CFBundleDisplayName = Pulsefield;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Pulsefield uses the microphone to prototype nearby music recognition flows.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = io.pulsefield.app;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		C89C1DF8B16C890E30D4F3E9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = io.pulsefield.core;
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		45CE3E7FF90599250B7FE7AD /* Build configuration list for PBXNativeTarget "Pulsefield" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ABDC775650A067959FCE7565 /* Debug */,
+				9F5CA1C75C67601410083B2E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		8628596D952745E7858C995A /* Build configuration list for PBXNativeTarget "PulsefieldCore" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4ADF2DDCAE510114277A5DA2 /* Debug */,
+				C89C1DF8B16C890E30D4F3E9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		BACD41B0B560D9A848CF294E /* Build configuration list for PBXProject "Pulsefield" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8343444A4973C27D3F87E94B /* Debug */,
+				09259B5E7C65218A050EAC16 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		FBE8E274776345283A4DA9DB /* Build configuration list for PBXNativeTarget "PulsefieldCoreTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				38C2C0DA844AE6BEEA49EDF6 /* Debug */,
+				90A4BD3106EDC2D1EEB11917 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = F9B722C391474AD55EB39B2E /* Project object */;
+}
