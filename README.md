@@ -1,5 +1,5 @@
 ---
-commit: 987bf91843009968341671cc5cb1c8019617eea9
+commit: d15db863e9d00e3fd09a550b3b060ceed1e4dd7b
 ---
 
 # Pulsefield
@@ -40,7 +40,7 @@ The live-recognition seam is reserved behind `RecognitionServiceProtocol`. The a
 - `CascadingRecognitionService` and related provider-domain models define the intended live architecture: capture once, then try `ShazamKit` followed by `ACRCloud`.
 - `BeatmapGenerationProviding` and related models reserve the handoff boundary for future `mania4k` generation work.
 
-See [`docs/recognition-architecture.md`](docs/recognition-architecture.md) for the provider architecture and minimal live-setup checklist.
+See [`docs/design/recognition-architecture.md`](docs/design/recognition-architecture.md) for the provider architecture and minimal live-setup checklist.
 
 ## What is not implemented yet
 

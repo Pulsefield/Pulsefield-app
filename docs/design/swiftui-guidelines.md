@@ -1,7 +1,10 @@
+---
+commit: d15db863e9d00e3fd09a550b3b060ceed1e4dd7b
+title: SwiftUI Architecture Guidelines
+---
+
 # SwiftUI Architecture Guidelines
 
-- baseline commit: `8ccacaf6e853f39341ab2a4f864cbb88fb988974`
-- baseline repo status before this docs change: `## dev/swift-ui...origin/dev/swift-ui [ahead 2]`
 - baseline interpretation: the repo is still a skeleton app with one real feature seam, one root app model, no persistence, no navigation stack, and no cross-feature design system
 
 These guidelines are intentionally scoped to the repository state above. They are not generic SwiftUI rules for every future Pulsefield phase.
@@ -10,9 +13,9 @@ These guidelines are intentionally scoped to the repository state above. They ar
 
 At this commit, Pulsefield is small enough that more abstraction would cost more than it saves:
 
-- one app entry point in `Apps/PulsefieldApp.swift`
+- separate platform app entry points in `Apps/PulsefieldiOS/PulsefieldiOSApp.swift` and `Apps/PulsefieldMac/PulsefieldMacApp.swift`
 - one feature-oriented model in `Sources/PulsefieldCore/Features/Recognition/RecognitionAppModel.swift`
-- one primary screen in `Sources/PulsefieldCore/Features/Recognition/RecognitionDashboardView.swift`
+- one primary screen in `Sources/PulsefieldUI/Features/Recognition/RecognitionDashboardView.swift`
 - protocol seams for microphone, recognition, and beatmap services
 - unit tests around the app model behavior
 

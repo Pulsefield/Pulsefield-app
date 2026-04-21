@@ -1,6 +1,9 @@
-# Recognition Architecture
+---
+commit: 4f7e18d
+title: Recognition Architecture
+---
 
-- commit 4f7e18d
+# Recognition Architecture
 
 Pulsefield should treat `ShazamKit` and `ACRCloud` as provider clients behind one shared capture pipeline.
 

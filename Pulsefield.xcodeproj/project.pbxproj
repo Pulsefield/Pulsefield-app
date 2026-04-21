@@ -122,12 +122,19 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		13621072D594A7CD021F2B13 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		1566D4A2453B11FD004842DC /* mania-4k-play-experience-design.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "mania-4k-play-experience-design.md"; sourceTree = "<group>"; };
 		17DCB31FB4118757EAD79704 /* PulsefieldCoreTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PulsefieldCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		1ED00D85508FC1CAA511109B /* LICENSE */ = {isa = PBXFileReference; path = LICENSE; sourceTree = "<group>"; };
+		279883F0FED22764769D789B /* swiftui-guidelines.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "swiftui-guidelines.md"; sourceTree = "<group>"; };
+		29B6C98909AAEFF35D9B16F1 /* recognition-architecture.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "recognition-architecture.md"; sourceTree = "<group>"; };
+		333E4D546E88B031812D5CE9 /* mania-4k-ui-scene-research-plan.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "mania-4k-ui-scene-research-plan.md"; sourceTree = "<group>"; };
 		40490916DA33124F9DB0B512 /* BeatmapDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeatmapDomain.swift; sourceTree = "<group>"; };
 		4A37495C7C03786C6C70AF14 /* RecognitionAppModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionAppModelTests.swift; sourceTree = "<group>"; };
 		56EB7BD2459DEAB60737DD1E /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		571E459554DDE450E8EE1726 /* PulsefieldMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PulsefieldMacApp.swift; sourceTree = "<group>"; };
 		5ECCDB69F561441CFB7369B2 /* RecognitionAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionAppModel.swift; sourceTree = "<group>"; };
+		6549DBD3F9F54465CDB658A5 /* AGENTS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = AGENTS.md; sourceTree = "<group>"; };
 		6A5DC9D386B2ECD255849946 /* PulsefieldiOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PulsefieldiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6CA7A26E40728ECEA439A0AA /* RecognitionDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionDashboardView.swift; sourceTree = "<group>"; };
 		728B90249B2A0A72FCD3580B /* BeatmapGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeatmapGenerationService.swift; sourceTree = "<group>"; };
@@ -193,6 +200,15 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		0836D9C79BB52C1F5F0AD1BA /* docs */ = {
+			isa = PBXGroup;
+			children = (
+				66C8330F5D9315B7523A49AF /* design */,
+				756B0500E9717B688FC88E29 /* execution-plan */,
+			);
+			path = docs;
+			sourceTree = "<group>";
+		};
 		1D472204F12C62EEB1A0E71D /* Recognition */ = {
 			isa = PBXGroup;
 			children = (
@@ -249,7 +265,11 @@
 		5A25F763B47C30D8730EBB14 = {
 			isa = PBXGroup;
 			children = (
+				6549DBD3F9F54465CDB658A5 /* AGENTS.md */,
+				1ED00D85508FC1CAA511109B /* LICENSE */,
+				13621072D594A7CD021F2B13 /* README.md */,
 				3467BAE7E553589AB7891349 /* Apps */,
+				0836D9C79BB52C1F5F0AD1BA /* docs */,
 				8531547808AB3132D551D011 /* Sources */,
 				FDD1267957FCCE37D053068C /* Tests */,
 				5A7DF3A0D35EC3422DBA0737 /* Frameworks */,
@@ -263,6 +283,16 @@
 				56EB7BD2459DEAB60737DD1E /* AVFoundation.framework */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		66C8330F5D9315B7523A49AF /* design */ = {
+			isa = PBXGroup;
+			children = (
+				1566D4A2453B11FD004842DC /* mania-4k-play-experience-design.md */,
+				29B6C98909AAEFF35D9B16F1 /* recognition-architecture.md */,
+				279883F0FED22764769D789B /* swiftui-guidelines.md */,
+			);
+			path = design;
 			sourceTree = "<group>";
 		};
 		6CFFEF2E1C9051E902945F6C /* Features */ = {
@@ -280,6 +310,14 @@
 				4A37495C7C03786C6C70AF14 /* RecognitionAppModelTests.swift */,
 			);
 			path = PulsefieldCoreTests;
+			sourceTree = "<group>";
+		};
+		756B0500E9717B688FC88E29 /* execution-plan */ = {
+			isa = PBXGroup;
+			children = (
+				333E4D546E88B031812D5CE9 /* mania-4k-ui-scene-research-plan.md */,
+			);
+			path = "execution-plan";
 			sourceTree = "<group>";
 		};
 		83234DA22C958E2413A6EACA /* Recognition */ = {

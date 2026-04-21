@@ -1,5 +1,5 @@
 ---
-commit: 14ee64e68d58d67d77cee9b388a479b020764e31
+commit: d15db863e9d00e3fd09a550b3b060ceed1e4dd7b
 title: Streaming Mania 4K Play Experience Spec
 osu_lazer_commit: a0be214d034c48b0b603069dc284b27b9dde5c17
 ---
