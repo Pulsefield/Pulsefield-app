@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		02BD03125AEA567B23286D53 /* PulsefieldCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */; };
 		0FF3A89698A64FC665C1EA12 /* RecognitionArchitecture.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEA92F2BB55484B411AD9D77 /* RecognitionArchitecture.swift */; };
+		1787F44AD3393A1EA967905E /* Mania4KPlaySessionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65931740476AF6B6432DB7FF /* Mania4KPlaySessionModel.swift */; };
 		24B5A948743695A047C0AEDE /* PulsefieldMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 571E459554DDE450E8EE1726 /* PulsefieldMacApp.swift */; };
 		2AD790A5ACB1EFFDA192D181 /* CascadingRecognitionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9C0AFD64ABA7C7C86048235 /* CascadingRecognitionServiceTests.swift */; };
 		2B05FC1CF3FF0DC5F76D63D0 /* UnavailableRecognitionProviderClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AD875058E105B569F3F3F40 /* UnavailableRecognitionProviderClient.swift */; };
@@ -19,6 +20,7 @@
 		49BD393871163EE821A80748 /* BeatmapGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 728B90249B2A0A72FCD3580B /* BeatmapGenerationService.swift */; };
 		4A4458CD96C392CF5341E8AE /* PulsefieldCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */; };
 		4B59F19EC0E3380CE1A99D4E /* UnavailableLiveRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C01A60D735C381292553A5F8 /* UnavailableLiveRecognitionService.swift */; };
+		5C3FAFADD702D6CFFE48A72B /* Mania4KPlaySessionModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BAF8E8D435CA620D624CE54 /* Mania4KPlaySessionModelTests.swift */; };
 		6429F19A1E91047DA472D6B7 /* PulsefieldCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		64860B379E78038EE6CF9426 /* PulsefieldCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		7752F7EAFF1D57B9A8657190 /* RecognitionServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = E522B477DC378F5CF8AB9C4C /* RecognitionServiceProtocol.swift */; };
@@ -29,12 +31,14 @@
 		9D8A7FC07558045972D8C6C1 /* MockRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6AE855CD84CDFD620DA302F /* MockRecognitionService.swift */; };
 		9E618892E41288E421193A60 /* PulsefieldCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */; };
 		A4C0C039BABC46277245ABBF /* PulsefieldiOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEFC56F5F1D0A58C6ED5BD3A /* PulsefieldiOSApp.swift */; };
+		BB04DF61AB24DA410A01CDE5 /* Mania4KDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45ECE8CA145AF5FCACE46022 /* Mania4KDomain.swift */; };
 		C2DC4CA9490680BF832B1AA0 /* PulsefieldUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A9C81D865B64C6D256B24F2B /* PulsefieldUI.framework */; };
 		D341F844440FAB984B185C59 /* PulsefieldUI.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A9C81D865B64C6D256B24F2B /* PulsefieldUI.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D3A932DF8385FDF6983710EB /* RecognitionAppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ECCDB69F561441CFB7369B2 /* RecognitionAppModel.swift */; };
 		D46F277B68C8F973A3FE9529 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 56EB7BD2459DEAB60737DD1E /* AVFoundation.framework */; };
 		DB02F5130C3C9A526C48CED9 /* PreviewFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78ACE1CB799708B529D40F93 /* PreviewFixtures.swift */; };
 		E2A8570789AC186771AAE508 /* BeatmapDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40490916DA33124F9DB0B512 /* BeatmapDomain.swift */; };
+		FC9C0773A8A231E694B89EB7 /* Mania4KPlayExperienceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B7F34B30233C62EE4CA2746 /* Mania4KPlayExperienceView.swift */; };
 		FCC100D6A0B140451439956B /* MicrophonePermissionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F45F8208B52EF6BC2629EBDD /* MicrophonePermissionService.swift */; };
 /* End PBXBuildFile section */
 
@@ -122,6 +126,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		0B7F34B30233C62EE4CA2746 /* Mania4KPlayExperienceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mania4KPlayExperienceView.swift; sourceTree = "<group>"; };
 		13621072D594A7CD021F2B13 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		1566D4A2453B11FD004842DC /* mania-4k-play-experience-design.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "mania-4k-play-experience-design.md"; sourceTree = "<group>"; };
 		17DCB31FB4118757EAD79704 /* PulsefieldCoreTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PulsefieldCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -130,16 +135,19 @@
 		29B6C98909AAEFF35D9B16F1 /* recognition-architecture.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "recognition-architecture.md"; sourceTree = "<group>"; };
 		333E4D546E88B031812D5CE9 /* mania-4k-ui-scene-research-plan.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "mania-4k-ui-scene-research-plan.md"; sourceTree = "<group>"; };
 		40490916DA33124F9DB0B512 /* BeatmapDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeatmapDomain.swift; sourceTree = "<group>"; };
+		45ECE8CA145AF5FCACE46022 /* Mania4KDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mania4KDomain.swift; sourceTree = "<group>"; };
 		4A37495C7C03786C6C70AF14 /* RecognitionAppModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionAppModelTests.swift; sourceTree = "<group>"; };
 		56EB7BD2459DEAB60737DD1E /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		571E459554DDE450E8EE1726 /* PulsefieldMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PulsefieldMacApp.swift; sourceTree = "<group>"; };
 		5ECCDB69F561441CFB7369B2 /* RecognitionAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionAppModel.swift; sourceTree = "<group>"; };
 		6549DBD3F9F54465CDB658A5 /* AGENTS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = AGENTS.md; sourceTree = "<group>"; };
+		65931740476AF6B6432DB7FF /* Mania4KPlaySessionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mania4KPlaySessionModel.swift; sourceTree = "<group>"; };
 		6A5DC9D386B2ECD255849946 /* PulsefieldiOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PulsefieldiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6CA7A26E40728ECEA439A0AA /* RecognitionDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionDashboardView.swift; sourceTree = "<group>"; };
 		728B90249B2A0A72FCD3580B /* BeatmapGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeatmapGenerationService.swift; sourceTree = "<group>"; };
 		78ACE1CB799708B529D40F93 /* PreviewFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewFixtures.swift; sourceTree = "<group>"; };
 		9AD875058E105B569F3F3F40 /* UnavailableRecognitionProviderClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnavailableRecognitionProviderClient.swift; sourceTree = "<group>"; };
+		9BAF8E8D435CA620D624CE54 /* Mania4KPlaySessionModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mania4KPlaySessionModelTests.swift; sourceTree = "<group>"; };
 		A387EEA1983387E2E36565AD /* PulsefieldCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = PulsefieldCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		A9C0AFD64ABA7C7C86048235 /* CascadingRecognitionServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CascadingRecognitionServiceTests.swift; sourceTree = "<group>"; };
 		A9C81D865B64C6D256B24F2B /* PulsefieldUI.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = PulsefieldUI.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -207,6 +215,22 @@
 				756B0500E9717B688FC88E29 /* execution-plan */,
 			);
 			path = docs;
+			sourceTree = "<group>";
+		};
+		09CA27BD788901A1486A596B /* Mania4K */ = {
+			isa = PBXGroup;
+			children = (
+				0B7F34B30233C62EE4CA2746 /* Mania4KPlayExperienceView.swift */,
+			);
+			path = Mania4K;
+			sourceTree = "<group>";
+		};
+		0ADA427D0279624FD7001F4E /* Mania4K */ = {
+			isa = PBXGroup;
+			children = (
+				65931740476AF6B6432DB7FF /* Mania4KPlaySessionModel.swift */,
+			);
+			path = Mania4K;
 			sourceTree = "<group>";
 		};
 		1D472204F12C62EEB1A0E71D /* Recognition */ = {
@@ -298,6 +322,7 @@
 		6CFFEF2E1C9051E902945F6C /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				09CA27BD788901A1486A596B /* Mania4K */,
 				9856F28F595C97EEE192D7EF /* Recognition */,
 			);
 			path = Features;
@@ -307,6 +332,7 @@
 			isa = PBXGroup;
 			children = (
 				A9C0AFD64ABA7C7C86048235 /* CascadingRecognitionServiceTests.swift */,
+				9BAF8E8D435CA620D624CE54 /* Mania4KPlaySessionModelTests.swift */,
 				4A37495C7C03786C6C70AF14 /* RecognitionAppModelTests.swift */,
 			);
 			path = PulsefieldCoreTests;
@@ -340,6 +366,7 @@
 		90B5ECB7826DB43DCCBB5377 /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				0ADA427D0279624FD7001F4E /* Mania4K */,
 				83234DA22C958E2413A6EACA /* Recognition */,
 			);
 			path = Features;
@@ -397,6 +424,7 @@
 			isa = PBXGroup;
 			children = (
 				40490916DA33124F9DB0B512 /* BeatmapDomain.swift */,
+				45ECE8CA145AF5FCACE46022 /* Mania4KDomain.swift */,
 				78ACE1CB799708B529D40F93 /* PreviewFixtures.swift */,
 				CEA92F2BB55484B411AD9D77 /* RecognitionArchitecture.swift */,
 				AE86054D09DCC083F246CB0C /* RecognitionDomain.swift */,
@@ -577,6 +605,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				2AD790A5ACB1EFFDA192D181 /* CascadingRecognitionServiceTests.swift in Sources */,
+				5C3FAFADD702D6CFFE48A72B /* Mania4KPlaySessionModelTests.swift in Sources */,
 				45A98DB9677287374091F460 /* RecognitionAppModelTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -585,6 +614,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FC9C0773A8A231E694B89EB7 /* Mania4KPlayExperienceView.swift in Sources */,
 				30C064BBD9B8963AABD53194 /* RecognitionDashboardView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -604,6 +634,8 @@
 				E2A8570789AC186771AAE508 /* BeatmapDomain.swift in Sources */,
 				49BD393871163EE821A80748 /* BeatmapGenerationService.swift in Sources */,
 				92E245E5EFD540B91AC38971 /* CascadingRecognitionService.swift in Sources */,
+				BB04DF61AB24DA410A01CDE5 /* Mania4KDomain.swift in Sources */,
+				1787F44AD3393A1EA967905E /* Mania4KPlaySessionModel.swift in Sources */,
 				FCC100D6A0B140451439956B /* MicrophonePermissionService.swift in Sources */,
 				9D8A7FC07558045972D8C6C1 /* MockRecognitionService.swift in Sources */,
 				DB02F5130C3C9A526C48CED9 /* PreviewFixtures.swift in Sources */,

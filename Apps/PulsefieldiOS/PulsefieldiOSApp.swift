@@ -5,11 +5,11 @@ import SwiftUI
 @main
 @MainActor
 struct PulsefieldiOSApp: App {
-    @State private var model = RecognitionAppModel.livePrototype()
+    @State private var model = Mania4KPlaySessionModel()
 
     var body: some Scene {
         WindowGroup {
-            RecognitionDashboardView(model: model)
+            Mania4KPlayExperienceView(model: model)
         }
     }
 }
