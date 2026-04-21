@@ -1,3 +1,4 @@
+import PulsefieldCore
 import SwiftUI
 
 public struct RecognitionDashboardView: View {

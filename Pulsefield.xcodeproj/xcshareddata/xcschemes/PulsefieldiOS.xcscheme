@@ -1,26 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
    LastUpgradeVersion = "1430"
-   version = "1.7">
+   version = "1.3">
    <BuildAction
       parallelizeBuildables = "YES"
-      buildImplicitDependencies = "YES"
-      runPostActionsOnFailure = "NO">
+      buildImplicitDependencies = "YES">
       <BuildActionEntries>
-         <BuildActionEntry
-            buildForTesting = "YES"
-            buildForRunning = "YES"
-            buildForProfiling = "YES"
-            buildForArchiving = "YES"
-            buildForAnalyzing = "YES">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "B74B2DE794551BE128ECCEDB"
-               BuildableName = "Pulsefield.app"
-               BlueprintName = "Pulsefield"
-               ReferencedContainer = "container:Pulsefield.xcodeproj">
-            </BuildableReference>
-         </BuildActionEntry>
          <BuildActionEntry
             buildForTesting = "YES"
             buildForRunning = "YES"
@@ -35,38 +20,52 @@
                ReferencedContainer = "container:Pulsefield.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "400FC4CCC71B995495E6FB73"
+               BuildableName = "PulsefieldUI.framework"
+               BlueprintName = "PulsefieldUI"
+               ReferencedContainer = "container:Pulsefield.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "C6216F9238290FC4E63A1E93"
+               BuildableName = "PulsefieldiOS.app"
+               BlueprintName = "PulsefieldiOS"
+               ReferencedContainer = "container:Pulsefield.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
       buildConfiguration = "Debug"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
-      shouldUseLaunchSchemeArgsEnv = "YES"
-      onlyGenerateCoverageForSpecifiedTargets = "NO">
+      shouldUseLaunchSchemeArgsEnv = "YES">
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "B74B2DE794551BE128ECCEDB"
-            BuildableName = "Pulsefield.app"
-            BlueprintName = "Pulsefield"
+            BlueprintIdentifier = "ED46F20630734EA83BA6607D"
+            BuildableName = "PulsefieldCore.framework"
+            BlueprintName = "PulsefieldCore"
             ReferencedContainer = "container:Pulsefield.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <Testables>
-         <TestableReference
-            skipped = "NO"
-            parallelizable = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "0CC12B3E30EBEFF66D15DD49"
-               BuildableName = "PulsefieldCoreTests.xctest"
-               BlueprintName = "PulsefieldCoreTests"
-               ReferencedContainer = "container:Pulsefield.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
       </Testables>
-      <CommandLineArguments>
-      </CommandLineArguments>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
@@ -78,16 +77,15 @@
       debugDocumentVersioning = "YES"
       debugServiceExtension = "internal"
       allowLocationSimulation = "YES">
-      <BuildableProductRunnable
-         runnableDebuggingMode = "0">
+      <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "B74B2DE794551BE128ECCEDB"
-            BuildableName = "Pulsefield.app"
-            BlueprintName = "Pulsefield"
+            BlueprintIdentifier = "ED46F20630734EA83BA6607D"
+            BuildableName = "PulsefieldCore.framework"
+            BlueprintName = "PulsefieldCore"
             ReferencedContainer = "container:Pulsefield.xcodeproj">
          </BuildableReference>
-      </BuildableProductRunnable>
+      </MacroExpansion>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
@@ -95,16 +93,15 @@
       savedToolIdentifier = ""
       useCustomWorkingDirectory = "NO"
       debugDocumentVersioning = "YES">
-      <BuildableProductRunnable
-         runnableDebuggingMode = "0">
+      <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "B74B2DE794551BE128ECCEDB"
-            BuildableName = "Pulsefield.app"
-            BlueprintName = "Pulsefield"
+            BlueprintIdentifier = "ED46F20630734EA83BA6607D"
+            BuildableName = "PulsefieldCore.framework"
+            BlueprintName = "PulsefieldCore"
             ReferencedContainer = "container:Pulsefield.xcodeproj">
          </BuildableReference>
-      </BuildableProductRunnable>
+      </MacroExpansion>
    </ProfileAction>
    <AnalyzeAction
       buildConfiguration = "Debug">

@@ -1,8 +1,12 @@
+---
+commit: 987bf91843009968341671cc5cb1c8019617eea9
+---
+
 # Pulsefield
 
 Pulsefield is a SwiftUI scaffold for a future music-reactive rhythm app. The current milestone is intentionally limited to:
 
-- a compile-correct iOS/macOS project shell
+- compile-correct iOS and macOS app targets
 - real microphone permission handling
 - a mock recognition flow for UI and architecture work
 - app-owned domain models and service abstractions
@@ -23,11 +27,13 @@ The live-recognition seam is reserved behind `RecognitionServiceProtocol`. The a
 
 1. Run `xcodegen generate`
 2. Open `Pulsefield.xcodeproj`
-3. Build the `Pulsefield` scheme for macOS or an iOS simulator
+3. Build the `PulsefieldMac` scheme for macOS or the `PulsefieldiOS` scheme for an iOS simulator
 
 ## What is implemented
 
 - `RecognitionAppModel` coordinates permission state, mock listening state, recognition snapshots, and beatmap reservation state.
+- `PulsefieldiOS` and `PulsefieldMac` provide separate platform app shells.
+- `PulsefieldUI` owns shared SwiftUI views that can be reused by both platform apps.
 - `MicrophonePermissionService` uses `AVCaptureDevice` for real authorization checks and prompts.
 - `MockRecognitionService` simulates a recognition round-trip and returns a stable sample song.
 - `UnavailableLiveRecognitionService` marks the future live-recognition milestone without blocking today’s prototype.
@@ -47,5 +53,5 @@ See [`docs/recognition-architecture.md`](docs/recognition-architecture.md) for t
 
 The scaffold is intended to pass:
 
-- `xcodebuild -scheme Pulsefield -destination 'platform=macOS' test`
-- `xcodebuild -scheme Pulsefield -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO`
+- `xcodebuild -scheme PulsefieldMac -destination 'platform=macOS' test`
+- `xcodebuild -scheme PulsefieldiOS -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO`

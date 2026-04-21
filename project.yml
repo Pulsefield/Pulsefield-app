@@ -15,18 +15,38 @@ settings:
     GENERATE_INFOPLIST_FILE: YES
 
 targets:
-  Pulsefield:
+  PulsefieldiOS:
     type: application
     supportedDestinations:
       - iOS
-      - macOS
     sources:
-      - path: Apps
+      - path: Apps/PulsefieldiOS
     dependencies:
       - target: PulsefieldCore
+      - target: PulsefieldUI
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: io.pulsefield.app
+        PRODUCT_BUNDLE_IDENTIFIER: io.pulsefield.ios
+        INFOPLIST_KEY_CFBundleDisplayName: Pulsefield
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: Pulsefield uses the microphone to prototype nearby music recognition flows.
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+      configs:
+        Debug:
+          CODE_SIGNING_ALLOWED: NO
+          CODE_SIGNING_REQUIRED: NO
+
+  PulsefieldMac:
+    type: application
+    supportedDestinations:
+      - macOS
+    sources:
+      - path: Apps/PulsefieldMac
+    dependencies:
+      - target: PulsefieldCore
+      - target: PulsefieldUI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.pulsefield.mac
         INFOPLIST_KEY_CFBundleDisplayName: Pulsefield
         INFOPLIST_KEY_NSMicrophoneUsageDescription: Pulsefield uses the microphone to prototype nearby music recognition flows.
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
@@ -49,6 +69,20 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: io.pulsefield.core
         DEFINES_MODULE: YES
 
+  PulsefieldUI:
+    type: framework
+    supportedDestinations:
+      - iOS
+      - macOS
+    sources:
+      - path: Sources/PulsefieldUI
+    dependencies:
+      - target: PulsefieldCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.pulsefield.ui
+        DEFINES_MODULE: YES
+
   PulsefieldCoreTests:
     type: bundle.unit-test
     supportedDestinations:
@@ -62,10 +96,18 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: io.pulsefield.core.tests
 
 schemes:
-  Pulsefield:
+  PulsefieldiOS:
     build:
       targets:
-        Pulsefield: all
+        PulsefieldiOS: all
+        PulsefieldUI: all
+        PulsefieldCore: all
+
+  PulsefieldMac:
+    build:
+      targets:
+        PulsefieldMac: all
+        PulsefieldUI: all
         PulsefieldCore: all
     test:
       targets:
