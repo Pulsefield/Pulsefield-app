@@ -94,6 +94,10 @@ public final class AmbientMatchingDashboardModel {
         Task {
             let permissionStatus = await ensureMicrophonePermission()
             microphonePermissionStatus = permissionStatus
+            guard isCurrentMatchingRequest(asset: selectedAsset, index: syncIndex) else {
+                return
+            }
+
             guard permissionStatus == .authorized else {
                 state = .idle
                 currentEstimate = nil
@@ -103,9 +107,23 @@ public final class AmbientMatchingDashboardModel {
 
             do {
                 try await estimator.start(asset: selectedAsset, index: syncIndex)
+                guard isCurrentMatchingRequest(asset: selectedAsset, index: syncIndex) else {
+                    await estimator.stop()
+                    return
+                }
+
                 await refreshEstimate()
+                guard isCurrentMatchingRequest(asset: selectedAsset, index: syncIndex) else {
+                    await estimator.stop()
+                    return
+                }
+
                 errorMessage = nil
             } catch {
+                guard isCurrentMatchingRequest(asset: selectedAsset, index: syncIndex) else {
+                    return
+                }
+
                 state = .failed(error.localizedDescription)
                 errorMessage = error.localizedDescription
             }
@@ -155,6 +173,10 @@ public final class AmbientMatchingDashboardModel {
         }
 
         return await microphonePermissionService.requestAccess()
+    }
+
+    private func isCurrentMatchingRequest(asset: LocalAudioAsset, index: LocalAudioSyncIndex) -> Bool {
+        selectedAsset?.id == asset.id && syncIndex?.assetID == index.assetID
     }
 
     private func clearSelectionScopedState() {

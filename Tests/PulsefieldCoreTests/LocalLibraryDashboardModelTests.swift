@@ -133,6 +133,52 @@ final class LocalLibraryDashboardModelTests: XCTestCase {
     }
 
     @MainActor
+    func testStartMatchingDoesNotStartCaptureForStaleAssetAfterPermissionPrompt() async throws {
+        let firstAsset = makeAsset(
+            directoryID: UUID(uuidString: "00000000-0000-0000-0000-000000000112")!,
+            title: "First",
+            artists: ["Pulsefield"],
+            durationMS: 120_000,
+            fileName: "stale-first.mp3"
+        )
+        let secondAsset = makeAsset(
+            directoryID: UUID(uuidString: "00000000-0000-0000-0000-000000000113")!,
+            title: "Second",
+            artists: ["Pulsefield"],
+            durationMS: 120_000,
+            fileName: "stale-second.mp3"
+        )
+        let onsetEnvelopeURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pulsefield-stale-start-\(UUID().uuidString).txt")
+        try "0\n1\n0\n1\n".write(to: onsetEnvelopeURL, atomically: true, encoding: .utf8)
+        defer {
+            try? FileManager.default.removeItem(at: onsetEnvelopeURL)
+        }
+        let staleIndex = makeSyncIndex(assetID: firstAsset.id, onsetEnvelopeURL: onsetEnvelopeURL)
+        let permissionService = BlockingMicrophonePermissionService()
+        let capture = SilentAmbientCapture()
+        let model = AmbientMatchingDashboardModel(
+            selectedAsset: firstAsset,
+            syncIndexer: StubSyncIndexer(index: staleIndex),
+            estimator: FeatureCorrelationSyncEstimator(capture: capture),
+            microphonePermissionService: permissionService
+        )
+        model.syncIndex = staleIndex
+
+        model.startMatching()
+        await permissionService.waitForRequestAccessCall()
+        model.selectedAsset = secondAsset
+        await permissionService.authorize()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        let captureStartCalls = await capture.startCalls()
+        XCTAssertEqual(captureStartCalls, 0)
+        XCTAssertEqual(model.selectedAsset?.id, secondAsset.id)
+        XCTAssertNil(model.syncIndex)
+        XCTAssertEqual(model.state, .idle)
+    }
+
+    @MainActor
     func testLivePrototypeSurfacesPersistentDatabaseOpenFailure() {
         let model = LocalLibraryDashboardModel.livePrototype(databaseOpener: {
             throw PersistentDatabaseOpenFailure()
@@ -176,13 +222,16 @@ final class LocalLibraryDashboardModelTests: XCTestCase {
         )
     }
 
-    private func makeSyncIndex(assetID: UUID) -> LocalAudioSyncIndex {
+    private func makeSyncIndex(
+        assetID: UUID,
+        onsetEnvelopeURL: URL? = nil
+    ) -> LocalAudioSyncIndex {
         LocalAudioSyncIndex(
             assetID: assetID,
             durationMS: 120_000,
             sampleRate: 44_100,
             frameHopMS: 100,
-            onsetEnvelopeURL: URL(fileURLWithPath: "/tmp/pulsefield-sync-\(assetID.uuidString).txt"),
+            onsetEnvelopeURL: onsetEnvelopeURL ?? URL(fileURLWithPath: "/tmp/pulsefield-sync-\(assetID.uuidString).txt"),
             spectralSummaryURL: nil,
             chromaURL: nil,
             version: 1,
@@ -255,5 +304,43 @@ private actor StubMicrophonePermissionService: MicrophonePermissionProviding {
 
     func requestAccessCalls() -> Int {
         requestAccessCallCount
+    }
+}
+
+private actor BlockingMicrophonePermissionService: MicrophonePermissionProviding {
+    private var status: MicrophonePermissionStatus = .undetermined
+    private var requestAccessCallCount = 0
+    private var requestAccessWaiter: CheckedContinuation<Void, Never>?
+    private var authorizationWaiter: CheckedContinuation<Void, Never>?
+
+    func currentStatus() async -> MicrophonePermissionStatus {
+        status
+    }
+
+    func requestAccess() async -> MicrophonePermissionStatus {
+        requestAccessCallCount += 1
+        requestAccessWaiter?.resume()
+        requestAccessWaiter = nil
+
+        await withCheckedContinuation { continuation in
+            authorizationWaiter = continuation
+        }
+        status = .authorized
+        return status
+    }
+
+    func waitForRequestAccessCall() async {
+        guard requestAccessCallCount == 0 else {
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            requestAccessWaiter = continuation
+        }
+    }
+
+    func authorize() {
+        authorizationWaiter?.resume()
+        authorizationWaiter = nil
     }
 }
