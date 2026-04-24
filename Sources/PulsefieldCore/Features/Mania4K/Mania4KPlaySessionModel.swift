@@ -12,9 +12,11 @@ public final class Mania4KPlaySessionModel {
     public var scrollSpeed: Double
     public var globalAudioOffsetMilliseconds: Double
     public var judgeDifficulty: Mania4KJudgeDifficulty
+    public var keyBindings: Mania4KKeyBindingSet
 
     public private(set) var beatmapSelectionErrorMessage: String?
     public private(set) var audioSelectionErrorMessage: String?
+    public private(set) var keyBindingErrorMessage: String?
     public private(set) var activeConfiguration: Mania4KPlayConfiguration?
     public private(set) var phase: Mania4KPlayPhase
     public private(set) var playFrame: Mania4KPlayFrame?
@@ -44,6 +46,7 @@ public final class Mania4KPlaySessionModel {
         scrollSpeed: Double = 8.0,
         globalAudioOffsetMilliseconds: Double = 0,
         judgeDifficulty: Mania4KJudgeDifficulty = .c,
+        keyBindings: Mania4KKeyBindingSet = .default,
         audioClock: any Mania4KAudioClock = AVFoundationMania4KAudioClock(),
         streamFactory: @escaping Mania4KHitObjectStreamFactory = { OsuMania4KBeatmapStream(beatmapFileURL: $0) }
     ) {
@@ -53,6 +56,7 @@ public final class Mania4KPlaySessionModel {
         self.scrollSpeed = scrollSpeed
         self.globalAudioOffsetMilliseconds = globalAudioOffsetMilliseconds
         self.judgeDifficulty = judgeDifficulty
+        self.keyBindings = keyBindings
         self.audioClock = audioClock
         self.streamFactory = streamFactory
         self.phase = .setup
@@ -61,7 +65,7 @@ public final class Mania4KPlaySessionModel {
         self.streamEnded = false
         self.streamReadGate = AsyncGate()
         self.inputSequenceNumber = 0
-        self.keyboardRouter = Mania4KKeyboardInputRouter()
+        self.keyboardRouter = Mania4KKeyboardInputRouter(keyBindings: keyBindings)
         self.playStateGeneration = 0
         self.queuedGameplayInputs = []
         self.isDrainingGameplayInputQueue = false
@@ -122,7 +126,8 @@ public final class Mania4KPlaySessionModel {
             starDifficulty: starDifficulty,
             scrollSpeed: scrollSpeed,
             globalAudioOffsetMilliseconds: globalAudioOffsetMilliseconds,
-            judgeDifficulty: judgeDifficulty
+            judgeDifficulty: judgeDifficulty,
+            keyBindings: keyBindings
         )
         activeConfiguration = configuration
         phase = .loading
@@ -347,6 +352,39 @@ public final class Mania4KPlaySessionModel {
             syncLiveInputLaneStatesFromFrame()
         }
         return handled
+    }
+
+    @discardableResult
+    public func updateKeyBinding(lane: Mania4KLane, key: String) -> Bool {
+        guard phase == .setup else {
+            keyBindingErrorMessage = "Key bindings can only be changed from setup."
+            return false
+        }
+
+        guard let nextKeyBindings = keyBindings.updating(lane: lane, key: key) else {
+            keyBindingErrorMessage = "Choose four unique non-empty keys."
+            return false
+        }
+
+        applyKeyBindings(nextKeyBindings)
+        keyBindingErrorMessage = nil
+        return true
+    }
+
+    public func applyKeyBindings(_ keyBindings: Mania4KKeyBindingSet) {
+        guard phase == .setup else {
+            keyBindingErrorMessage = "Key bindings can only be changed from setup."
+            return
+        }
+
+        self.keyBindings = keyBindings
+        keyboardRouter.updateKeyBindings(keyBindings)
+        resetLiveInputLaneStates()
+        keyBindingErrorMessage = nil
+    }
+
+    public func resetKeyBindingsToDefault() {
+        applyKeyBindings(.default)
     }
 
     private func enqueueGameplayInput(_ input: Mania4KInputEvent, usesLiveChartTime: Bool = false) async -> Bool {

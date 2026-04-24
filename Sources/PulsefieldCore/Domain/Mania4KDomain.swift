@@ -20,6 +20,7 @@ public struct Mania4KPlayConfiguration: Equatable, Sendable {
     public let scrollSpeed: Double
     public let globalAudioOffsetMilliseconds: Double
     public let judgeDifficulty: Mania4KJudgeDifficulty
+    public let keyBindings: Mania4KKeyBindingSet
 
     public init(
         beatmapFileURL: URL,
@@ -27,7 +28,8 @@ public struct Mania4KPlayConfiguration: Equatable, Sendable {
         starDifficulty: Double,
         scrollSpeed: Double,
         globalAudioOffsetMilliseconds: Double,
-        judgeDifficulty: Mania4KJudgeDifficulty
+        judgeDifficulty: Mania4KJudgeDifficulty,
+        keyBindings: Mania4KKeyBindingSet = .default
     ) {
         self.beatmapFileURL = beatmapFileURL
         self.audioFileURL = audioFileURL
@@ -35,6 +37,7 @@ public struct Mania4KPlayConfiguration: Equatable, Sendable {
         self.scrollSpeed = scrollSpeed
         self.globalAudioOffsetMilliseconds = globalAudioOffsetMilliseconds
         self.judgeDifficulty = judgeDifficulty
+        self.keyBindings = keyBindings
     }
 }
 
@@ -50,6 +53,84 @@ public enum Mania4KLane: Int, CaseIterable, Identifiable, Comparable, Sendable {
 
     public static func < (lhs: Mania4KLane, rhs: Mania4KLane) -> Bool {
         lhs.rawValue < rhs.rawValue
+    }
+}
+
+public struct Mania4KKeyBindingSet: Equatable, Sendable {
+    public static let `default` = Mania4KKeyBindingSet(keysByLane: [
+        .left: "d",
+        .innerLeft: "f",
+        .innerRight: "j",
+        .right: "k"
+    ])!
+
+    private let keysByLane: [Mania4KLane: String]
+
+    public init?(keysByLane: [Mania4KLane: String]) {
+        var normalizedKeysByLane: [Mania4KLane: String] = [:]
+        var usedKeys: Set<String> = []
+
+        for lane in Mania4KLane.allCases {
+            guard let rawKey = keysByLane[lane] else {
+                return nil
+            }
+
+            let normalizedKey = Self.normalizedKey(rawKey)
+            guard !normalizedKey.isEmpty, !usedKeys.contains(normalizedKey) else {
+                return nil
+            }
+
+            normalizedKeysByLane[lane] = normalizedKey
+            usedKeys.insert(normalizedKey)
+        }
+
+        self.keysByLane = normalizedKeysByLane
+    }
+
+    public init?(storageValue: String) {
+        let keys = storageValue.components(separatedBy: "\t")
+        guard keys.count == Mania4KLane.allCases.count else {
+            return nil
+        }
+
+        self.init(
+            keysByLane: Dictionary(uniqueKeysWithValues: zip(Mania4KLane.allCases, keys))
+        )
+    }
+
+    public var storageValue: String {
+        Mania4KLane.allCases.map { key(for: $0) }.joined(separator: "\t")
+    }
+
+    public func key(for lane: Mania4KLane) -> String {
+        keysByLane[lane] ?? Self.default.key(for: lane)
+    }
+
+    public func displayLabel(for lane: Mania4KLane) -> String {
+        Self.displayLabel(for: key(for: lane))
+    }
+
+    public func lane(for key: String) -> Mania4KLane? {
+        let normalizedKey = Self.normalizedKey(key)
+        return Mania4KLane.allCases.first { self.key(for: $0) == normalizedKey }
+    }
+
+    public func updating(lane: Mania4KLane, key: String) -> Mania4KKeyBindingSet? {
+        var nextKeysByLane = keysByLane
+        nextKeysByLane[lane] = key
+        return Mania4KKeyBindingSet(keysByLane: nextKeysByLane)
+    }
+
+    public static func normalizedKey(_ rawKey: String) -> String {
+        rawKey.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private static func displayLabel(for key: String) -> String {
+        guard key.count == 1 else {
+            return key.uppercased()
+        }
+
+        return key.uppercased()
     }
 }
 
@@ -616,9 +697,11 @@ public actor FakeMania4KAudioClock: Mania4KAudioClock {
 }
 
 public struct Mania4KKeyboardInputRouter: Sendable {
+    private var keyBindings: Mania4KKeyBindingSet
     private var pressedLanes: Set<Mania4KLane>
 
-    public init() {
+    public init(keyBindings: Mania4KKeyBindingSet = .default) {
+        self.keyBindings = keyBindings
         self.pressedLanes = []
     }
 
@@ -630,7 +713,7 @@ public struct Mania4KKeyboardInputRouter: Sendable {
         sequenceNumber: UInt64,
         source: Mania4KInputSource = .keyboard
     ) -> Mania4KInputEvent? {
-        guard let lane = Self.lane(for: key) else {
+        guard let lane = keyBindings.lane(for: key) else {
             return nil
         }
 
@@ -667,19 +750,13 @@ public struct Mania4KKeyboardInputRouter: Sendable {
         pressedLanes.removeAll()
     }
 
+    public mutating func updateKeyBindings(_ keyBindings: Mania4KKeyBindingSet) {
+        self.keyBindings = keyBindings
+        reset()
+    }
+
     public static func lane(for key: String) -> Mania4KLane? {
-        switch key.lowercased() {
-        case "d":
-            return .left
-        case "f":
-            return .innerLeft
-        case "j":
-            return .innerRight
-        case "k":
-            return .right
-        default:
-            return nil
-        }
+        Mania4KKeyBindingSet.default.lane(for: key)
     }
 }
 

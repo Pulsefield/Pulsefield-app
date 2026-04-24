@@ -10,11 +10,65 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         XCTAssertEqual(model.scrollSpeed, 8.0)
         XCTAssertEqual(model.globalAudioOffsetMilliseconds, 0)
         XCTAssertEqual(model.judgeDifficulty, .c)
+        XCTAssertEqual(model.keyBindings, .default)
         XCTAssertEqual(model.liveInputLaneStates.filter(\.isPressed), [])
         XCTAssertEqual(model.phase, .setup)
         XCTAssertFalse(model.isReadyToStart)
         XCTAssertNil(model.activeConfiguration)
         XCTAssertNil(model.playFrame)
+    }
+
+    func testKeyBindingSetNormalizesKeysAndRejectsInvalidUpdates() {
+        let custom = Mania4KKeyBindingSet(keysByLane: [
+            .left: "A",
+            .innerLeft: "S",
+            .innerRight: "L",
+            .right: ";"
+        ])
+
+        XCTAssertEqual(custom?.key(for: .left), "a")
+        XCTAssertEqual(custom?.displayLabel(for: .left), "A")
+        XCTAssertEqual(custom?.key(for: .right), ";")
+
+        XCTAssertNil(custom?.updating(lane: .left, key: " "))
+        XCTAssertNil(custom?.updating(lane: .left, key: "s"))
+
+        let rebound = custom?.updating(lane: .left, key: "q")
+        XCTAssertEqual(rebound?.key(for: .left), "q")
+        XCTAssertEqual(rebound?.displayLabel(for: .left), "Q")
+    }
+
+    func testKeyBindingSetRestoresFromStorageValue() {
+        let bindings = Mania4KKeyBindingSet(storageValue: "a\ts\tl\t;")
+
+        XCTAssertEqual(bindings, Mania4KKeyBindingSet(keysByLane: [
+            .left: "a",
+            .innerLeft: "s",
+            .innerRight: "l",
+            .right: ";"
+        ]))
+        XCTAssertEqual(bindings?.storageValue, "a\ts\tl\t;")
+        XCTAssertNil(Mania4KKeyBindingSet(storageValue: "a\ts\ta\t;"))
+    }
+
+    func testKeyboardRouterUsesCustomBindings() {
+        let bindings = Mania4KKeyBindingSet(keysByLane: [
+            .left: "a",
+            .innerLeft: "s",
+            .innerRight: "l",
+            .right: ";"
+        ])!
+        var router = Mania4KKeyboardInputRouter(keyBindings: bindings)
+
+        let oldDefaultPress = router.route(key: "d", isPressed: true, isRepeat: false, chartTimeMs: 90, sequenceNumber: 0)
+        let customPress = router.route(key: "A", isPressed: true, isRepeat: false, chartTimeMs: 100, sequenceNumber: 1)
+        let customRelease = router.route(key: "a", isPressed: false, isRepeat: false, chartTimeMs: 120, sequenceNumber: 2)
+
+        XCTAssertNil(oldDefaultPress)
+        XCTAssertEqual(customPress?.lane, .left)
+        XCTAssertEqual(customPress?.phase, .press)
+        XCTAssertEqual(customRelease?.lane, .left)
+        XCTAssertEqual(customRelease?.phase, .release)
     }
 
     func testStartRequiresBeatmapAndAudioSelections() async throws {

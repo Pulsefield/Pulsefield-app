@@ -32,6 +32,10 @@ private struct Mania4KSetupView: View {
     @Bindable var model: Mania4KPlaySessionModel
     @State private var fileImportTarget: Mania4KFileImportTarget?
     @State private var isChoosingFile = false
+    #if os(macOS)
+    @AppStorage("mania4k.keyBindings") private var storedKeyBindings = Mania4KKeyBindingSet.default.storageValue
+    @State private var capturingKeyBindingLane: Mania4KLane?
+    #endif
 
     var body: some View {
         ScrollView {
@@ -51,6 +55,11 @@ private struct Mania4KSetupView: View {
             allowsMultipleSelection: false
         ) { result in
             handleFileImportResult(result)
+        }
+        .onAppear {
+            #if os(macOS)
+            restoreStoredKeyBindings()
+            #endif
         }
     }
 
@@ -181,8 +190,99 @@ private struct Mania4KSetupView: View {
                 .labelsHidden()
                 .tint(Mania4KStyle.accentBlue)
             }
+
+            #if os(macOS)
+            keyBindingSettings
+            #endif
         }
     }
+
+    #if os(macOS)
+    private var keyBindingSettings: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Keybinds")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Mania4KStyle.textPrimary)
+
+                Spacer()
+
+                Button {
+                    model.resetKeyBindingsToDefault()
+                    storedKeyBindings = model.keyBindings.storageValue
+                    capturingKeyBindingLane = nil
+                } label: {
+                    Label("Reset", systemImage: "arrow.counterclockwise")
+                        .labelStyle(.titleAndIcon)
+                }
+                .buttonStyle(Mania4KSecondaryButtonStyle())
+            }
+
+            HStack(spacing: 8) {
+                ForEach(Mania4KLane.allCases) { lane in
+                    keyBindingButton(for: lane)
+                }
+            }
+            .background(
+                Mania4KKeyBindingCaptureView(activeLane: $capturingKeyBindingLane) { lane, key in
+                    if model.updateKeyBinding(lane: lane, key: key) {
+                        storedKeyBindings = model.keyBindings.storageValue
+                    }
+                }
+            )
+
+            if let message = model.keyBindingErrorMessage {
+                Text(message)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Mania4KStyle.accentRed)
+            }
+        }
+    }
+
+    private func keyBindingButton(for lane: Mania4KLane) -> some View {
+        Button {
+            capturingKeyBindingLane = lane
+        } label: {
+            VStack(spacing: 5) {
+                Text(laneShortName(for: lane))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Mania4KStyle.textMuted)
+
+                Text(capturingKeyBindingLane == lane ? "..." : model.keyBindings.displayLabel(for: lane))
+                    .font(.headline.monospaced().weight(.bold))
+                    .foregroundStyle(Mania4KStyle.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .frame(height: 22)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(Mania4KKeyBindingButtonStyle(isCapturing: capturingKeyBindingLane == lane))
+    }
+
+    private func laneShortName(for lane: Mania4KLane) -> String {
+        switch lane {
+        case .left:
+            return "L1"
+        case .innerLeft:
+            return "L2"
+        case .innerRight:
+            return "R2"
+        case .right:
+            return "R1"
+        }
+    }
+
+    private func restoreStoredKeyBindings() {
+        guard let keyBindings = Mania4KKeyBindingSet(storageValue: storedKeyBindings) else {
+            storedKeyBindings = Mania4KKeyBindingSet.default.storageValue
+            model.applyKeyBindings(.default)
+            return
+        }
+
+        model.applyKeyBindings(keyBindings)
+    }
+    #endif
 
     private func presentFileImporter(for target: Mania4KFileImportTarget) {
         fileImportTarget = target
@@ -578,7 +678,8 @@ private struct Mania4KPlaySceneView: View {
                         lane: lane,
                         frame: model.playFrame,
                         laneState: visualLaneState(for: lane),
-                        noteColor: noteColor(for: lane.rawValue)
+                        noteColor: noteColor(for: lane.rawValue),
+                        keyLabel: model.keyBindings.displayLabel(for: lane)
                     )
                     .frame(width: laneWidth)
                 }
@@ -699,6 +800,7 @@ private struct Mania4KLiveLaneView: View {
     let frame: Mania4KPlayFrame?
     let laneState: Mania4KLaneState?
     let noteColor: Color
+    let keyLabel: String
 
     @State private var pressHighlight = 0.0
     @State private var releaseAfterglow = 0.0
@@ -759,10 +861,6 @@ private struct Mania4KLiveLaneView: View {
         .onChange(of: isPressed) { _, newValue in
             animatePressFeedback(isPressed: newValue)
         }
-    }
-
-    private var keyLabel: String {
-        ["D", "F", "J", "K"][lane.rawValue]
     }
 
     private var receptorLine: some View {
@@ -955,6 +1053,60 @@ private struct Mania4KKeyboardCaptureView: NSViewRepresentable {
         }
     }
 }
+
+private struct Mania4KKeyBindingCaptureView: NSViewRepresentable {
+    @Binding var activeLane: Mania4KLane?
+    let onCapture: (Mania4KLane, String) -> Void
+
+    func makeNSView(context: Context) -> KeyCaptureView {
+        KeyCaptureView()
+    }
+
+    func updateNSView(_ nsView: KeyCaptureView, context: Context) {
+        nsView.activeLane = activeLane
+        nsView.onCapture = onCapture
+        nsView.setActiveLane = { activeLane = $0 }
+
+        guard activeLane != nil else {
+            return
+        }
+
+        DispatchQueue.main.async {
+            nsView.window?.makeFirstResponder(nsView)
+        }
+    }
+
+    final class KeyCaptureView: NSView {
+        var activeLane: Mania4KLane?
+        var onCapture: ((Mania4KLane, String) -> Void)?
+        var setActiveLane: ((Mania4KLane?) -> Void)?
+
+        override var acceptsFirstResponder: Bool {
+            true
+        }
+
+        override func keyDown(with event: NSEvent) {
+            guard let activeLane else {
+                return
+            }
+
+            if event.keyCode == 53 {
+                setActiveLane?(nil)
+                return
+            }
+
+            guard !event.isARepeat,
+                  let key = event.charactersIgnoringModifiers,
+                  !Mania4KKeyBindingSet.normalizedKey(key).isEmpty
+            else {
+                return
+            }
+
+            setActiveLane?(nil)
+            onCapture?(activeLane, key)
+        }
+    }
+}
 #endif
 
 // Placeholder visual theme for the first playable mock. Replace with shared tokens once Pulsefield has a settled design system.
@@ -1064,6 +1216,30 @@ private struct Mania4KSecondaryButtonStyle: ButtonStyle {
                     .stroke((isEnabled ? tint : Mania4KStyle.textMuted).opacity(0.42), lineWidth: 1)
             )
             .opacity(configuration.isPressed ? 0.78 : 1)
+    }
+}
+
+private struct Mania4KKeyBindingButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    let isCapturing: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        let tint = isCapturing ? Mania4KStyle.accentAmber : Mania4KStyle.accentBlue
+
+        configuration.label
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                (isEnabled ? tint : Mania4KStyle.textMuted).opacity(isCapturing ? 0.22 : 0.10),
+                in: RoundedRectangle(cornerRadius: 7)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 7)
+                    .stroke((isEnabled ? tint : Mania4KStyle.textMuted).opacity(isCapturing ? 0.62 : 0.28), lineWidth: 1)
+            )
+            .opacity(configuration.isPressed ? 0.78 : 1)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
     }
 }
 
