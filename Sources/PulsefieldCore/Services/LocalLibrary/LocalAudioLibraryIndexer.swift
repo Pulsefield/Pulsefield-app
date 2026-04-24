@@ -36,9 +36,6 @@ public actor LocalAudioLibraryIndexer: LocalAudioLibraryIndexing {
             return
         }
 
-        let startedAt = Date()
-        await database.updateDirectoryScanTimes(id: id, startedAt: startedAt, finishedAt: nil)
-
         let rootURL = resolveURL(for: directory)
         let accessed = rootURL.startAccessingSecurityScopedResource()
         defer {
@@ -47,7 +44,11 @@ public actor LocalAudioLibraryIndexer: LocalAudioLibraryIndexing {
             }
         }
 
-        let fileURLs = discoverFiles(in: rootURL, recursive: directory.recursive)
+        guard let fileURLs = try? discoverFiles(in: rootURL, recursive: directory.recursive) else {
+            return
+        }
+        let startedAt = Date()
+        await database.updateDirectoryScanTimes(id: id, startedAt: startedAt, finishedAt: nil)
         var seenPaths = Set<String>()
 
         for fileURL in fileURLs {
@@ -233,27 +234,36 @@ public actor LocalAudioLibraryIndexer: LocalAudioLibraryIndexing {
         )
     }
 
-    private func discoverFiles(in rootURL: URL, recursive: Bool) -> [URL] {
+    private func discoverFiles(in rootURL: URL, recursive: Bool) throws -> [URL] {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: rootURL.path, isDirectory: &isDirectory),
+              isDirectory.boolValue
+        else {
+            throw LocalAudioFileDiscoveryError.unavailableRoot(rootURL.path)
+        }
+
         if recursive {
-            let enumerator = FileManager.default.enumerator(
+            guard let enumerator = FileManager.default.enumerator(
                 at: rootURL,
                 includingPropertiesForKeys: [.isRegularFileKey],
                 options: [.skipsHiddenFiles]
-            )
+            ) else {
+                throw LocalAudioFileDiscoveryError.unavailableRoot(rootURL.path)
+            }
 
-            return enumerator?.compactMap { item in
+            return enumerator.compactMap { item in
                 guard let url = item as? URL, isRegularFile(url) else {
                     return nil
                 }
                 return url
-            } ?? []
+            }
         }
 
-        let contents = (try? FileManager.default.contentsOfDirectory(
+        let contents = try FileManager.default.contentsOfDirectory(
             at: rootURL,
             includingPropertiesForKeys: [.isRegularFileKey],
             options: [.skipsHiddenFiles]
-        )) ?? []
+        )
 
         return contents.filter(isRegularFile)
     }
@@ -299,4 +309,8 @@ public actor LocalAudioLibraryIndexer: LocalAudioLibraryIndexing {
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
+}
+
+private enum LocalAudioFileDiscoveryError: Error {
+    case unavailableRoot(String)
 }

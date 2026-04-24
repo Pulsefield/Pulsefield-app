@@ -140,6 +140,53 @@ final class LocalAudioLibraryIndexerTests: XCTestCase {
         XCTAssertEqual(status.missingCount, 1)
     }
 
+    func testRescanPreservesAssetsWhenLibraryRootCannotBeEnumerated() async throws {
+        let libraryURL = try makeTemporaryDirectory()
+        let songURL = libraryURL.appendingPathComponent("offline-root.mp3")
+        try Data("fake audio".utf8).write(to: songURL)
+
+        let database = try LocalAudioLibraryDatabase.openInMemory()
+        let directoryStore = LocalMusicDirectoryStore(database: database)
+        try await directoryStore.addDirectory(libraryURL, recursive: false)
+
+        let indexer = LocalAudioLibraryIndexer(
+            database: database,
+            metadataExtractor: StubMetadataExtractor(
+                metadata: [
+                    songURL.standardizedFileURL.path: ExtractedAudioMetadata(
+                        durationMS: 120_000,
+                        title: "Offline Root",
+                        artists: ["Pulsefield"],
+                        album: nil,
+                        albumArtist: nil,
+                        trackNumber: nil,
+                        discNumber: nil,
+                        isrc: nil,
+                        releaseYear: nil
+                    )
+                ]
+            )
+        )
+
+        await indexer.rescanAll()
+        let indexedAssets = await database.listAssets()
+        let indexedDirectories = await database.listDirectories()
+        let indexedAsset = try XCTUnwrap(indexedAssets.first { $0.displayPath == songURL.path })
+        let scannedDirectory = try XCTUnwrap(indexedDirectories.first)
+        XCTAssertEqual(indexedAsset.status, .ready)
+        XCTAssertNotNil(scannedDirectory.lastScanFinishedAt)
+
+        try FileManager.default.removeItem(at: libraryURL)
+        await indexer.rescanAll()
+
+        let assetsAfterUnavailableRoot = await database.listAssets()
+        let directoriesAfterUnavailableRoot = await database.listDirectories()
+        let preservedAsset = try XCTUnwrap(assetsAfterUnavailableRoot.first { $0.id == indexedAsset.id })
+        let directoryAfterUnavailableRoot = try XCTUnwrap(directoriesAfterUnavailableRoot.first)
+        XCTAssertEqual(preservedAsset.status, .ready)
+        XCTAssertEqual(directoryAfterUnavailableRoot.lastScanFinishedAt, scannedDirectory.lastScanFinishedAt)
+    }
+
     func testTransientUnreadableScanPreservesAssetIdentityAndHash() async throws {
         let libraryURL = try makeTemporaryDirectory()
         let songURL = libraryURL.appendingPathComponent("locked.mp3")
