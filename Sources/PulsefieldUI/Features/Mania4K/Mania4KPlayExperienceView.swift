@@ -577,7 +577,7 @@ private struct Mania4KPlaySceneView: View {
                     Mania4KLiveLaneView(
                         lane: lane,
                         frame: model.playFrame,
-                        laneState: model.playFrame?.laneStates.first(where: { $0.lane == lane }),
+                        laneState: visualLaneState(for: lane),
                         noteColor: noteColor(for: lane.rawValue)
                     )
                     .frame(width: laneWidth)
@@ -585,6 +585,17 @@ private struct Mania4KPlaySceneView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         }
+    }
+
+    private func visualLaneState(for lane: Mania4KLane) -> Mania4KLaneState {
+        let frameState = model.playFrame?.laneStates.first(where: { $0.lane == lane })
+        let liveState = model.liveInputLaneStates.first(where: { $0.lane == lane })
+
+        return Mania4KLaneState(
+            lane: lane,
+            isPressed: liveState?.isPressed ?? frameState?.isPressed ?? false,
+            holdingObjectID: frameState?.holdingObjectID
+        )
     }
 
     @ViewBuilder
@@ -689,13 +700,24 @@ private struct Mania4KLiveLaneView: View {
     let laneState: Mania4KLaneState?
     let noteColor: Color
 
+    @State private var pressHighlight = 0.0
+    @State private var releaseAfterglow = 0.0
+
+    private var isPressed: Bool {
+        laneState?.isPressed == true
+    }
+
     var body: some View {
         GeometryReader { proxy in
             let receptorY = proxy.size.height - 78
 
             ZStack(alignment: .bottom) {
                 Rectangle()
-                    .fill((laneState?.isPressed == true ? noteColor.opacity(0.18) : Mania4KStyle.laneFill))
+                    .fill(Mania4KStyle.laneFill)
+
+                Rectangle()
+                    .fill(noteColor.opacity(0.22 * pressHighlight + 0.06 * releaseAfterglow))
+                    .blendMode(.plusLighter)
 
                 if let frame {
                     ForEach(frame.visibleObjects.filter { $0.lane == lane }) { object in
@@ -706,8 +728,13 @@ private struct Mania4KLiveLaneView: View {
                 receptorLine
 
                 RoundedRectangle(cornerRadius: 5)
-                    .fill(laneState?.isPressed == true ? noteColor.opacity(0.42) : Mania4KStyle.receptorFill)
+                    .fill(Mania4KStyle.receptorFill)
                     .frame(height: 58)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(noteColor.opacity(0.46 * pressHighlight + 0.10 * releaseAfterglow))
+                            .blendMode(.plusLighter)
+                    )
                     .overlay(
                         Text(keyLabel)
                             .font(.headline.monospaced())
@@ -725,6 +752,13 @@ private struct Mania4KLiveLaneView: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(noteColor.opacity(0.22), lineWidth: 1)
         )
+        .onAppear {
+            pressHighlight = isPressed ? 1 : 0
+            releaseAfterglow = 0
+        }
+        .onChange(of: isPressed) { _, newValue in
+            animatePressFeedback(isPressed: newValue)
+        }
     }
 
     private var keyLabel: String {
@@ -776,6 +810,22 @@ private struct Mania4KLiveLaneView: View {
             .shadow(color: noteColor.opacity(0.45), radius: 10, x: 0, y: 0)
     }
 
+    private func animatePressFeedback(isPressed: Bool) {
+        if isPressed {
+            withAnimation(.timingCurve(0.20, 0.95, 0.35, 1.0, duration: 0.035)) {
+                pressHighlight = 1
+                releaseAfterglow = 0
+            }
+        } else {
+            releaseAfterglow = max(releaseAfterglow, pressHighlight)
+            withAnimation(.timingCurve(0.16, 0.0, 0.35, 1.0, duration: 0.055)) {
+                pressHighlight = 0
+            }
+            withAnimation(.easeOut(duration: 0.12)) {
+                releaseAfterglow = 0
+            }
+        }
+    }
 }
 
 struct Mania4KNoteRenderLayout {

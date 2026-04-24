@@ -18,6 +18,7 @@ public final class Mania4KPlaySessionModel {
     public private(set) var activeConfiguration: Mania4KPlayConfiguration?
     public private(set) var phase: Mania4KPlayPhase
     public private(set) var playFrame: Mania4KPlayFrame?
+    public private(set) var liveInputLaneStates: [Mania4KLaneState]
 
     private let streamFactory: Mania4KHitObjectStreamFactory
     private let audioClock: any Mania4KAudioClock
@@ -55,6 +56,7 @@ public final class Mania4KPlaySessionModel {
         self.audioClock = audioClock
         self.streamFactory = streamFactory
         self.phase = .setup
+        self.liveInputLaneStates = Self.makeLaneStates(pressedLanes: [])
         self.streamCompleteThroughChartTimeMs = 0
         self.streamEnded = false
         self.streamReadGate = AsyncGate()
@@ -183,6 +185,7 @@ public final class Mania4KPlaySessionModel {
             streamCursor = nil
             streamEnded = false
             keyboardRouter.reset()
+            resetLiveInputLaneStates()
 
             try await readStream(throughChartTimeMs: max(0, globalAudioOffsetMilliseconds) + scrollTimeMs + 250)
             if await abandonStaleStartIfNeeded(startGeneration) {
@@ -324,7 +327,12 @@ public final class Mania4KPlaySessionModel {
             return false
         }
 
-        return await enqueueGameplayInput(input, usesLiveChartTime: true)
+        commitLiveInputState(input)
+        let handled = await enqueueGameplayInput(input, usesLiveChartTime: true)
+        if !handled {
+            syncLiveInputLaneStatesFromFrame()
+        }
+        return handled
     }
 
     @discardableResult
@@ -333,7 +341,12 @@ public final class Mania4KPlaySessionModel {
             return false
         }
 
-        return await enqueueGameplayInput(input)
+        commitLiveInputState(input)
+        let handled = await enqueueGameplayInput(input)
+        if !handled {
+            syncLiveInputLaneStatesFromFrame()
+        }
+        return handled
     }
 
     private func enqueueGameplayInput(_ input: Mania4KInputEvent, usesLiveChartTime: Bool = false) async -> Bool {
@@ -427,6 +440,7 @@ public final class Mania4KPlaySessionModel {
         streamEnded = false
         inputSequenceNumber = 0
         keyboardRouter.reset()
+        resetLiveInputLaneStates()
         finishQueuedGameplayInputs(returning: false)
     }
 
@@ -577,6 +591,7 @@ public final class Mania4KPlaySessionModel {
         frameLoopTask?.cancel()
         frameLoopTask = nil
         await audioClock.stop()
+        resetLiveInputLaneStates()
         phase = .finished(
             Mania4KPlayResult(
                 metadata: metadata,
@@ -594,6 +609,7 @@ public final class Mania4KPlaySessionModel {
         guard playStateGeneration == failureGeneration else {
             return
         }
+        resetLiveInputLaneStates()
         phase = .failed(failure)
     }
 
@@ -645,6 +661,34 @@ public final class Mania4KPlaySessionModel {
         queuedGameplayInputs.removeAll()
         for queuedInput in queuedInputs {
             queuedInput.continuation.resume(returning: result)
+        }
+    }
+
+    private func commitLiveInputState(_ input: Mania4KInputEvent) {
+        var pressedLanes = Set(liveInputLaneStates.filter(\.isPressed).map(\.lane))
+
+        switch input.phase {
+        case .press:
+            pressedLanes.insert(input.lane)
+        case .release:
+            pressedLanes.remove(input.lane)
+        }
+
+        liveInputLaneStates = Self.makeLaneStates(pressedLanes: pressedLanes)
+    }
+
+    private func resetLiveInputLaneStates() {
+        liveInputLaneStates = Self.makeLaneStates(pressedLanes: [])
+    }
+
+    private func syncLiveInputLaneStatesFromFrame() {
+        let pressedLanes = Set(playFrame?.laneStates.filter(\.isPressed).map(\.lane) ?? [])
+        liveInputLaneStates = Self.makeLaneStates(pressedLanes: pressedLanes)
+    }
+
+    private static func makeLaneStates(pressedLanes: Set<Mania4KLane>) -> [Mania4KLaneState] {
+        Mania4KLane.allCases.map { lane in
+            Mania4KLaneState(lane: lane, isPressed: pressedLanes.contains(lane))
         }
     }
 }

@@ -10,6 +10,7 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         XCTAssertEqual(model.scrollSpeed, 8.0)
         XCTAssertEqual(model.globalAudioOffsetMilliseconds, 0)
         XCTAssertEqual(model.judgeDifficulty, .c)
+        XCTAssertEqual(model.liveInputLaneStates.filter(\.isPressed), [])
         XCTAssertEqual(model.phase, .setup)
         XCTAssertFalse(model.isReadyToStart)
         XCTAssertNil(model.activeConfiguration)
@@ -405,6 +406,40 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         XCTAssertEqual(pressedLanes(in: model), [])
     }
 
+    func testLiveInputLaneStateUpdatesBeforeJudgementWorkCompletes() async throws {
+        let clock = DelayedFirstCurrentTimeMania4KAudioClock()
+        let stream = DelayedSafeMania4KHitObjectStream()
+        let model = Mania4KPlaySessionModel(
+            audioClock: clock,
+            streamFactory: { _ in stream }
+        )
+        model.selectBeatmapFile(URL(fileURLWithPath: "/tmp/chart.osu"))
+        model.selectAudioFile(URL(fileURLWithPath: "/tmp/audio.mp3"))
+        let started = await model.startPlay()
+        XCTAssertTrue(started)
+
+        let press = Task {
+            await model.handleKeyboardInput(key: "d", isPressed: true, isRepeat: false)
+        }
+        try await Task.sleep(nanoseconds: 5_000_000)
+
+        XCTAssertEqual(livePressedLanes(in: model), [.left])
+
+        let release = Task {
+            await model.handleKeyboardInput(key: "d", isPressed: false, isRepeat: false)
+        }
+        try await Task.sleep(nanoseconds: 5_000_000)
+
+        XCTAssertEqual(livePressedLanes(in: model), [])
+
+        let pressed = await press.value
+        let released = await release.value
+
+        XCTAssertTrue(pressed)
+        XCTAssertTrue(released)
+        XCTAssertEqual(pressedLanes(in: model), [])
+    }
+
     func testSessionFailsWhenStreamEmitsObjectBehindPreviousWatermark() async throws {
         let clock = FakeMania4KAudioClock()
         let stream = WatermarkViolatingMania4KHitObjectStream()
@@ -645,6 +680,11 @@ private func input(
 @MainActor
 private func pressedLanes(in model: Mania4KPlaySessionModel) -> [Mania4KLane] {
     model.playFrame?.laneStates.filter(\.isPressed).map(\.lane) ?? []
+}
+
+@MainActor
+private func livePressedLanes(in model: Mania4KPlaySessionModel) -> [Mania4KLane] {
+    model.liveInputLaneStates.filter(\.isPressed).map(\.lane)
 }
 
 private actor LaggingMania4KHitObjectStream: Mania4KHitObjectStreaming {
