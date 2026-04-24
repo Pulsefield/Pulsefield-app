@@ -151,16 +151,12 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         }
     }
 
-    func testParserRejectsUnsupportedObjectInvalidHoldAndSameLaneOverlap() throws {
+    func testParserRejectsUnsupportedObjectAndSameLaneOverlap() throws {
         XCTAssertThrowsValidation(matching: { error in
             if case .unsupportedHitObject = error { return true }
             return false
         }) {
             _ = try OsuMania4KBeatmapStream.parseBeatmap(at: writeOsuFile(hitObjects: "64,192,1000,2,0,1200,0:0:0:0:"))
-        }
-
-        XCTAssertThrowsValidation(.laneSequenceViolation(streamIndex: 0, lane: .left)) {
-            _ = try OsuMania4KBeatmapStream.parseBeatmap(at: writeOsuFile(hitObjects: "0,192,1000,128,0,900:0:0:0:0:"))
         }
 
         XCTAssertThrowsValidation(.sameLaneOverlap(previousStreamIndex: 0, nextStreamIndex: 1)) {
@@ -174,6 +170,28 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
                 )
             )
         }
+    }
+
+    func testParserClampsHoldEndsToStartTimeLikeOsuLoader() throws {
+        let parsed = try OsuMania4KBeatmapStream.parseBeatmap(
+            at: writeOsuFile(
+                hitObjects:
+                """
+                0,192,1000,128,0,1000:0:0:0:0:
+                128,192,1100,128,0,900:0:0:0:0:
+                """
+            )
+        )
+
+        XCTAssertEqual(
+            parsed.objects,
+            [
+                holdStart(.left, 1_000),
+                holdEnd(.left, 1_000),
+                holdStart(.innerLeft, 1_100),
+                holdEnd(.innerLeft, 1_100)
+            ]
+        )
     }
 
     func testEngineJudgesTapWindowBoundariesAndOffsetSamples() throws {

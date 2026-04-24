@@ -1,5 +1,5 @@
 ---
-commit: cb047deade46712360bc21efc95e13011bda0c74
+commit: 547b201a67fddc0de2a95a67662d248e49f8f9aa
 title: Mania 4K Core Gameplay Contracts
 status: proposed
 source_specs:
@@ -67,7 +67,7 @@ Stream-object invariants:
 - Simultaneous objects across different lanes are valid.
 - A same-lane `tap` is valid only when that lane has no open hold.
 - A same-lane `holdStart` is valid only when that lane has no open hold.
-- A same-lane `holdEnd` is valid only when that lane has an open hold, and its `timeMs` is greater than the opening `holdStart.timeMs`.
+- A same-lane `holdEnd` is valid only when that lane has an open hold, and its `timeMs` is greater than or equal to the opening `holdStart.timeMs`.
 
 Lane-sequence rules:
 
@@ -76,7 +76,7 @@ Lane-sequence rules:
 - A `holdStart` opens one logical long note in its lane.
 - The next valid `holdEnd` in that lane closes that logical long note.
 - The engine must not score `holdStart` and `holdEnd` separately. The opened-and-closed hold contributes one scoring object, matching the frozen judgement spec.
-- An imported full beatmap adapter should flatten each authored hold into adjacent stream-sequence semantics: one `holdStart` at the authored start time and one later `holdEnd` in the same lane.
+- An imported full beatmap adapter should flatten each authored hold into adjacent stream-sequence semantics: one `holdStart` at the authored start time and one `holdEnd` in the same lane. If the authored end is earlier than the start, clamp it to the start time to match osu!'s loader.
 
 The normalized object intentionally excludes source-specific fields such as `.osu` samples, storyboard data, editor metadata, and generated-model confidence. Those can live in adapter metadata later without becoming engine inputs.
 
@@ -149,11 +149,11 @@ Adapter requirements:
 
 - Accept only 4K mania charts.
 - Map tap notes to `.tap`.
-- Map each osu!mania hold to one `.holdStart` event at the hold start time and one `.holdEnd` event at the hold end time in the same lane.
+- Map each osu!mania hold to one `.holdStart` event at the hold start time and one `.holdEnd` event at `max(holdEndTime, holdStartTime)` in the same lane.
 - Reject sliders, spinners, unsupported modes, unsupported key counts, invalid times, and same-lane overlaps.
 - Reject a same-lane `tap` or `holdStart` while that lane already has an open hold.
 - Reject `holdEnd` when that lane has no open hold.
-- Reject hold ends that are not later than their starts.
+- Reject malformed or non-finite hold ends, but clamp finite hold ends that are earlier than their starts to the start time.
 - Preserve source order as a final ordering tiebreaker.
 - Report structured setup errors before audio playback starts.
 
@@ -323,7 +323,7 @@ public struct Mania4KVisibleObject: Identifiable, Equatable, Sendable {
 }
 ```
 
-`Mania4KObjectOrdinal` is assigned internally by the session or engine at ingestion time. It is not part of the source stream. For taps, the ordinal belongs to the tap event. For holds, the ordinal belongs to the logical long note opened by `holdStart`; the later `holdEnd` updates that same logical object instead of creating a second visible/scoring object.
+`Mania4KObjectOrdinal` is assigned internally by the session or engine at ingestion time. It is not part of the source stream. For taps, the ordinal belongs to the tap event. For holds, the ordinal belongs to the logical long note opened by `holdStart`; the matching `holdEnd` updates that same logical object instead of creating a second visible/scoring object.
 
 Visible state should distinguish at least `waiting`, `holding`, `openEnded`, `missedButVisible`, and `resolved`. `openEnded` means the renderer has seen a `holdStart` whose matching lane-local `holdEnd` has not arrived yet. The exact visual style belongs to UI, not core.
 

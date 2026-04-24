@@ -874,7 +874,7 @@ public struct Mania4KJudgementEngine: Sendable {
                 throw Mania4KChartValidationError.laneSequenceViolation(streamIndex: streamIndex, lane: object.lane)
             }
 
-            guard object.timeMs > objects[openIndex].startTimeMs else {
+            guard object.timeMs >= objects[openIndex].startTimeMs else {
                 throw Mania4KChartValidationError.laneSequenceViolation(streamIndex: streamIndex, lane: object.lane)
             }
 
@@ -1371,7 +1371,10 @@ private struct OsuMania4KParser {
             if lhs.object.lane != rhs.object.lane {
                 return lhs.object.lane < rhs.object.lane
             }
-            return lhs.sourceOrder < rhs.sourceOrder
+            if lhs.sourceOrder != rhs.sourceOrder {
+                return lhs.sourceOrder < rhs.sourceOrder
+            }
+            return lhs.objectOrder < rhs.objectOrder
         }
         .map(\.object)
 
@@ -1398,7 +1401,7 @@ private struct OsuMania4KParser {
         dictionary[key] = value
     }
 
-    private func parseHitObject(_ line: String, sourceOrder: Int) throws -> [(sourceOrder: Int, object: Mania4KHitObject)] {
+    private func parseHitObject(_ line: String, sourceOrder: Int) throws -> [(sourceOrder: Int, objectOrder: Int, object: Mania4KHitObject)] {
         let fields = line.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
         guard fields.count >= 5,
               let x = Int(fields[0]),
@@ -1425,18 +1428,20 @@ private struct OsuMania4KParser {
         }
 
         if hasHold {
-            guard fields.count >= 6,
-                  let endTimePart = fields[5].split(separator: ":", omittingEmptySubsequences: false).first,
-                  let endTimeMs = Double(endTimePart),
-                  endTimeMs.isFinite,
-                  endTimeMs > timeMs
-            else {
-                throw Mania4KChartValidationError.laneSequenceViolation(streamIndex: sourceOrder, lane: lane)
+            let endTimeMs: Double
+            if fields.count >= 6, !fields[5].isEmpty {
+                let endTimePart = fields[5].split(separator: ":", omittingEmptySubsequences: false).first.map(String.init) ?? ""
+                guard let parsedEndTimeMs = Double(endTimePart), parsedEndTimeMs.isFinite else {
+                    throw Mania4KChartValidationError.unsupportedHitObject(line)
+                }
+                endTimeMs = max(timeMs, parsedEndTimeMs)
+            } else {
+                endTimeMs = timeMs
             }
 
             return [
-                (sourceOrder, Mania4KHitObject(lane: lane, timeMs: timeMs, kind: .holdStart)),
-                (sourceOrder, Mania4KHitObject(lane: lane, timeMs: endTimeMs, kind: .holdEnd))
+                (sourceOrder, 0, Mania4KHitObject(lane: lane, timeMs: timeMs, kind: .holdStart)),
+                (sourceOrder, 1, Mania4KHitObject(lane: lane, timeMs: endTimeMs, kind: .holdEnd))
             ]
         }
 
@@ -1444,6 +1449,6 @@ private struct OsuMania4KParser {
             throw Mania4KChartValidationError.unsupportedHitObject(line)
         }
 
-        return [(sourceOrder, Mania4KHitObject(lane: lane, timeMs: timeMs, kind: .tap))]
+        return [(sourceOrder, 0, Mania4KHitObject(lane: lane, timeMs: timeMs, kind: .tap))]
     }
 }
