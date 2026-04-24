@@ -9,7 +9,7 @@ struct PulsefieldiOSApp: App {
 
     var body: some Scene {
         WindowGroup {
-            Mania4KPlayExperienceView(model: model)
+            PulsefieldWorkbenchView(maniaModel: model)
         }
     }
 }
