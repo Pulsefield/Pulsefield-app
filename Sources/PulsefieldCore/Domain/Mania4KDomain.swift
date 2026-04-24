@@ -771,7 +771,7 @@ public struct Mania4KJudgementEngine: Sendable {
 
     public func snapshot(visibleRange: ClosedRange<Double>) -> Mania4KEngineSnapshot {
         let visibleObjects = objects.compactMap { object -> Mania4KVisibleObject? in
-            let objectEnd = object.endTimeMs ?? object.startTimeMs
+            let objectEnd = object.visibleEndTime(for: visibleRange)
             let visible = object.startTimeMs <= visibleRange.upperBound && objectEnd >= visibleRange.lowerBound
             let keepResolvedBriefly = object.isResolved && chartTimeMs - objectEnd <= 300 && objectEnd >= visibleRange.lowerBound
             guard visible || keepResolvedBriefly else {
@@ -1247,6 +1247,14 @@ private struct EngineObject: Sendable {
         case .resolved:
             return .resolved
         }
+    }
+
+    func visibleEndTime(for visibleRange: ClosedRange<Double>) -> Double {
+        if streamKind == .holdStart, !isResolved {
+            return endTimeMs ?? visibleRange.upperBound
+        }
+
+        return endTimeMs ?? startTimeMs
     }
 }
 

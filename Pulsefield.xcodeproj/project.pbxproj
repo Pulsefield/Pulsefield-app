@@ -33,10 +33,13 @@
 		A4C0C039BABC46277245ABBF /* PulsefieldiOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEFC56F5F1D0A58C6ED5BD3A /* PulsefieldiOSApp.swift */; };
 		BB04DF61AB24DA410A01CDE5 /* Mania4KDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45ECE8CA145AF5FCACE46022 /* Mania4KDomain.swift */; };
 		C2DC4CA9490680BF832B1AA0 /* PulsefieldUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A9C81D865B64C6D256B24F2B /* PulsefieldUI.framework */; };
+		CB7D87478FF3F706E7CDF5E4 /* Mania4KNoteRenderLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81CE9B56AE5FDD881A5C4C60 /* Mania4KNoteRenderLayoutTests.swift */; };
+		CF0CF9B20DF566614EDED287 /* PulsefieldUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A9C81D865B64C6D256B24F2B /* PulsefieldUI.framework */; };
 		D341F844440FAB984B185C59 /* PulsefieldUI.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A9C81D865B64C6D256B24F2B /* PulsefieldUI.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D3A932DF8385FDF6983710EB /* RecognitionAppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ECCDB69F561441CFB7369B2 /* RecognitionAppModel.swift */; };
 		D46F277B68C8F973A3FE9529 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 56EB7BD2459DEAB60737DD1E /* AVFoundation.framework */; };
 		DB02F5130C3C9A526C48CED9 /* PreviewFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78ACE1CB799708B529D40F93 /* PreviewFixtures.swift */; };
+		DC2CEBCC4E3084B91325878D /* PulsefieldUI.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A9C81D865B64C6D256B24F2B /* PulsefieldUI.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E2A8570789AC186771AAE508 /* BeatmapDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40490916DA33124F9DB0B512 /* BeatmapDomain.swift */; };
 		FC9C0773A8A231E694B89EB7 /* Mania4KPlayExperienceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B7F34B30233C62EE4CA2746 /* Mania4KPlayExperienceView.swift */; };
 		FCC100D6A0B140451439956B /* MicrophonePermissionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F45F8208B52EF6BC2629EBDD /* MicrophonePermissionService.swift */; };
@@ -44,6 +47,13 @@
 
 /* Begin PBXContainerItemProxy section */
 		157FBE54CD8A7AE99BF7070E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F9B722C391474AD55EB39B2E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 400FC4CCC71B995495E6FB73;
+			remoteInfo = PulsefieldUI;
+		};
+		15C67BFF039DDADEE5292E4D /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = F9B722C391474AD55EB39B2E /* Project object */;
 			proxyType = 1;
@@ -95,6 +105,7 @@
 			dstSubfolderSpec = 10;
 			files = (
 				48A3D8B5531B9260CBA06768 /* PulsefieldCore.framework in Embed Frameworks */,
+				DC2CEBCC4E3084B91325878D /* PulsefieldUI.framework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -146,6 +157,7 @@
 		6CA7A26E40728ECEA439A0AA /* RecognitionDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionDashboardView.swift; sourceTree = "<group>"; };
 		728B90249B2A0A72FCD3580B /* BeatmapGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeatmapGenerationService.swift; sourceTree = "<group>"; };
 		78ACE1CB799708B529D40F93 /* PreviewFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewFixtures.swift; sourceTree = "<group>"; };
+		81CE9B56AE5FDD881A5C4C60 /* Mania4KNoteRenderLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mania4KNoteRenderLayoutTests.swift; sourceTree = "<group>"; };
 		9AD875058E105B569F3F3F40 /* UnavailableRecognitionProviderClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnavailableRecognitionProviderClient.swift; sourceTree = "<group>"; };
 		9BAF8E8D435CA620D624CE54 /* Mania4KPlaySessionModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mania4KPlaySessionModelTests.swift; sourceTree = "<group>"; };
 		A387EEA1983387E2E36565AD /* PulsefieldCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = PulsefieldCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -168,6 +180,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				02BD03125AEA567B23286D53 /* PulsefieldCore.framework in Frameworks */,
+				CF0CF9B20DF566614EDED287 /* PulsefieldUI.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -332,6 +345,7 @@
 			isa = PBXGroup;
 			children = (
 				A9C0AFD64ABA7C7C86048235 /* CascadingRecognitionServiceTests.swift */,
+				81CE9B56AE5FDD881A5C4C60 /* Mania4KNoteRenderLayoutTests.swift */,
 				9BAF8E8D435CA620D624CE54 /* Mania4KPlaySessionModelTests.swift */,
 				4A37495C7C03786C6C70AF14 /* RecognitionAppModelTests.swift */,
 			);
@@ -455,6 +469,7 @@
 			);
 			dependencies = (
 				4E210BF95BD44D5633084C54 /* PBXTargetDependency */,
+				0DD179B7C435C710894D409D /* PBXTargetDependency */,
 			);
 			name = PulsefieldCoreTests;
 			packageProductDependencies = (
@@ -605,6 +620,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				2AD790A5ACB1EFFDA192D181 /* CascadingRecognitionServiceTests.swift in Sources */,
+				CB7D87478FF3F706E7CDF5E4 /* Mania4KNoteRenderLayoutTests.swift in Sources */,
 				5C3FAFADD702D6CFFE48A72B /* Mania4KPlaySessionModelTests.swift in Sources */,
 				45A98DB9677287374091F460 /* RecognitionAppModelTests.swift in Sources */,
 			);
@@ -655,6 +671,11 @@
 			isa = PBXTargetDependency;
 			target = ED46F20630734EA83BA6607D /* PulsefieldCore */;
 			targetProxy = 4A03822B90A54EA2184732F4 /* PBXContainerItemProxy */;
+		};
+		0DD179B7C435C710894D409D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 400FC4CCC71B995495E6FB73 /* PulsefieldUI */;
+			targetProxy = 15C67BFF039DDADEE5292E4D /* PBXContainerItemProxy */;
 		};
 		1B41F87DFD7A338E6F7A8BE5 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;

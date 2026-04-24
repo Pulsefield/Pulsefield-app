@@ -97,6 +97,7 @@ targets:
       - path: Tests/PulsefieldCoreTests
     dependencies:
       - target: PulsefieldCore
+      - target: PulsefieldUI
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.pulsefield.core.tests

@@ -505,6 +505,37 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         XCTAssertEqual(model.scrollTimeMs, 1_148.5, accuracy: 0.001)
     }
 
+    func testOpenEndedLongNoteRemainsVisibleAfterHeadLeavesSnapshotLowerBound() async throws {
+        let clock = FakeMania4KAudioClock()
+        let model = try modelWithInMemoryChart(
+            objects: [
+                holdStart(.left, 1_000),
+                holdEnd(.left, 10_000)
+            ],
+            clock: clock
+        )
+        model.selectBeatmapFile(URL(fileURLWithPath: "/tmp/chart.osu"))
+        model.selectAudioFile(URL(fileURLWithPath: "/tmp/audio.mp3"))
+        let started = await model.startPlay()
+        XCTAssertTrue(started)
+        let handledPress = await model.handleInput(input(.left, .press, 1_000, 0))
+        XCTAssertTrue(handledPress)
+
+        await clock.setAudioTimeMs(2_000)
+        let ticked = await model.tick()
+
+        XCTAssertTrue(ticked)
+        XCTAssertEqual(model.playFrame?.visibleObjects, [
+            Mania4KVisibleObject(
+                id: Mania4KObjectOrdinal(rawValue: 0),
+                lane: .left,
+                startTimeMs: 1_000,
+                endTimeMs: nil,
+                state: .holding
+            )
+        ])
+    }
+
     func testKeyboardRouterFiltersRepeatsAndDuplicatePresses() {
         var router = Mania4KKeyboardInputRouter()
 
@@ -568,6 +599,14 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
 
 private func tap(_ lane: Mania4KLane, _ timeMs: Double) -> Mania4KHitObject {
     Mania4KHitObject(lane: lane, timeMs: timeMs, kind: .tap)
+}
+
+private func holdStart(_ lane: Mania4KLane, _ timeMs: Double) -> Mania4KHitObject {
+    Mania4KHitObject(lane: lane, timeMs: timeMs, kind: .holdStart)
+}
+
+private func holdEnd(_ lane: Mania4KLane, _ timeMs: Double) -> Mania4KHitObject {
+    Mania4KHitObject(lane: lane, timeMs: timeMs, kind: .holdEnd)
 }
 
 private func input(
