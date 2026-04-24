@@ -28,6 +28,7 @@ public final class Mania4KPlaySessionModel {
     private var streamCursor: Mania4KHitObjectStreamCursor?
     private var streamCompleteThroughChartTimeMs: Double
     private var streamEnded: Bool
+    private var streamReadGate: AsyncGate
     private var inputSequenceNumber: UInt64
     private var keyboardRouter: Mania4KKeyboardInputRouter
     private var frameLoopTask: Task<Void, Never>?
@@ -56,6 +57,7 @@ public final class Mania4KPlaySessionModel {
         self.phase = .setup
         self.streamCompleteThroughChartTimeMs = 0
         self.streamEnded = false
+        self.streamReadGate = AsyncGate()
         self.inputSequenceNumber = 0
         self.keyboardRouter = Mania4KKeyboardInputRouter()
         self.playStateGeneration = 0
@@ -449,6 +451,29 @@ public final class Mania4KPlaySessionModel {
 
     private func readStream(throughChartTimeMs: Double, expectedGeneration: UInt64? = nil) async throws {
         try validatePlayStateGeneration(expectedGeneration)
+        guard !streamEnded, throughChartTimeMs > streamCompleteThroughChartTimeMs else {
+            return
+        }
+
+        while !streamReadGate.tryEnter() {
+            try await streamReadGate.wait()
+            try validatePlayStateGeneration(expectedGeneration)
+            guard !streamEnded, throughChartTimeMs > streamCompleteThroughChartTimeMs else {
+                return
+            }
+        }
+
+        do {
+            try await readStreamUnlocked(throughChartTimeMs: throughChartTimeMs, expectedGeneration: expectedGeneration)
+            streamReadGate.leave()
+        } catch {
+            streamReadGate.leave(throwing: error)
+            throw error
+        }
+    }
+
+    private func readStreamUnlocked(throughChartTimeMs: Double, expectedGeneration: UInt64?) async throws {
+        try validatePlayStateGeneration(expectedGeneration)
         guard let activeStream else {
             return
         }
@@ -629,6 +654,40 @@ private struct QueuedMania4KInput {
     let usesLiveChartTime: Bool
     let generation: UInt64
     let continuation: CheckedContinuation<Bool, Never>
+}
+
+@MainActor
+private final class AsyncGate {
+    private var isEntered = false
+    private var waiters: [CheckedContinuation<Void, any Error>] = []
+
+    func tryEnter() -> Bool {
+        guard !isEntered else {
+            return false
+        }
+
+        isEntered = true
+        return true
+    }
+
+    func wait() async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+            waiters.append(continuation)
+        }
+    }
+
+    func leave(throwing error: (any Error)? = nil) {
+        isEntered = false
+
+        let waiters = waiters
+        self.waiters.removeAll()
+
+        if let error {
+            waiters.forEach { $0.resume(throwing: error) }
+        } else {
+            waiters.forEach { $0.resume() }
+        }
+    }
 }
 
 private struct StaleMania4KPlayStateError: Error {}

@@ -399,6 +399,7 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         let started = await model.startPlay()
         XCTAssertTrue(started)
 
+        await clock.setAudioTimeMs(1_000)
         let ticked = await model.tick()
 
         XCTAssertFalse(ticked)
@@ -408,6 +409,35 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
             return XCTFail("Expected stream watermark failure, got \(model.phase)")
         }
         XCTAssertTrue(message.contains("violated its watermark"))
+    }
+
+    func testConcurrentStreamReadsDoNotTriggerWatermarkFalsePositive() async throws {
+        let clock = FakeMania4KAudioClock()
+        let stream = DuplicateOnConcurrentCursorReadMania4KHitObjectStream()
+        let model = Mania4KPlaySessionModel(
+            audioClock: clock,
+            streamFactory: { _ in stream }
+        )
+        model.selectBeatmapFile(URL(fileURLWithPath: "/tmp/chart.osu"))
+        model.selectAudioFile(URL(fileURLWithPath: "/tmp/audio.mp3"))
+        let started = await model.startPlay()
+        XCTAssertTrue(started)
+
+        await clock.setAudioTimeMs(29_820)
+        let tick = Task {
+            await model.tick()
+        }
+        await stream.waitForObjectReadInFlight()
+        let handledInput = Task {
+            await model.handleInput(input(.left, .press, 29_820, 1))
+        }
+
+        let ticked = await tick.value
+        let handled = await handledInput.value
+
+        XCTAssertTrue(ticked)
+        XCTAssertTrue(handled)
+        XCTAssertEqual(model.phase, .playing)
     }
 
     func testSessionIgnoresGameplayInputWhilePaused() async throws {
@@ -732,6 +762,77 @@ private actor WatermarkViolatingMania4KHitObjectStream: Mania4KHitObjectStreamin
             nextCursor: nil,
             completeThroughChartTimeMs: throughChartTimeMs,
             isEndOfStream: true
+        )
+    }
+}
+
+private actor DuplicateOnConcurrentCursorReadMania4KHitObjectStream: Mania4KHitObjectStreaming {
+    private let objectTimeMs = 29_793.0
+    private var isObjectReadInFlight = false
+    private var objectReadWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func prepare() async throws -> Mania4KChartMetadata {
+        Mania4KChartMetadata(
+            title: "Concurrent read chart",
+            sourceDescription: "Concurrent read test stream",
+            objectCount: 1,
+            durationMs: objectTimeMs
+        )
+    }
+
+    func read(
+        after cursor: Mania4KHitObjectStreamCursor?,
+        throughChartTimeMs: Double,
+        limit: Int
+    ) async throws -> Mania4KHitObjectBatch {
+        guard throughChartTimeMs >= objectTimeMs else {
+            return Mania4KHitObjectBatch(
+                objects: [],
+                nextCursor: Mania4KHitObjectStreamCursor(rawValue: "0"),
+                completeThroughChartTimeMs: throughChartTimeMs,
+                isEndOfStream: false
+            )
+        }
+
+        guard cursor?.rawValue != "1" else {
+            return Mania4KHitObjectBatch(
+                objects: [],
+                nextCursor: cursor,
+                completeThroughChartTimeMs: throughChartTimeMs,
+                isEndOfStream: false
+            )
+        }
+
+        if isObjectReadInFlight {
+            try await Task.sleep(nanoseconds: 90_000_000)
+            return objectBatch(throughChartTimeMs: throughChartTimeMs)
+        }
+
+        isObjectReadInFlight = true
+        let waiters = objectReadWaiters
+        objectReadWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+        try await Task.sleep(nanoseconds: 40_000_000)
+        isObjectReadInFlight = false
+        return objectBatch(throughChartTimeMs: throughChartTimeMs)
+    }
+
+    func waitForObjectReadInFlight() async {
+        guard !isObjectReadInFlight else {
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            objectReadWaiters.append(continuation)
+        }
+    }
+
+    private func objectBatch(throughChartTimeMs: Double) -> Mania4KHitObjectBatch {
+        Mania4KHitObjectBatch(
+            objects: [tap(.left, objectTimeMs)],
+            nextCursor: Mania4KHitObjectStreamCursor(rawValue: "1"),
+            completeThroughChartTimeMs: throughChartTimeMs,
+            isEndOfStream: false
         )
     }
 }
