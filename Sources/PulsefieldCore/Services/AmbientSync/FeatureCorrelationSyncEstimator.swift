@@ -74,14 +74,15 @@ public actor FeatureCorrelationSyncEstimator: AmbientSyncEstimating {
             return previousEstimate
         }
 
-        let queryFeatures = onsetEnvelope(
+        let queryFeatures = correlationFeatures(
             samples: window.samples,
             sampleRate: window.sampleRate,
             frameHopMS: index.frameHopMS
         )
+        let predictedReference = predictedReferenceTime(at: window.hostTime)
         let match: (offset: Int, confidence: Double)?
         if shouldSearchNearPredictedReference,
-           let predictedReference = predictedReferenceTime(at: window.hostTime),
+           let predictedReference,
            let offsetRange = lockedOffsetRange(
             predictedReferenceTimeMS: predictedReference,
             queryFeatureCount: queryFeatures.count,
@@ -104,7 +105,10 @@ public actor FeatureCorrelationSyncEstimator: AmbientSyncEstimating {
             queryFeatureCount: queryFeatures.count,
             index: index
         )
-        let isHardRelock = shouldRelock(to: matchedReference)
+        let relockComparisonReference = shouldSearchNearPredictedReference
+            ? predictedReference
+            : previousEstimate?.referenceTimeMS
+        let isHardRelock = shouldRelock(to: matchedReference, comparedTo: relockComparisonReference)
         if isHardRelock, shouldSearchNearPredictedReference {
             return degradeLock()
         }
@@ -112,7 +116,8 @@ public actor FeatureCorrelationSyncEstimator: AmbientSyncEstimating {
         if shouldDegradeForWideHardRelock(
             queryFeatures: queryFeatures,
             currentMatch: match,
-            index: index
+            index: index,
+            comparisonReference: relockComparisonReference
         ) {
             return degradeLock()
         }
@@ -144,7 +149,8 @@ public actor FeatureCorrelationSyncEstimator: AmbientSyncEstimating {
     private func shouldDegradeForWideHardRelock(
         queryFeatures: [Double],
         currentMatch: (offset: Int, confidence: Double),
-        index: LocalAudioSyncIndex
+        index: LocalAudioSyncIndex,
+        comparisonReference: Double?
     ) -> Bool {
         guard shouldSearchNearPredictedReference,
               let wideMatch = bestCorrelationOffset(query: queryFeatures, local: localFeatures),
@@ -158,7 +164,7 @@ public actor FeatureCorrelationSyncEstimator: AmbientSyncEstimating {
             queryFeatureCount: queryFeatures.count,
             index: index
         )
-        return shouldRelock(to: wideReference)
+        return shouldRelock(to: wideReference, comparedTo: comparisonReference)
     }
 
     private func referenceTime(
@@ -173,12 +179,12 @@ public actor FeatureCorrelationSyncEstimator: AmbientSyncEstimating {
         )
     }
 
-    private func shouldRelock(to matchedReference: Double) -> Bool {
-        guard let previousEstimate else {
+    private func shouldRelock(to matchedReference: Double, comparedTo reference: Double?) -> Bool {
+        guard let reference else {
             return false
         }
 
-        return abs(matchedReference - previousEstimate.referenceTimeMS) > hardRelockThresholdMS
+        return abs(matchedReference - reference) > hardRelockThresholdMS
     }
 
     public func currentState() async -> AmbientSyncState {
@@ -277,6 +283,14 @@ public actor FeatureCorrelationSyncEstimator: AmbientSyncEstimating {
 
         state = .drifting(previousEstimate)
         return previousEstimate
+    }
+
+    private func correlationFeatures(samples: [Float], sampleRate: Double, frameHopMS: Double) -> [Double] {
+        let features = onsetEnvelope(samples: samples, sampleRate: sampleRate, frameHopMS: frameHopMS)
+        guard features.count > 1 else {
+            return []
+        }
+        return Array(features.dropFirst())
     }
 
     private func onsetEnvelope(samples: [Float], sampleRate: Double, frameHopMS: Double) -> [Double] {

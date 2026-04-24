@@ -91,10 +91,10 @@ final class FeatureCorrelationSyncEstimatorTests: XCTestCase {
         let capture = StubAmbientCapture(sampleRate: 1_000)
         let estimator = FeatureCorrelationSyncEstimator(
             capture: capture,
-            windowDurationMS: 300,
+            windowDurationMS: 400,
             minimumLockConfidence: 0.80
         )
-        let samples = samples(forOnsetFeatures: [0, 1, 0], samplesPerFeature: 100)
+        let samples = samples(forOnsetFeatures: [0, 1, 0, 0.2], samplesPerFeature: 100)
 
         try await estimator.start(asset: asset, index: index)
         await capture.push(samples: samples)
@@ -102,7 +102,7 @@ final class FeatureCorrelationSyncEstimatorTests: XCTestCase {
         await capture.push(samples: samples)
         let estimate = await estimator.currentEstimate()
 
-        XCTAssertEqual(estimate?.referenceTimeMS, 500)
+        XCTAssertEqual(estimate?.referenceTimeMS, 600)
         XCTAssertGreaterThanOrEqual(estimate?.confidence ?? 0, 0.80)
     }
 
@@ -138,20 +138,71 @@ final class FeatureCorrelationSyncEstimatorTests: XCTestCase {
         let capture = StubAmbientCapture()
         let estimator = FeatureCorrelationSyncEstimator(
             capture: capture,
-            windowDurationMS: 300,
+            windowDurationMS: 400,
             minimumLockConfidence: 0.80
         )
 
         try await estimator.start(asset: asset, index: index)
-        await capture.push(samples: samples(forOnsetFeatures: [1, 0.2, 0.5]))
+        await capture.push(samples: samples(forOnsetFeatures: [0.45, 1, 0.2, 0.5]))
         _ = await estimator.currentEstimate()
-        await capture.push(samples: samples(forOnsetFeatures: [1, 0.2, 0.5]))
+        await capture.push(samples: samples(forOnsetFeatures: [0.45, 1, 0.2, 0.5]))
         let lockedEstimate = await estimator.currentEstimate()
-        await capture.push(samples: samples(forOnsetFeatures: [0.2, 0.5, 0.1]))
+        await capture.push(samples: samples(forOnsetFeatures: [1, 0.2, 0.5, 0.1]))
         let nextEstimate = await estimator.currentEstimate()
 
         XCTAssertEqual(lockedEstimate?.referenceTimeMS, 1_100)
         XCTAssertEqual(nextEstimate?.referenceTimeMS, 1_200)
+    }
+
+    func testLockedEstimatorUsesElapsedHostTimeBeforeDeclaringHardRelock() async throws {
+        let asset = makeAsset()
+        let index = try makeIndex(
+            values: [0.2, 0.7, 0, 0.4, 0.05, 0.15, 0.25, 0.35, 1, 1, 0.2, 0],
+            durationMS: 1_200
+        )
+        let capture = StubAmbientCapture()
+        let estimator = FeatureCorrelationSyncEstimator(
+            capture: capture,
+            windowDurationMS: 400,
+            minimumLockConfidence: 0.80
+        )
+        let startTime = ContinuousClock.now
+
+        try await estimator.start(asset: asset, index: index)
+        await capture.push(samples: samples(forOnsetFeatures: [0.2, 0.7, 0, 0.4]), hostTime: startTime)
+        _ = await estimator.currentEstimate()
+        await capture.push(samples: samples(forOnsetFeatures: [0.2, 0.7, 0, 0.4]), hostTime: startTime)
+        let lockedEstimate = await estimator.currentEstimate()
+        await capture.push(
+            samples: samples(forOnsetFeatures: [1, 1, 0.2, 0]),
+            hostTime: startTime.advanced(by: .milliseconds(800))
+        )
+        let progressedEstimate = await estimator.currentEstimate()
+        let state = await estimator.currentState()
+
+        XCTAssertEqual(lockedEstimate?.referenceTimeMS, 400)
+        XCTAssertEqual(progressedEstimate?.referenceTimeMS, 1_200)
+        XCTAssertEqual(state, .locked(progressedEstimate!))
+    }
+
+    func testEstimatorMatchesWindowAfterFirstFrameWhenPriorRMSIsUnavailable() async throws {
+        let asset = makeAsset()
+        let index = try makeIndex(
+            values: [0.5, 0.1, 0.04, 0.01, 0, 0.02, 0, 0],
+            durationMS: 800
+        )
+        let capture = StubAmbientCapture()
+        let estimator = FeatureCorrelationSyncEstimator(
+            capture: capture,
+            windowDurationMS: 400,
+            minimumLockConfidence: 0.80
+        )
+
+        try await estimator.start(asset: asset, index: index)
+        await capture.push(samples: [0.6, 0.64, 0.65, 0.65])
+        let estimate = await estimator.currentEstimate()
+
+        XCTAssertEqual(estimate?.referenceTimeMS, 500)
     }
 
     func testEstimatorRelocksWhenCorrelationJumpsBackwardAfterSeek() async throws {
@@ -359,7 +410,7 @@ final class FeatureCorrelationSyncEstimatorTests: XCTestCase {
 
 private actor StubAmbientCapture: AmbientAudioCapturing {
     private let sampleRate: Double
-    private var queuedSamples: [[Float]] = []
+    private var queuedWindows: [(samples: [Float], hostTime: ContinuousClock.Instant)] = []
 
     init(sampleRate: Double = 10) {
         self.sampleRate = sampleRate
@@ -372,18 +423,19 @@ private actor StubAmbientCapture: AmbientAudioCapturing {
     func latestWindow(durationMS: Int) async -> AmbientAudioWindow? {
         _ = durationMS
 
-        guard !queuedSamples.isEmpty else {
+        guard !queuedWindows.isEmpty else {
             return nil
         }
+        let window = queuedWindows.removeFirst()
 
         return AmbientAudioWindow(
-            hostTime: .now,
+            hostTime: window.hostTime,
             sampleRate: sampleRate,
-            samples: queuedSamples.removeFirst()
+            samples: window.samples
         )
     }
 
-    func push(samples: [Float]) {
-        queuedSamples.append(samples)
+    func push(samples: [Float], hostTime: ContinuousClock.Instant = .now) {
+        queuedWindows.append((samples: samples, hostTime: hostTime))
     }
 }
