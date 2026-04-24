@@ -33,6 +33,59 @@ final class FeatureCorrelationSyncEstimatorTests: XCTestCase {
         XCTAssertEqual(state, .failed("Sync index does not match selected local audio asset."))
     }
 
+    func testStartFailureWhileReadingIndexClearsPreparingState() async throws {
+        let asset = makeAsset()
+        let missingFeatureURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("missing-\(UUID().uuidString).txt")
+        let index = LocalAudioSyncIndex(
+            assetID: asset.id,
+            durationMS: asset.durationMS,
+            sampleRate: 10,
+            frameHopMS: 100,
+            onsetEnvelopeURL: missingFeatureURL,
+            spectralSummaryURL: nil,
+            chromaURL: nil,
+            version: 1,
+            createdAt: Date(timeIntervalSince1970: 1_710_000_000)
+        )
+        let estimator = FeatureCorrelationSyncEstimator(capture: StubAmbientCapture())
+
+        do {
+            try await estimator.start(asset: asset, index: index)
+            XCTFail("Expected missing sync features to fail startup.")
+        } catch {}
+
+        let estimate = await estimator.currentEstimate()
+        let state = await estimator.currentState()
+
+        XCTAssertNil(estimate)
+        guard case .failed(let message) = state else {
+            return XCTFail("Expected failed state after index read failure, got \(state).")
+        }
+        XCTAssertFalse(message.isEmpty)
+    }
+
+    func testStartFailureWhileStartingCaptureClearsLoadedIndex() async throws {
+        let asset = makeAsset()
+        let index = try makeIndex(values: [0, 0, 1, 0.4, 0.1])
+        let capture = StubAmbientCapture(startError: TestAmbientCaptureError.startFailed)
+        let estimator = FeatureCorrelationSyncEstimator(capture: capture)
+
+        do {
+            try await estimator.start(asset: asset, index: index)
+            XCTFail("Expected capture startup failure to fail startup.")
+        } catch let error as TestAmbientCaptureError {
+            XCTAssertEqual(error, .startFailed)
+        }
+
+        await capture.push(samples: samples(forOnsetFeatures: [1, 0.4, 0.1]))
+        let estimate = await estimator.currentEstimate()
+        let state = await estimator.currentState()
+
+        XCTAssertNil(estimate)
+        XCTAssertEqual(state, .failed(TestAmbientCaptureError.startFailed.localizedDescription))
+    }
+
     func testInitialNoMatchWaitsForLostTimeoutBeforeReportingLost() async throws {
         let asset = makeAsset()
         let index = try makeIndex(values: [0, 0, 1, 0.4, 0.1, 0, 0.2, 0, 0])
@@ -408,15 +461,32 @@ final class FeatureCorrelationSyncEstimatorTests: XCTestCase {
     }
 }
 
+private enum TestAmbientCaptureError: LocalizedError, Equatable {
+    case startFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .startFailed:
+            return "Ambient capture failed to start."
+        }
+    }
+}
+
 private actor StubAmbientCapture: AmbientAudioCapturing {
     private let sampleRate: Double
+    private let startError: Error?
     private var queuedWindows: [(samples: [Float], hostTime: ContinuousClock.Instant)] = []
 
-    init(sampleRate: Double = 10) {
+    init(sampleRate: Double = 10, startError: Error? = nil) {
         self.sampleRate = sampleRate
+        self.startError = startError
     }
 
-    func start() async throws {}
+    func start() async throws {
+        if let startError {
+            throw startError
+        }
+    }
 
     func stop() async {}
 

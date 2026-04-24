@@ -37,13 +37,19 @@ public actor FeatureCorrelationSyncEstimator: AmbientSyncEstimating {
         }
 
         state = .preparingIndex
-        localFeatures = try Self.readFeatures(from: index.onsetEnvelopeURL)
-        self.index = index
-        previousEstimate = nil
-        consecutiveLockWindows = 0
-        lowConfidenceWindows = 0
-        try await capture.start()
-        state = .listening
+        do {
+            localFeatures = try Self.readFeatures(from: index.onsetEnvelopeURL)
+            self.index = index
+            previousEstimate = nil
+            consecutiveLockWindows = 0
+            lowConfidenceWindows = 0
+            try await capture.start()
+            state = .listening
+        } catch {
+            await capture.stop()
+            indexStartupFailed(error)
+            throw error
+        }
     }
 
     public func stop() async {
@@ -189,6 +195,15 @@ public actor FeatureCorrelationSyncEstimator: AmbientSyncEstimating {
 
     public func currentState() async -> AmbientSyncState {
         state
+    }
+
+    private func indexStartupFailed(_ error: Error) {
+        state = .failed(error.localizedDescription)
+        index = nil
+        localFeatures = []
+        previousEstimate = nil
+        consecutiveLockWindows = 0
+        lowConfidenceWindows = 0
     }
 
     private var shouldSearchNearPredictedReference: Bool {
