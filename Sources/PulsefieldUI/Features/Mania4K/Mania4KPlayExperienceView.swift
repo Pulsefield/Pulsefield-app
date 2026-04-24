@@ -1,6 +1,9 @@
 import PulsefieldCore
 import SwiftUI
 import UniformTypeIdentifiers
+#if os(macOS)
+import AppKit
+#endif
 
 public struct Mania4KPlayExperienceView: View {
     @Bindable public var model: Mania4KPlaySessionModel
@@ -13,12 +16,10 @@ public struct Mania4KPlayExperienceView: View {
         ZStack {
             Mania4KBackdrop()
 
-            if let configuration = model.activeConfiguration {
-                Mania4KPlaceholderPlayView(configuration: configuration) {
-                    model.quitToSetup()
-                }
-            } else {
+            if model.phase == .setup {
                 Mania4KSetupView(model: model)
+            } else {
+                Mania4KPlaySceneView(model: model)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -126,14 +127,16 @@ private struct Mania4KSetupView: View {
             settings
 
             Button {
-                model.startPlay()
+                Task {
+                    await model.startPlay()
+                }
             } label: {
                 Label("Start Play", systemImage: "play.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(Mania4KPrimaryButtonStyle())
             .controlSize(.large)
-            .disabled(!model.isReadyToStart)
+            .disabled(!model.isReadyToStart || model.phase == .loading)
         }
         .panelStyle()
     }
@@ -427,18 +430,16 @@ private struct SetupLanePreview: View {
     }
 }
 
-private struct Mania4KPlaceholderPlayView: View {
+private struct Mania4KPlaySceneView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-
-    let configuration: Mania4KPlayConfiguration
-    let quitAction: () -> Void
+    @Bindable var model: Mania4KPlaySessionModel
 
     var body: some View {
         VStack(spacing: 0) {
             playHUD
 
             GeometryReader { proxy in
-                ZStack(alignment: .bottom) {
+                ZStack {
                     LinearGradient(
                         colors: [
                             Mania4KStyle.stageFill,
@@ -450,17 +451,23 @@ private struct Mania4KPlaceholderPlayView: View {
 
                     Mania4KGridOverlay(spacing: 42, opacity: 0.10)
 
-                    HStack(spacing: 8) {
-                        ForEach(0..<4, id: \.self) { lane in
-                            PlaceholderLane(index: lane)
-                        }
+                    playField
+                        .frame(width: playFieldWidth(for: proxy.size.width))
+                        .padding(.bottom, 22)
+
+                    if let frame = model.playFrame, let latest = frame.latestJudgement {
+                        judgementBurst(latest.judgement.rawValue)
+                            .position(x: proxy.size.width / 2, y: max(proxy.size.height * 0.34, 120))
                     }
-                    .padding(.horizontal, max(proxy.size.width * 0.18, 24))
-                    .padding(.bottom, 30)
+
+                    overlayState
                 }
             }
         }
         .background(Mania4KStyle.stageFill)
+        #if os(macOS)
+        .background(Mania4KKeyboardCaptureView(model: model))
+        #endif
     }
 
     private var playHUD: some View {
@@ -474,9 +481,9 @@ private struct Mania4KPlaceholderPlayView: View {
                     }
 
                     HStack(spacing: 14) {
-                        hudValue(title: "Accuracy", value: "100.00%")
-                        hudValue(title: "Combo", value: "0")
-                        hudValue(title: "Judge", value: "-")
+                        hudValue(title: "Accuracy", value: accuracyText)
+                        hudValue(title: "Combo", value: comboText)
+                        hudValue(title: "Judge", value: latestJudgementText)
                     }
                 }
             } else {
@@ -485,9 +492,10 @@ private struct Mania4KPlaceholderPlayView: View {
 
                     Spacer()
 
-                    hudValue(title: "Accuracy", value: "100.00%")
-                    hudValue(title: "Combo", value: "0")
-                    hudValue(title: "Judge", value: "-")
+                    hudValue(title: "Accuracy", value: accuracyText)
+                    hudValue(title: "Combo", value: comboText)
+                    hudValue(title: "Judge", value: latestJudgementText)
+                    pauseButton
                     quitButton
                 }
             }
@@ -504,20 +512,43 @@ private struct Mania4KPlaceholderPlayView: View {
 
     private var playTitle: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(configuration.beatmapFileURL.deletingPathExtension().lastPathComponent)
+            Text(model.playFrame?.metadata.title ?? model.activeConfiguration?.beatmapFileURL.deletingPathExtension().lastPathComponent ?? "mania4k")
                 .font(.headline)
                 .foregroundStyle(Mania4KStyle.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.middle)
 
-            Text("\(configuration.starDifficulty.formatted(.number.precision(.fractionLength(1)))) stars")
+            Text(subtitleText)
                 .font(.caption.monospaced())
                 .foregroundStyle(Mania4KStyle.textSecondary)
         }
     }
 
+    private var pauseButton: some View {
+        Button {
+            Task {
+                switch model.phase {
+                case .paused:
+                    await model.resume()
+                case .playing:
+                    await model.pause()
+                default:
+                    break
+                }
+            }
+        } label: {
+            Label(model.phase == .paused ? "Resume" : "Pause", systemImage: model.phase == .paused ? "play.fill" : "pause.fill")
+        }
+        .buttonStyle(Mania4KSecondaryButtonStyle(tint: Mania4KStyle.accentAmber))
+        .disabled(model.phase != .playing && model.phase != .paused)
+    }
+
     private var quitButton: some View {
-        Button(role: .cancel, action: quitAction) {
+        Button(role: .cancel) {
+            Task {
+                await model.quitToSetup()
+            }
+        } label: {
             Label("Quit", systemImage: "xmark")
         }
         .buttonStyle(Mania4KSecondaryButtonStyle(tint: Mania4KStyle.accentRed))
@@ -535,33 +566,147 @@ private struct Mania4KPlaceholderPlayView: View {
         }
         .frame(minWidth: 76, alignment: .trailing)
     }
+
+    private var playField: some View {
+        GeometryReader { proxy in
+            let laneSpacing: CGFloat = 8
+            let laneWidth = max((proxy.size.width - laneSpacing * 3) / 4, 48)
+
+            HStack(alignment: .bottom, spacing: laneSpacing) {
+                ForEach(Mania4KLane.allCases) { lane in
+                    Mania4KLiveLaneView(
+                        lane: lane,
+                        frame: model.playFrame,
+                        laneState: model.playFrame?.laneStates.first(where: { $0.lane == lane }),
+                        noteColor: noteColor(for: lane.rawValue)
+                    )
+                    .frame(width: laneWidth)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        }
+    }
+
+    @ViewBuilder
+    private var overlayState: some View {
+        switch model.phase {
+        case .loading:
+            statePanel(title: "Loading", detail: model.activeConfiguration?.beatmapFileURL.lastPathComponent ?? "Preparing chart")
+        case .failed(let failure):
+            statePanel(title: "Failed", detail: failure.localizedDescription)
+        case .finished(let result):
+            statePanel(
+                title: "Results",
+                detail: "\(formatAccuracy(result.score.accuracy))  \(result.score.maxCombo)x max  \(result.score.missCount) miss"
+            )
+        default:
+            EmptyView()
+        }
+    }
+
+    private func statePanel(title: String, detail: String) -> some View {
+        VStack(spacing: 10) {
+            Text(title)
+                .font(.title2.bold())
+                .foregroundStyle(Mania4KStyle.textPrimary)
+
+            Text(detail)
+                .font(.callout)
+                .foregroundStyle(Mania4KStyle.textSecondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(4)
+
+            Button {
+                Task {
+                    await model.quitToSetup()
+                }
+            } label: {
+                Label("Setup", systemImage: "slider.horizontal.3")
+            }
+            .buttonStyle(Mania4KSecondaryButtonStyle())
+        }
+        .padding(18)
+        .frame(maxWidth: 360)
+        .background(Mania4KStyle.panelFill.opacity(0.96), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Mania4KStyle.borderStrong, lineWidth: 1)
+        )
+    }
+
+    private func judgementBurst(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 34, weight: .black, design: .rounded))
+            .foregroundStyle(text == "Miss" ? Mania4KStyle.accentRed : Mania4KStyle.textPrimary)
+            .shadow(color: Color.black.opacity(0.45), radius: 12, x: 0, y: 8)
+    }
+
+    private func playFieldWidth(for availableWidth: CGFloat) -> CGFloat {
+        min(max(availableWidth * 0.58, 280), 620)
+    }
+
+    private var accuracyText: String {
+        formatAccuracy(model.playFrame?.score.accuracy ?? 1)
+    }
+
+    private var comboText: String {
+        String(model.playFrame?.score.combo ?? 0)
+    }
+
+    private var latestJudgementText: String {
+        model.playFrame?.latestJudgement?.judgement.rawValue ?? "-"
+    }
+
+    private var subtitleText: String {
+        guard let configuration = model.activeConfiguration else {
+            return "--"
+        }
+
+        return "\(configuration.starDifficulty.formatted(.number.precision(.fractionLength(1)))) stars  \(configuration.scrollSpeed.formatted(.number.precision(.fractionLength(1))))x"
+    }
+
+    private func formatAccuracy(_ accuracy: Double) -> String {
+        (accuracy * 100).formatted(.number.precision(.fractionLength(2))) + "%"
+    }
+
+    private func noteColor(for lane: Int) -> Color {
+        switch lane {
+        case 0:
+            return Color(red: 0.96, green: 0.67, blue: 0.21)
+        case 1:
+            return Color(red: 0.26, green: 0.70, blue: 0.64)
+        case 2:
+            return Color(red: 0.89, green: 0.35, blue: 0.37)
+        default:
+            return Color(red: 0.56, green: 0.63, blue: 0.94)
+        }
+    }
 }
 
-private struct PlaceholderLane: View {
-    let index: Int
+private struct Mania4KLiveLaneView: View {
+    let lane: Mania4KLane
+    let frame: Mania4KPlayFrame?
+    let laneState: Mania4KLaneState?
+    let noteColor: Color
 
     var body: some View {
         GeometryReader { proxy in
+            let receptorY = proxy.size.height - 78
+
             ZStack(alignment: .bottom) {
                 Rectangle()
-                    .fill(Mania4KStyle.laneFill)
+                    .fill((laneState?.isPressed == true ? noteColor.opacity(0.18) : Mania4KStyle.laneFill))
 
-                // Placeholder notes: real .osu parsing and time-based note placement are the next implementation slice.
-                VStack(spacing: 46) {
-                    note(height: index == 2 ? 130 : 44)
-                    note(height: 44)
-                    note(height: index == 1 ? 92 : 44)
+                if let frame {
+                    ForEach(frame.visibleObjects.filter { $0.lane == lane }) { object in
+                        visibleObject(object, frame: frame, laneSize: proxy.size, receptorY: receptorY)
+                    }
                 }
-                .frame(maxHeight: proxy.size.height * 0.72, alignment: .top)
-                .padding(.bottom, 94)
 
-                Rectangle()
-                    .fill(noteColor.opacity(0.78))
-                    .frame(height: 3)
-                    .padding(.bottom, 80)
+                receptorLine
 
                 RoundedRectangle(cornerRadius: 5)
-                    .fill(Mania4KStyle.receptorFill)
+                    .fill(laneState?.isPressed == true ? noteColor.opacity(0.42) : Mania4KStyle.receptorFill)
                     .frame(height: 58)
                     .overlay(
                         Text(keyLabel)
@@ -582,30 +727,115 @@ private struct PlaceholderLane: View {
     }
 
     private var keyLabel: String {
-        ["D", "F", "J", "K"][index]
+        ["D", "F", "J", "K"][lane.rawValue]
     }
 
-    private func note(height: CGFloat) -> some View {
+    private var receptorLine: some View {
+        Rectangle()
+            .fill(noteColor.opacity(0.82))
+            .frame(height: 3)
+            .padding(.bottom, 76)
+    }
+
+    @ViewBuilder
+    private func visibleObject(
+        _ object: Mania4KVisibleObject,
+        frame: Mania4KPlayFrame,
+        laneSize: CGSize,
+        receptorY: CGFloat
+    ) -> some View {
+        let startY = yPosition(for: object.startTimeMs, frame: frame, laneHeight: laneSize.height, receptorY: receptorY)
+        let isHold = object.endTimeMs != nil || object.state == .holding || object.state == .openEnded
+        let opacity = object.state == .resolved ? 0.28 : (object.state == .missedButVisible ? 0.36 : 0.96)
+
+        if isHold {
+            let endY = yPosition(for: object.endTimeMs ?? (frame.chartTimeMs + frame.scrollTimeMs), frame: frame, laneHeight: laneSize.height, receptorY: receptorY)
+            let topY = min(startY, endY)
+            let bottomY = max(startY, endY)
+            let bodyHeight = max(bottomY - topY, 12)
+
+            RoundedRectangle(cornerRadius: 4)
+                .fill(noteColor.opacity(0.42 * opacity))
+                .frame(width: max(laneSize.width * 0.52, 24), height: bodyHeight)
+                .position(x: laneSize.width / 2, y: topY + bodyHeight / 2)
+
+            note(height: 18, opacity: opacity)
+                .position(x: laneSize.width / 2, y: endY)
+
+            note(height: 22, opacity: opacity)
+                .position(x: laneSize.width / 2, y: startY)
+        } else {
+            note(height: 24, opacity: opacity)
+                .position(x: laneSize.width / 2, y: startY)
+        }
+    }
+
+    private func note(height: CGFloat, opacity: Double) -> some View {
         RoundedRectangle(cornerRadius: 5)
-            .fill(noteColor)
+            .fill(noteColor.opacity(opacity))
             .frame(height: height)
             .padding(.horizontal, 8)
             .shadow(color: noteColor.opacity(0.45), radius: 10, x: 0, y: 0)
     }
 
-    private var noteColor: Color {
-        switch index {
-        case 0:
-            return Color(red: 0.96, green: 0.67, blue: 0.21)
-        case 1:
-            return Color(red: 0.26, green: 0.70, blue: 0.64)
-        case 2:
-            return Color(red: 0.89, green: 0.35, blue: 0.37)
-        default:
-            return Color(red: 0.56, green: 0.63, blue: 0.94)
+    private func yPosition(for objectTimeMs: Double, frame: Mania4KPlayFrame, laneHeight: CGFloat, receptorY: CGFloat) -> CGFloat {
+        let travelHeight = max(receptorY - 18, 1)
+        let progress = (objectTimeMs - frame.chartTimeMs) / max(frame.scrollTimeMs, 1)
+        return receptorY - CGFloat(progress) * travelHeight
+    }
+}
+
+#if os(macOS)
+private struct Mania4KKeyboardCaptureView: NSViewRepresentable {
+    let model: Mania4KPlaySessionModel
+
+    func makeNSView(context: Context) -> KeyboardView {
+        let view = KeyboardView()
+        view.model = model
+        return view
+    }
+
+    func updateNSView(_ nsView: KeyboardView, context: Context) {
+        nsView.model = model
+        DispatchQueue.main.async {
+            nsView.window?.makeFirstResponder(nsView)
+        }
+    }
+
+    final class KeyboardView: NSView {
+        var model: Mania4KPlaySessionModel?
+
+        override var acceptsFirstResponder: Bool {
+            true
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            window?.makeFirstResponder(self)
+        }
+
+        override func keyDown(with event: NSEvent) {
+            guard let key = event.charactersIgnoringModifiers else {
+                return
+            }
+
+            Task {
+                await model?.handleKeyboardInput(key: key, isPressed: true, isRepeat: event.isARepeat)
+            }
+        }
+
+        override func keyUp(with event: NSEvent) {
+            guard let key = event.charactersIgnoringModifiers else {
+                return
+            }
+
+            Task {
+                await model?.handleKeyboardInput(key: key, isPressed: false, isRepeat: false)
+            }
         }
     }
 }
+#endif
 
 // Placeholder visual theme for the first playable mock. Replace with shared tokens once Pulsefield has a settled design system.
 private enum Mania4KStyle {
@@ -738,14 +968,4 @@ private extension View {
 
 #Preview("Setup") {
     Mania4KPlayExperienceView(model: Mania4KPlaySessionModel())
-}
-
-#Preview("Play Placeholder") {
-    let model = Mania4KPlaySessionModel(
-        beatmapFileURL: URL(fileURLWithPath: "/tmp/sample.osu"),
-        audioFileURL: URL(fileURLWithPath: "/tmp/sample.mp3"),
-        starDifficulty: 5.6
-    )
-    _ = model.startPlay()
-    return Mania4KPlayExperienceView(model: model)
 }
