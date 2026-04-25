@@ -458,6 +458,52 @@ final class LocalAudioLibraryIndexerTests: XCTestCase {
         XCTAssertEqual(assets.first { $0.id == replacementID }?.status, .ready)
     }
 
+    func testFailedReplacementUpsertPreservesExistingAssetStatus() async throws {
+        let workingDirectory = try makeTemporaryDirectory()
+        let songPath = workingDirectory.appendingPathComponent("same-path.mp3").path
+        let directoryID = UUID(uuidString: "00000000-0000-0000-0000-000000000801")!
+        let missingDirectoryID = UUID(uuidString: "00000000-0000-0000-0000-000000000802")!
+        let originalID = UUID(uuidString: "00000000-0000-0000-0000-000000000803")!
+        let replacementID = UUID(uuidString: "00000000-0000-0000-0000-000000000804")!
+        let database = try LocalAudioLibraryDatabase.openInMemory()
+
+        try await database.upsertDirectory(
+            MusicLibraryDirectory(
+                id: directoryID,
+                fileURLBookmark: nil,
+                displayPath: workingDirectory.path,
+                recursive: false,
+                addedAt: Date(timeIntervalSince1970: 1_710_000_000),
+                lastScanStartedAt: nil,
+                lastScanFinishedAt: nil
+            )
+        )
+        await database.upsertAsset(
+            makeAssetForDatabase(
+                id: originalID,
+                directoryID: directoryID,
+                displayPath: songPath,
+                sha256: "original",
+                title: "Original"
+            )
+        )
+
+        await database.upsertAsset(
+            makeAssetForDatabase(
+                id: replacementID,
+                directoryID: missingDirectoryID,
+                displayPath: songPath,
+                sha256: "replacement",
+                title: "Replacement"
+            )
+        )
+
+        let assets = await database.listAssets()
+        XCTAssertEqual(assets.count, 1)
+        XCTAssertEqual(assets.first { $0.id == originalID }?.status, .ready)
+        XCTAssertNil(assets.first { $0.id == replacementID })
+    }
+
     func testMetadataExtractorReadsITunesMetadataAndPreservesArtistNames() async throws {
         let workingDirectory = try makeTemporaryDirectory()
         let sourceURL = workingDirectory.appendingPathComponent("source.wav")

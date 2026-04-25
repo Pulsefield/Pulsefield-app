@@ -413,6 +413,17 @@ public actor LocalAudioLibraryDatabase {
     }
 
     private func upsertAssetThrowing(_ asset: LocalAudioAsset) throws {
+        try Self.executeRaw("BEGIN TRANSACTION", on: connection.pointer)
+        do {
+            try upsertAssetRows(asset)
+            try Self.executeRaw("COMMIT", on: connection.pointer)
+        } catch {
+            try? Self.executeRaw("ROLLBACK", on: connection.pointer)
+            throw error
+        }
+    }
+
+    private func upsertAssetRows(_ asset: LocalAudioAsset) throws {
         try markConflictingAssetsByDisplayPathMissingIfNeeded(asset)
 
         let status = asset.status.databaseValue
