@@ -458,7 +458,7 @@ final class LocalAudioLibraryIndexerTests: XCTestCase {
         XCTAssertEqual(assets.first { $0.id == replacementID }?.status, .ready)
     }
 
-    func testMetadataExtractorReadsFormatSpecificITunesMetadata() async throws {
+    func testMetadataExtractorReadsITunesMetadataAndPreservesArtistNames() async throws {
         let workingDirectory = try makeTemporaryDirectory()
         let sourceURL = workingDirectory.appendingPathComponent("source.wav")
         let taggedURL = workingDirectory.appendingPathComponent("tagged.m4a")
@@ -467,6 +467,7 @@ final class LocalAudioLibraryIndexerTests: XCTestCase {
 
         let metadata = try await LocalAudioMetadataExtractor().extract(from: taggedURL)
 
+        XCTAssertEqual(metadata.artists, ["Tyler, The Creator"])
         XCTAssertEqual(metadata.albumArtist, "Format Album Artist")
         XCTAssertEqual(metadata.trackNumber, 7)
         XCTAssertEqual(metadata.discNumber, 2)
@@ -576,6 +577,7 @@ final class LocalAudioLibraryIndexerTests: XCTestCase {
         let asset = AVURLAsset(url: sourceURL)
         let exportSession = try XCTUnwrap(AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A))
         exportSession.metadata = [
+            metadataItem(identifier: .iTunesMetadataArtist, value: "Tyler, The Creator"),
             metadataItem(identifier: .iTunesMetadataAlbumArtist, value: "Format Album Artist"),
             metadataItem(identifier: .iTunesMetadataTrackNumber, value: "7/12"),
             metadataItem(identifier: .iTunesMetadataDiscNumber, value: "2/3")

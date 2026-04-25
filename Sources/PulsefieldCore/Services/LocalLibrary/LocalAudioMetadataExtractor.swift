@@ -68,7 +68,7 @@ public actor LocalAudioMetadataExtractor: LocalAudioMetadataExtracting {
         return ExtractedAudioMetadata(
             durationMS: Int((durationSeconds * 1_000).rounded()),
             title: title,
-            artists: splitArtists(artist),
+            artists: artistValues(artist),
             album: album,
             albumArtist: albumArtist,
             trackNumber: trackNumber,
@@ -162,14 +162,12 @@ public actor LocalAudioMetadataExtractor: LocalAudioMetadataExtracting {
         value.split { !$0.isNumber }.first.map(String.init).flatMap(Int.init)
     }
 
-    private func splitArtists(_ value: String?) -> [String] {
-        guard let value else {
+    private func artistValues(_ value: String?) -> [String] {
+        guard let value = value?.trimmedNonEmpty else {
             return []
         }
 
-        return value
-            .components(separatedBy: CharacterSet(charactersIn: ",;&"))
-            .compactMap(\.trimmedNonEmpty)
+        return [value]
     }
 }
 
