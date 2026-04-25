@@ -89,7 +89,7 @@ public actor LocalTrackResolver: LocalTrackResolving {
             }
         }
 
-        let fileNameScore = fuzzyScore(trackTitle, asset.fileName.normalizedFileNameSearchText)
+        let fileNameScore = fileNameScore(trackTitle: trackTitle, fileName: asset.fileName.normalizedFileNameSearchText)
         if fileNameScore >= 0.86 {
             let fileNameWeight = assetTitle.isEmpty && durationDeltaMS.map({ $0 <= 8_000 }) == true ? 0.62 : 0.08
             confidence += fileNameWeight * fileNameScore
@@ -162,6 +162,27 @@ public actor LocalTrackResolver: LocalTrackResolving {
             }
         }
         return best
+    }
+
+    private func fileNameScore(trackTitle: String, fileName: String) -> Double {
+        max(fuzzyScore(trackTitle, fileName), contiguousTokenScore(trackTitle, in: fileName))
+    }
+
+    private func contiguousTokenScore(_ query: String, in candidate: String) -> Double {
+        let queryTokens = query.split(separator: " ")
+        let candidateTokens = candidate.split(separator: " ")
+        guard !queryTokens.isEmpty, queryTokens.count <= candidateTokens.count else {
+            return 0
+        }
+
+        for startIndex in 0...(candidateTokens.count - queryTokens.count) {
+            let candidateSlice = candidateTokens[startIndex..<(startIndex + queryTokens.count)]
+            if candidateSlice.elementsEqual(queryTokens) {
+                return 1
+            }
+        }
+
+        return 0
     }
 
     private func fuzzyScore(_ left: String, _ right: String) -> Double {

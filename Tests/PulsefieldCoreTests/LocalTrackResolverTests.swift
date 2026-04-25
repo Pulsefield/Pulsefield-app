@@ -208,6 +208,44 @@ final class LocalTrackResolverTests: XCTestCase {
         } == true)
     }
 
+    func testResolveRequiresConfirmationForPrefixedFilenameAndDurationWhenMetadataIsMissing() async throws {
+        let database = try LocalAudioLibraryDatabase.openInMemory()
+        let directoryID = UUID(uuidString: "00000000-0000-0000-0000-000000000113")!
+        let asset = makeAsset(
+            directoryID: directoryID,
+            title: nil,
+            artists: [],
+            durationMS: 180_000,
+            fileName: "01 - Pulsefield - Night Drive.mp3"
+        )
+
+        try await database.upsertDirectory(makeDirectory(id: directoryID))
+        await database.upsertAsset(asset)
+
+        let resolver = LocalTrackResolver(database: database)
+        let results = await resolver.resolve(
+            CanonicalTrack(
+                title: "Night Drive",
+                artists: [],
+                album: nil,
+                durationMS: 180_900,
+                isrc: nil,
+                providerIDs: [.init(provider: .manual, value: "manual:night-drive")]
+            )
+        )
+
+        XCTAssertEqual(results.first?.asset.id, asset.id)
+        XCTAssertEqual(results.first?.decision, .requiresUserConfirmation)
+        XCTAssertGreaterThanOrEqual(results.first?.confidence ?? 0, 0.70)
+        XCTAssertLessThan(results.first?.confidence ?? 1, 0.90)
+        XCTAssertTrue(results.first?.evidence.contains { evidence in
+            if case .fileNameFuzzy(let score) = evidence, score >= 0.99 {
+                return true
+            }
+            return false
+        } == true)
+    }
+
     private func makeDirectory(id: UUID) -> MusicLibraryDirectory {
         MusicLibraryDirectory(
             id: id,
