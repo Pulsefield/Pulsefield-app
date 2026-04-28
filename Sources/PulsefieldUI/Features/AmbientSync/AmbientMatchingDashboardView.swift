@@ -182,7 +182,7 @@ public final class AmbientMatchingDashboardModel {
     }
 
     private func isCurrentMatchingRequest(asset: LocalAudioAsset, index: LocalAudioSyncIndex) -> Bool {
-        selectedAsset?.id == asset.id && syncIndex?.assetID == index.assetID
+        selectedAsset?.id == asset.id && syncIndex == index
     }
 
     private func clearSelectionScopedState() {

@@ -124,25 +124,95 @@ public actor LocalAudioSyncIndexer: LocalAudioSyncIndexing {
         let file = try AVAudioFile(forReading: url)
         let format = file.processingFormat
         let sampleRate = format.sampleRate
-        guard let buffer = AVAudioPCMBuffer(
-            pcmFormat: format,
-            frameCapacity: AVAudioFrameCount(file.length)
-        ) else {
-            return AmbientSyncFeatureSet.empty(sampleRate: sampleRate)
-        }
-
-        try file.read(into: buffer)
-        let samples = Self.monoSamples(from: buffer)
-        var features = featureExtractor.extract(
-            samples: samples,
-            sampleRate: sampleRate,
-            frameHopMS: frameHopMS,
-            previousFrame: .silence
+        let decodedFrameCount = Int(file.length)
+        let processingSampleCount = AmbientSyncFeatureExtractor.processingSampleCount(
+            sourceFrameCount: decodedFrameCount,
+            sourceSampleRate: sampleRate
         )
+        var features = try featureExtractor.extractProcessingSamples(
+            processingSampleCount: processingSampleCount,
+            frameHopMS: frameHopMS
+        ) { range in
+            try Self.processingSamples(
+                in: range,
+                from: file,
+                format: format,
+                sourceSampleRate: sampleRate,
+                sourceFrameCount: decodedFrameCount
+            )
+        }
         features.originalSampleRate = sampleRate
         features.originalChannelCount = Int(format.channelCount)
-        features.decodedFrameCount = Int(file.length)
+        features.decodedFrameCount = decodedFrameCount
         return features
+    }
+
+    private nonisolated static func processingSamples(
+        in range: Range<Int>,
+        from file: AVAudioFile,
+        format: AVAudioFormat,
+        sourceSampleRate: Double,
+        sourceFrameCount: Int
+    ) throws -> [Float] {
+        guard !range.isEmpty, sourceFrameCount > 0 else {
+            return []
+        }
+
+        let targetSampleRate = AmbientSyncFeatureExtractor.processingSampleRate
+        if abs(sourceSampleRate - targetSampleRate) <= 0.5 {
+            let startFrame = min(sourceFrameCount, max(0, range.lowerBound))
+            let endFrame = min(sourceFrameCount, max(startFrame, range.upperBound))
+            return try readMonoSamples(
+                from: file,
+                format: format,
+                startFrame: startFrame,
+                frameCount: endFrame - startFrame
+            )
+        }
+
+        let lowerSourcePosition = Double(range.lowerBound) * sourceSampleRate / targetSampleRate
+        let upperSourcePosition = Double(max(range.lowerBound, range.upperBound - 1)) * sourceSampleRate / targetSampleRate
+        let sourceStartFrame = min(sourceFrameCount - 1, max(0, Int(floor(lowerSourcePosition))))
+        let sourceEndFrame = min(sourceFrameCount, max(sourceStartFrame + 1, Int(ceil(upperSourcePosition)) + 2))
+        let sourceSamples = try readMonoSamples(
+            from: file,
+            format: format,
+            startFrame: sourceStartFrame,
+            frameCount: sourceEndFrame - sourceStartFrame
+        )
+        guard !sourceSamples.isEmpty else {
+            return Array(repeating: 0, count: range.count)
+        }
+
+        return range.map { processingIndex in
+            let sourcePosition = Double(processingIndex) * sourceSampleRate / targetSampleRate
+            let lowerFrame = min(sourceFrameCount - 1, max(0, Int(floor(sourcePosition))))
+            let upperFrame = min(sourceFrameCount - 1, lowerFrame + 1)
+            let lowerIndex = min(sourceSamples.count - 1, max(0, lowerFrame - sourceStartFrame))
+            let upperIndex = min(sourceSamples.count - 1, max(0, upperFrame - sourceStartFrame))
+            let fraction = Float(sourcePosition - Double(lowerFrame))
+            return sourceSamples[lowerIndex] + ((sourceSamples[upperIndex] - sourceSamples[lowerIndex]) * fraction)
+        }
+    }
+
+    private nonisolated static func readMonoSamples(
+        from file: AVAudioFile,
+        format: AVAudioFormat,
+        startFrame: Int,
+        frameCount: Int
+    ) throws -> [Float] {
+        guard frameCount > 0,
+              let buffer = AVAudioPCMBuffer(
+                pcmFormat: format,
+                frameCapacity: AVAudioFrameCount(frameCount)
+              )
+        else {
+            return []
+        }
+
+        file.framePosition = AVAudioFramePosition(startFrame)
+        try file.read(into: buffer, frameCount: AVAudioFrameCount(frameCount))
+        return monoSamples(from: buffer)
     }
 
     private nonisolated static func monoSamples(from buffer: AVAudioPCMBuffer) -> [Float] {
@@ -180,8 +250,9 @@ public actor LocalAudioSyncIndexer: LocalAudioSyncIndexing {
         chromaURL: URL,
         energyURL: URL
     ) throws -> SyncIndexManifest {
-        let resourceValues = try? assetURL.resourceValues(forKeys: [.contentModificationDateKey])
+        let resourceValues = try? assetURL.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
         let modificationDate = resourceValues?.contentModificationDate ?? Date(timeIntervalSince1970: 0)
+        let fileSizeBytes = Int64(resourceValues?.fileSize ?? Int(asset.fileSizeBytes))
         let frameCount = features.frameCount
         let sampleRate = Int(features.sampleRate.rounded())
         let hopSize = Int(frameHopMS.rounded())
@@ -199,9 +270,9 @@ public actor LocalAudioSyncIndexer: LocalAudioSyncIndexing {
                 durationMS: asset.durationMS
             ),
             source: SyncIndexSourceIdentity(
-                fileSizeBytes: asset.fileSizeBytes,
+                fileSizeBytes: fileSizeBytes,
                 contentModificationDate: ISO8601DateFormatter().string(from: modificationDate),
-                fullFileSHA256: asset.sha256,
+                fullFileSHA256: try sha256Hex(contentsOf: assetURL),
                 decodedFrameCount: features.decodedFrameCount,
                 decodedDurationMS: asset.durationMS,
                 originalSampleRate: Int(features.originalSampleRate.rounded()),
@@ -273,7 +344,7 @@ public actor LocalAudioSyncIndexer: LocalAudioSyncIndexing {
     }
 
     private func sha256Hex(contentsOf url: URL) throws -> String {
-        SyncIndexManifestValidation.sha256Hex(data: try Data(contentsOf: url))
+        try SyncIndexManifestValidation.sha256Hex(contentsOf: url)
     }
 
     private static func defaultRootDirectory() -> URL {
@@ -326,6 +397,19 @@ struct AmbientSyncFeatureExtractor: Sendable {
         case unavailable
     }
 
+    static func processingSampleCount(sourceFrameCount: Int, sourceSampleRate: Double) -> Int {
+        guard sourceFrameCount > 0, sourceSampleRate > 0 else {
+            return 0
+        }
+
+        if abs(sourceSampleRate - processingSampleRate) <= 0.5 {
+            return sourceFrameCount
+        }
+
+        let duration = Double(sourceFrameCount) / sourceSampleRate
+        return max(1, Int((duration * processingSampleRate).rounded()))
+    }
+
     func extract(
         samples: [Float],
         sampleRate: Double,
@@ -341,8 +425,32 @@ struct AmbientSyncFeatureExtractor: Sendable {
             sourceSampleRate: sampleRate,
             targetSampleRate: Self.processingSampleRate
         )
+        var features = extractProcessingSamples(
+            processingSampleCount: processingSamples.count,
+            frameHopMS: frameHopMS,
+            previousFrame: previousFrame
+        ) { range in
+            Array(processingSamples[range])
+        }
+        features.originalSampleRate = sampleRate
+        features.originalChannelCount = 1
+        features.decodedFrameCount = samples.count
+        return features
+    }
+
+    func extractProcessingSamples(
+        processingSampleCount: Int,
+        frameHopMS: Double,
+        previousFrame: PreviousFramePolicy = .silence,
+        samplesInRange: (Range<Int>) throws -> [Float]
+    ) rethrows -> AmbientSyncFeatureSet {
+        guard frameHopMS > 0, processingSampleCount > 0 else {
+            return .empty(sampleRate: Self.processingSampleRate)
+        }
+
         let hopFrames = max(1, Int(Self.processingSampleRate * frameHopMS / 1_000))
         let window = hannWindow(count: Self.fftSize)
+        let samplesPerRequest = max(hopFrames, Self.fftSize)
         var onsetFlux: [Double] = []
         var logMel: [Double] = []
         var chroma: [Double] = []
@@ -353,12 +461,14 @@ struct AmbientSyncFeatureExtractor: Sendable {
         var hasPreviousFrame = previousFrame == .silence
         var offset = 0
 
-        while offset < processingSamples.count {
-            let frameEnd = min(offset + hopFrames, processingSamples.count)
-            let rms = rootMeanSquare(processingSamples[offset..<frameEnd])
+        while offset < processingSampleCount {
+            let rangeEnd = min(offset + samplesPerRequest, processingSampleCount)
+            let frameSamples = try samplesInRange(offset..<rangeEnd)
+            let rmsFrameCount = min(hopFrames, frameSamples.count)
+            let rms = rootMeanSquare(frameSamples.prefix(rmsFrameCount))
             let spectrum = logMagnitudeSpectrum(
-                samples: processingSamples,
-                start: offset,
+                samples: frameSamples,
+                start: 0,
                 window: window,
                 sampleCount: Self.fftSize
             )
@@ -409,9 +519,9 @@ struct AmbientSyncFeatureExtractor: Sendable {
             landmarkRecordCount: landmarkWords.count / 2,
             frameCount: energy.count,
             sampleRate: Self.processingSampleRate,
-            originalSampleRate: sampleRate,
+            originalSampleRate: Self.processingSampleRate,
             originalChannelCount: 1,
-            decodedFrameCount: samples.count
+            decodedFrameCount: processingSampleCount
         )
     }
 
@@ -687,6 +797,7 @@ struct ValidatedSyncIndexFiles {
 enum SyncIndexManifestValidation {
     static let currentSchemaVersion = 2
     static let currentFeatureExtractorVersion = "ambient-sync-v2"
+    static let processingSampleRate = Int(AmbientSyncFeatureExtractor.processingSampleRate.rounded())
     static let onsetFluxDims = AmbientSyncFeatureExtractor.onsetFluxDimensions
     static let logMelDims = AmbientSyncFeatureExtractor.logMelDimensions
     static let chromaDims = AmbientSyncFeatureExtractor.chromaDimensions
@@ -755,6 +866,8 @@ enum SyncIndexManifestValidation {
         }
 
         guard manifest.processing.fftSize == AmbientSyncFeatureExtractor.fftSize,
+              manifest.processing.processingSampleRate == processingSampleRate,
+              manifest.processing.hopSize > 0,
               manifest.processing.window == "hann",
               manifest.processing.monoMix == "average"
         else {
@@ -773,7 +886,7 @@ enum SyncIndexManifestValidation {
         }
 
         let expectedSettingsHash = settingsHash(
-            processingSampleRate: manifest.processing.processingSampleRate,
+            processingSampleRate: processingSampleRate,
             hopSizeMS: Double(manifest.processing.hopSize)
         )
         guard manifest.settingsHash == expectedSettingsHash else {
@@ -843,8 +956,11 @@ enum SyncIndexManifestValidation {
             throw AmbientSyncStartError.indexInvalid
         }
 
-        let root = directory.standardizedFileURL
-        let url = directory.appendingPathComponent(path).standardizedFileURL
+        let root = directory.standardizedFileURL.resolvingSymlinksInPath()
+        let url = directory
+            .appendingPathComponent(path)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
         let rootPath = root.path.hasSuffix("/") ? root.path : "\(root.path)/"
         guard url.path.hasPrefix(rootPath) else {
             throw AmbientSyncStartError.indexInvalid
@@ -854,6 +970,19 @@ enum SyncIndexManifestValidation {
 
     static func sha256Hex(data: Data) -> String {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func sha256Hex(contentsOf url: URL) throws -> String {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer {
+            try? handle.close()
+        }
+
+        var hasher = SHA256()
+        while let data = try handle.read(upToCount: 1_048_576), !data.isEmpty {
+            hasher.update(data: data)
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     static func date(fromISO8601 string: String) -> Date? {

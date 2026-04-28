@@ -116,7 +116,7 @@ public actor FeatureCorrelationSyncEstimator: AmbientSyncEstimating {
     private let hardRelockThresholdMS: Double
     private let lostWindowLimit: Int
     private let wideRelockConfidenceMargin = 0.001
-    private let stableTrackingRadiusMS = 300.0
+    private let stableTrackingRadiusMS = 100.0
     private let uncertainTrackingRadiusMS = 700.0
     private let unstableTrackingRadiusMS = 1_000.0
     private let minimumClockObservationSpanMS = 500.0
@@ -295,7 +295,7 @@ public actor FeatureCorrelationSyncEstimator: AmbientSyncEstimating {
                 explanation: "The current microphone window does not contain enough reliable sync evidence."
             )
         }
-        let wideComparisonMatch = shouldSearchNearPredictedReference
+        let wideComparisonMatch = shouldRunWideRelockComparison(for: match)
             ? bestCorrelationOffset(query: queryFeatures)
             : nil
         let diagnosticsMatch = matchWithWideDiagnosticAlternatives(
@@ -541,6 +541,23 @@ public actor FeatureCorrelationSyncEstimator: AmbientSyncEstimating {
         switch state {
         case .locked, .drifting:
             return previousEstimate != nil
+        case .idle, .indexing, .ready, .listening, .locking, .relocking, .lost, .failed:
+            return false
+        }
+    }
+
+    private func shouldRunWideRelockComparison(for match: CorrelationMatch) -> Bool {
+        guard shouldSearchNearPredictedReference else {
+            return false
+        }
+
+        switch state {
+        case .drifting:
+            return true
+        case .locked:
+            let weakLockedMatchThreshold = min(0.90, minimumLockConfidence + 0.10)
+            return match.confidence < weakLockedMatchThreshold
+                || (localLandmarks.isEmpty && match.confidence < 0.95)
         case .idle, .indexing, .ready, .listening, .locking, .relocking, .lost, .failed:
             return false
         }

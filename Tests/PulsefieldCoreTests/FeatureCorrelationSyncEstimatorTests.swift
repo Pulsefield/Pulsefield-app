@@ -923,8 +923,8 @@ final class FeatureCorrelationSyncEstimatorTests: XCTestCase {
             0.2, 0.8, 0.1, 0.4,
             0.05,
             0.3, 0.9, 0.2, 0.6,
-            0.1, 0.7, 0.2, 0.5,
-            0.15, 0.25, 0.35
+            0.15, 0.75, 0.15, 0.45,
+            0, 0, 0
         ]
         let asset = makeAsset(durationMS: 1_600)
         let index = try makeIndex(values: values, durationMS: 1_600)
@@ -1449,7 +1449,7 @@ final class FeatureCorrelationSyncEstimatorTests: XCTestCase {
             directory: directory,
             assetID: assetID,
             durationMS: durationMS,
-            sampleRate: sampleRate,
+            sampleRate: AmbientSyncFeatureExtractor.processingSampleRate,
             frameHopMS: manifestFrameHopMS ?? frameHopMS,
             sourceSHA256: sourceSHA256,
             featureURL: envelopeURL,
@@ -1463,7 +1463,7 @@ final class FeatureCorrelationSyncEstimatorTests: XCTestCase {
         return LocalAudioSyncIndex(
             assetID: assetID,
             durationMS: durationMS,
-            sampleRate: sampleRate,
+            sampleRate: AmbientSyncFeatureExtractor.processingSampleRate,
             frameHopMS: frameHopMS,
             onsetEnvelopeURL: envelopeURL,
             spectralSummaryURL: nil,

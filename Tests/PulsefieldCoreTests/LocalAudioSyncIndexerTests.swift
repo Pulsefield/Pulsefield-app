@@ -279,6 +279,61 @@ final class LocalAudioSyncIndexerTests: XCTestCase {
         XCTAssertNil(loadedIndex)
     }
 
+    func testLoadIndexRejectsManifestFeatureSymlinksOutsideAssetDirectory() async throws {
+        let workingDirectory = try makeTemporaryDirectory()
+        let audioURL = workingDirectory.appendingPathComponent("reference.wav")
+        let indexRoot = workingDirectory.appendingPathComponent("indexes", isDirectory: true)
+        try writeSilentWAV(to: audioURL)
+
+        let asset = LocalAudioAsset(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000511")!,
+            directoryID: UUID(uuidString: "00000000-0000-0000-0000-000000000512")!,
+            fileURLBookmark: nil,
+            displayPath: audioURL.path,
+            fileName: audioURL.lastPathComponent,
+            fileExtension: audioURL.pathExtension,
+            fileSizeBytes: Int64((try audioURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0),
+            sha256: sha256Hex(Data("synthetic-reference".utf8)),
+            durationMS: 200,
+            title: "Reference",
+            artists: ["Pulsefield"],
+            album: nil,
+            albumArtist: nil,
+            trackNumber: nil,
+            discNumber: nil,
+            isrc: nil,
+            releaseYear: nil,
+            indexedAt: Date(timeIntervalSince1970: 1_710_000_000),
+            lastSeenAt: Date(timeIntervalSince1970: 1_710_000_000),
+            status: .ready
+        )
+        let indexer = LocalAudioSyncIndexer(rootDirectory: indexRoot, frameHopMS: 50)
+
+        let index = try await indexer.buildIndex(for: asset)
+        let assetDirectory = indexRoot.appendingPathComponent(asset.id.uuidString, isDirectory: true)
+        let manifestURL = assetDirectory.appendingPathComponent("manifest.json")
+        let escapedOnsetURL = indexRoot.appendingPathComponent("escaped-onset.f32")
+        let symlinkURL = assetDirectory
+            .appendingPathComponent("features", isDirectory: true)
+            .appendingPathComponent("linked-onset.f32")
+        try FileManager.default.copyItem(at: index.onsetEnvelopeURL, to: escapedOnsetURL)
+        try FileManager.default.createSymbolicLink(at: symlinkURL, withDestinationURL: escapedOnsetURL)
+
+        var manifest = try manifestJSON(at: manifestURL)
+        var featureFiles = try XCTUnwrap(manifest["featureFiles"] as? [String: Any])
+        var denseOnsetFlux = try XCTUnwrap(featureFiles["denseOnsetFlux"] as? [String: Any])
+        denseOnsetFlux["path"] = "features/linked-onset.f32"
+        denseOnsetFlux["sha256"] = try sha256Hex(Data(contentsOf: escapedOnsetURL))
+        featureFiles["denseOnsetFlux"] = denseOnsetFlux
+        manifest["featureFiles"] = featureFiles
+        let manifestData = try JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys])
+        try manifestData.write(to: manifestURL, options: [.atomic])
+
+        let loadedIndex = await indexer.loadIndex(for: asset.id)
+
+        XCTAssertNil(loadedIndex)
+    }
+
     func testLoadIndexUsesManifestCreationDate() async throws {
         let workingDirectory = try makeTemporaryDirectory()
         let audioURL = workingDirectory.appendingPathComponent("reference.wav")
