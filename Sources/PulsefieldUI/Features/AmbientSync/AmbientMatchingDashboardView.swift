@@ -15,8 +15,9 @@ public final class AmbientMatchingDashboardModel {
         }
     }
     public var syncIndex: LocalAudioSyncIndex?
-    public var state: AmbientSyncState = .idle
+    public var state: AmbientSyncEngineState = .idle
     public var currentEstimate: SyncEstimate?
+    public var currentDiagnostics: AmbientMatchDiagnostics?
     public var microphonePermissionStatus: MicrophonePermissionStatus = .undetermined
     public var errorMessage: String?
 
@@ -58,19 +59,19 @@ public final class AmbientMatchingDashboardModel {
 
         Task {
             do {
-                state = .preparingIndex
+                state = .indexing
                 let index = try await syncIndexer.buildIndex(for: selectedAsset)
                 guard self.selectedAsset?.id == selectedAsset.id else {
                     return
                 }
                 syncIndex = index
-                state = .idle
+                state = .ready
                 errorMessage = nil
             } catch {
                 guard self.selectedAsset?.id == selectedAsset.id else {
                     return
                 }
-                state = .failed(error.localizedDescription)
+                state = .failed
                 errorMessage = error.localizedDescription
             }
         }
@@ -101,6 +102,7 @@ public final class AmbientMatchingDashboardModel {
             guard permissionStatus == .authorized else {
                 state = .idle
                 currentEstimate = nil
+                currentDiagnostics = nil
                 errorMessage = "Microphone access is required before ambient matching can start."
                 return
             }
@@ -124,7 +126,8 @@ public final class AmbientMatchingDashboardModel {
                     return
                 }
 
-                state = .failed(error.localizedDescription)
+                state = .failed
+                currentDiagnostics = await estimator.currentDiagnostics()
                 errorMessage = error.localizedDescription
             }
         }
@@ -133,12 +136,15 @@ public final class AmbientMatchingDashboardModel {
     public func stop() {
         Task {
             await estimator.stop()
+            currentEstimate = nil
+            currentDiagnostics = nil
             await refreshState()
         }
     }
 
     public func refreshEstimate() async {
         currentEstimate = await estimator.currentEstimate()
+        currentDiagnostics = await estimator.currentDiagnostics()
         await refreshState()
     }
 
@@ -182,6 +188,7 @@ public final class AmbientMatchingDashboardModel {
     private func clearSelectionScopedState() {
         syncIndex = nil
         currentEstimate = nil
+        currentDiagnostics = nil
         state = .idle
         errorMessage = nil
         Task {
@@ -204,6 +211,7 @@ public struct AmbientMatchingDashboardView: View {
                 assetSummary
                 syncIndexSummary
                 matchingSummary
+                diagnosticsSummary
                 controls
             }
             .padding(24)
@@ -274,11 +282,105 @@ public struct AmbientMatchingDashboardView: View {
             row("state", model.state.label)
             row("reference", model.currentEstimate.map { "\($0.referenceTimeMS.formatted(.number.precision(.fractionLength(1))))ms" } ?? "none")
             row("confidence", model.currentEstimate.map { $0.confidence.formatted(.number.precision(.fractionLength(2))) } ?? "none")
-            row("drift", model.currentEstimate?.driftPPM.map { "\($0)ppm" } ?? "none")
+            row("drift", formatPPM(model.currentEstimate?.driftPPM))
             row("microphone", model.microphonePermissionStatus.rawValue)
             row("source", model.currentEstimate?.source.rawValue ?? "none")
+            row("published", model.currentDiagnostics.map { $0.decision.didPublishEstimate ? "yes" : "no" } ?? "none")
+            row("withhold", model.currentDiagnostics?.decision.withholdReason?.rawValue ?? "none")
+            row("search", model.currentDiagnostics?.search.mode.rawValue ?? "none")
+            row("peak", model.currentDiagnostics.map { formatScore($0.scoring.peakScore) } ?? "none")
+            row("explanation", model.currentDiagnostics?.decision.explanation ?? "none")
         }
         .panelStyle()
+    }
+
+    @ViewBuilder
+    private var diagnosticsSummary: some View {
+        if let diagnostics = model.currentDiagnostics {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Diagnostics")
+                    .font(.headline)
+
+                Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 10) {
+                    row("index status", diagnostics.index.status.rawValue)
+                    row("feature version", diagnostics.index.featureExtractorVersion)
+                    row("settings hash", diagnostics.index.settingsHash)
+                    row("window", formatMS(diagnostics.capture.windowDurationMS))
+                    row("input sample rate", formatNumber(diagnostics.capture.inputSampleRate))
+                    row("input channels", "\(diagnostics.capture.inputChannelCount)")
+                    row("captured frames", "\(diagnostics.capture.capturedFrameCount)")
+                    row("dropped windows", "\(diagnostics.capture.droppedWindowCount)")
+                    row("query frames", "\(diagnostics.query.featureFrameCount)")
+                    row("query energy", formatDBFS(diagnostics.query.energyDBFS))
+                    row("active frames", formatPercent(diagnostics.query.activeFrameFraction))
+                    row("query landmarks", "\(diagnostics.query.landmarkCount)")
+                    row("processing rate", "\(diagnostics.query.processingSampleRate)")
+                    row("hop", "\(diagnostics.query.hopSize)")
+                }
+
+                Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 10) {
+                    row("search range", "\(formatMS(diagnostics.search.searchRangeStartMS)) - \(formatMS(diagnostics.search.searchRangeEndMS))")
+                    row("predicted", formatOptionalMS(diagnostics.search.predictedReferenceMS))
+                    row("selected", formatOptionalMS(diagnostics.search.selectedReferenceMS))
+                    row("candidate count", "\(diagnostics.search.candidateCount)")
+                    row("candidate density", formatScore(diagnostics.search.candidateDensity))
+                    row("second best", formatOptionalScore(diagnostics.scoring.secondBestScore))
+                    row("peak margin", formatOptionalScore(diagnostics.scoring.peakMargin))
+                    row("peak ratio", formatOptionalScore(diagnostics.scoring.peakRatio))
+                    row("peak sharpness", formatOptionalScore(diagnostics.scoring.peakSharpness))
+                    row("peak width", formatOptionalMS(diagnostics.scoring.peakWidthMS))
+                    row("noise mean", formatOptionalScore(diagnostics.scoring.noiseFloorMean))
+                    row("noise std", formatOptionalScore(diagnostics.scoring.noiseFloorStd))
+                    row("peak z", formatOptionalScore(diagnostics.scoring.peakZ))
+                }
+
+                Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 10) {
+                    row("landmark votes", "\(diagnostics.scoring.landmarkVoteCount)")
+                    row("landmark inliers", formatPercent(diagnostics.scoring.landmarkInlierRate))
+                    row("onset flux", formatOptionalScore(diagnostics.scoring.onsetFluxScore))
+                    row("log mel", formatOptionalScore(diagnostics.scoring.logMelScore))
+                    row("chroma", formatOptionalScore(diagnostics.scoring.chromaScore))
+                    row("energy score", formatOptionalScore(diagnostics.scoring.energyScore))
+                    row("time residual", formatOptionalMS(diagnostics.scoring.timeResidualMS))
+                    row("clock observations", "\(diagnostics.clock.observationCount)")
+                    row("raw drift", formatPPM(diagnostics.clock.rawDriftPPM))
+                    row("smoothed drift", formatPPM(diagnostics.clock.smoothedDriftPPM))
+                    row("tracking stability", formatScore(diagnostics.clock.trackingStability))
+                    row("latency", formatOptionalMS(diagnostics.clock.latencyMS))
+                    row("latency source", diagnostics.clock.latencySource.rawValue)
+                }
+
+                if !diagnostics.search.topCandidates.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Top Candidates")
+                            .font(.subheadline.weight(.semibold))
+                        Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
+                            ForEach(Array(diagnostics.search.topCandidates.enumerated()), id: \.offset) { index, candidate in
+                                candidateRow(index: index + 1, candidate: candidate)
+                            }
+                        }
+                    }
+                }
+            }
+            .panelStyle()
+        }
+    }
+
+    private func candidateRow(index: Int, candidate: CandidateAlignment) -> some View {
+        GridRow {
+            Text("#\(index)")
+                .foregroundStyle(.secondary)
+            Text(
+                [
+                    "offset \(formatMS(candidate.offsetMS))",
+                    "ref \(formatMS(candidate.referenceTimeAtWindowEndMS))",
+                    "score \(formatScore(candidate.combinedScore))",
+                    "votes \(candidate.landmarkVoteCount)",
+                    "inliers \(formatPercent(candidate.landmarkInlierRate))"
+                ].joined(separator: " / ")
+            )
+            .font(.body.monospaced())
+        }
     }
 
     private var controls: some View {
@@ -339,6 +441,38 @@ public struct AmbientMatchingDashboardView: View {
                 .font(.body.monospaced())
         }
     }
+
+    private func formatNumber(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(0...1)))
+    }
+
+    private func formatScore(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(2)))
+    }
+
+    private func formatOptionalScore(_ value: Double?) -> String {
+        value.map(formatScore) ?? "none"
+    }
+
+    private func formatMS(_ value: Double) -> String {
+        "\(value.formatted(.number.precision(.fractionLength(1))))ms"
+    }
+
+    private func formatOptionalMS(_ value: Double?) -> String {
+        value.map(formatMS) ?? "none"
+    }
+
+    private func formatPPM(_ value: Double?) -> String {
+        value.map { "\($0.formatted(.number.precision(.fractionLength(1))))ppm" } ?? "none"
+    }
+
+    private func formatDBFS(_ value: Double) -> String {
+        "\(value.formatted(.number.precision(.fractionLength(1)))) dBFS"
+    }
+
+    private func formatPercent(_ value: Double) -> String {
+        value.formatted(.percent.precision(.fractionLength(0...1)))
+    }
 }
 
 private extension View {
@@ -349,13 +483,15 @@ private extension View {
     }
 }
 
-private extension AmbientSyncState {
+private extension AmbientSyncEngineState {
     var label: String {
         switch self {
         case .idle:
             return "idle"
-        case .preparingIndex:
-            return "preparingIndex"
+        case .indexing:
+            return "indexing"
+        case .ready:
+            return "ready"
         case .listening:
             return "listening"
         case .locking:
@@ -364,10 +500,12 @@ private extension AmbientSyncState {
             return "locked"
         case .drifting:
             return "drifting"
+        case .relocking:
+            return "relocking"
         case .lost:
             return "lost"
-        case .failed(let message):
-            return "failed: \(message)"
+        case .failed:
+            return "failed"
         }
     }
 }

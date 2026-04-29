@@ -61,7 +61,7 @@ final class LocalLibraryDashboardModelTests: XCTestCase {
         )
         model.syncIndex = staleIndex
         model.currentEstimate = staleEstimate
-        model.state = .locked(staleEstimate)
+        model.state = .locked
 
         model.selectedAsset = secondAsset
 
@@ -176,6 +176,50 @@ final class LocalLibraryDashboardModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAsset?.id, secondAsset.id)
         XCTAssertNil(model.syncIndex)
         XCTAssertEqual(model.state, .idle)
+    }
+
+    @MainActor
+    func testStartMatchingIgnoresStaleIndexForSameAssetAfterPermissionPrompt() async throws {
+        let asset = makeAsset(
+            directoryID: UUID(uuidString: "00000000-0000-0000-0000-000000000114")!,
+            title: "Same Asset",
+            artists: ["Pulsefield"],
+            durationMS: 120_000,
+            fileName: "same-asset.mp3"
+        )
+        let staleURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pulsefield-stale-index-\(UUID().uuidString).txt")
+        let replacementURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pulsefield-replacement-index-\(UUID().uuidString).txt")
+        try "0\n1\n0\n1\n".write(to: staleURL, atomically: true, encoding: .utf8)
+        try "1\n0\n1\n0\n".write(to: replacementURL, atomically: true, encoding: .utf8)
+        defer {
+            try? FileManager.default.removeItem(at: staleURL)
+            try? FileManager.default.removeItem(at: replacementURL)
+        }
+        let staleIndex = makeSyncIndex(assetID: asset.id, onsetEnvelopeURL: staleURL)
+        let replacementIndex = makeSyncIndex(assetID: asset.id, onsetEnvelopeURL: replacementURL)
+        let permissionService = BlockingMicrophonePermissionService()
+        let capture = SilentAmbientCapture()
+        let model = AmbientMatchingDashboardModel(
+            selectedAsset: asset,
+            syncIndexer: StubSyncIndexer(index: staleIndex),
+            estimator: FeatureCorrelationSyncEstimator(capture: capture),
+            microphonePermissionService: permissionService
+        )
+        model.syncIndex = staleIndex
+
+        model.startMatching()
+        await permissionService.waitForRequestAccessCall()
+        model.syncIndex = replacementIndex
+        await permissionService.authorize()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        let captureStartCalls = await capture.startCalls()
+        XCTAssertEqual(captureStartCalls, 0)
+        XCTAssertEqual(model.syncIndex, replacementIndex)
+        XCTAssertEqual(model.state, .idle)
+        XCTAssertNil(model.errorMessage)
     }
 
     @MainActor
