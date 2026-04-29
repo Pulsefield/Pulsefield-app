@@ -295,12 +295,15 @@ public actor FeatureCorrelationSyncEstimator: AmbientSyncEstimating {
                 explanation: "The current microphone window does not contain enough reliable sync evidence."
             )
         }
-        let wideComparisonMatch = shouldRunWideRelockComparison(for: match)
+        let shouldUseWideRelockDecision = shouldRunWideRelockComparison(for: match)
+        let wideComparisonMatch = shouldUseWideRelockDecision
             ? bestCorrelationOffset(query: queryFeatures)
             : nil
-        let diagnosticsMatch = matchWithWideDiagnosticAlternatives(
+        let diagnosticAlternatives = wideComparisonMatch?.topCandidates
+            ?? landmarkDiagnosticCandidates(query: queryFeatures, selectedMatch: match)
+        let diagnosticsMatch = matchWithDiagnosticAlternatives(
             match,
-            wideMatch: wideComparisonMatch
+            alternatives: diagnosticAlternatives
         )
 
         guard match.confidence >= minimumLockConfidence else {
@@ -739,52 +742,16 @@ public actor FeatureCorrelationSyncEstimator: AmbientSyncEstimating {
         let landmarkVotes = landmarkVotesByOffset(query: query, maxOffset: maxOffset)
 
         for offset in lowerOffset...upperOffset {
-            let candidateValues = Array(localFeatures[offset..<(offset + query.frameCount)])
-            let candidate = normalize(candidateValues)
-            let onsetScore = clampScore(cosineSimilarity(normalizedQuery, candidate))
-            let logMelScore = denseFeatureScore(
-                query: query.logMel,
-                local: localLogMel,
+            guard let candidate = scoredCandidate(
+                query: query,
+                normalizedQuery: normalizedQuery,
                 offset: offset,
-                frameCount: query.frameCount
-            )
-            let chromaScore = denseFeatureScore(
-                query: query.chroma,
-                local: localChroma,
-                offset: offset,
-                frameCount: query.frameCount
-            )
-            let energyScore = denseFeatureScore(
-                query: query.energy,
-                local: localEnergy,
-                offset: offset,
-                frameCount: query.frameCount
-            )
-            let combinedScore = combinedCandidateScore(
-                onsetFluxScore: onsetScore,
-                logMelScore: logMelScore,
-                chromaScore: chromaScore,
-                energyScore: energyScore
-            )
-            let rawDistance = meanSquaredDistance(query.onsetFlux, candidateValues)
-            let voteCount = landmarkVotes[offset, default: 0]
-            let inlierRate = query.landmarkCount > 0
-                ? Double(voteCount) / Double(query.landmarkCount)
-                : 0
+                landmarkVoteCount: landmarkVotes[offset, default: 0]
+            ) else {
+                continue
+            }
             candidateCount += 1
-            candidates.append(
-                ScoredCandidate(
-                    offset: offset,
-                    combinedScore: combinedScore,
-                    onsetFluxScore: onsetScore,
-                    logMelScore: logMelScore,
-                    chromaScore: chromaScore,
-                    energyScore: energyScore,
-                    landmarkVoteCount: voteCount,
-                    landmarkInlierRate: inlierRate,
-                    rawDistance: rawDistance
-                )
-            )
+            candidates.append(candidate)
         }
 
         let sortedCandidates = candidates.sorted { left, right in
@@ -833,30 +800,125 @@ public actor FeatureCorrelationSyncEstimator: AmbientSyncEstimating {
         )
     }
 
-    private func matchWithWideDiagnosticAlternatives(
-        _ match: CorrelationMatch,
-        wideMatch: CorrelationMatch?
-    ) -> CorrelationMatch {
-        guard let wideMatch else {
-            return match
+    private func scoredCandidate(
+        query: QuerySyncFeatures,
+        normalizedQuery: [Double],
+        offset: Int,
+        landmarkVoteCount: Int
+    ) -> ScoredCandidate? {
+        guard offset >= 0, offset + query.frameCount <= localFeatures.count else {
+            return nil
         }
 
+        let candidateValues = Array(localFeatures[offset..<(offset + query.frameCount)])
+        let candidate = normalize(candidateValues)
+        let onsetScore = clampScore(cosineSimilarity(normalizedQuery, candidate))
+        let logMelScore = denseFeatureScore(
+            query: query.logMel,
+            local: localLogMel,
+            offset: offset,
+            frameCount: query.frameCount
+        )
+        let chromaScore = denseFeatureScore(
+            query: query.chroma,
+            local: localChroma,
+            offset: offset,
+            frameCount: query.frameCount
+        )
+        let energyScore = denseFeatureScore(
+            query: query.energy,
+            local: localEnergy,
+            offset: offset,
+            frameCount: query.frameCount
+        )
+        let combinedScore = combinedCandidateScore(
+            onsetFluxScore: onsetScore,
+            logMelScore: logMelScore,
+            chromaScore: chromaScore,
+            energyScore: energyScore
+        )
+        let rawDistance = meanSquaredDistance(query.onsetFlux, candidateValues)
+        let inlierRate = query.landmarkCount > 0
+            ? Double(landmarkVoteCount) / Double(query.landmarkCount)
+            : 0
+
+        return ScoredCandidate(
+            offset: offset,
+            combinedScore: combinedScore,
+            onsetFluxScore: onsetScore,
+            logMelScore: logMelScore,
+            chromaScore: chromaScore,
+            energyScore: energyScore,
+            landmarkVoteCount: landmarkVoteCount,
+            landmarkInlierRate: inlierRate,
+            rawDistance: rawDistance
+        )
+    }
+
+    private func landmarkDiagnosticCandidates(
+        query: QuerySyncFeatures,
+        selectedMatch: CorrelationMatch
+    ) -> [ScoredCandidate] {
+        guard !localLandmarks.isEmpty,
+              !query.landmarkRecords.isEmpty,
+              query.frameCount <= localFeatures.count
+        else {
+            return []
+        }
+
+        let normalizedQuery = normalize(query.onsetFlux)
+        guard energy(normalizedQuery) > 0 else {
+            return []
+        }
+
+        let maxOffset = localFeatures.count - query.frameCount
+        let separation = distinctCandidateSeparation(queryFrameCount: query.frameCount)
+        let votedOffsets = landmarkVotesByOffset(query: query, maxOffset: maxOffset)
+            .filter { offset, voteCount in
+                voteCount > 0 && abs(offset - selectedMatch.offset) >= separation
+            }
+            .sorted { left, right in
+                if left.value != right.value {
+                    return left.value > right.value
+                }
+                let leftDistance = abs(left.key - selectedMatch.offset)
+                let rightDistance = abs(right.key - selectedMatch.offset)
+                return leftDistance < rightDistance
+            }
+            .prefix(16)
+
+        return votedOffsets
+            .compactMap { offset, voteCount in
+                scoredCandidate(
+                    query: query,
+                    normalizedQuery: normalizedQuery,
+                    offset: offset,
+                    landmarkVoteCount: voteCount
+                )
+            }
+            .sorted(by: ranksBefore)
+    }
+
+    private func matchWithDiagnosticAlternatives(
+        _ match: CorrelationMatch,
+        alternatives: [ScoredCandidate]
+    ) -> CorrelationMatch {
         let separation = distinctCandidateSeparation(queryFrameCount: match.queryFrameCount)
-        let wideAlternatives = wideMatch.topCandidates
+        let diagnosticAlternatives = alternatives
             .filter { abs($0.offset - match.offset) >= separation }
             .sorted(by: ranksBefore)
-        guard !wideAlternatives.isEmpty else {
+        guard !diagnosticAlternatives.isEmpty else {
             return match
         }
 
         var merged = match
-        if let bestAlternative = wideAlternatives.first,
+        if let bestAlternative = diagnosticAlternatives.first,
            merged.secondBestConfidence == nil || bestAlternative.combinedScore > (merged.secondBestConfidence ?? 0) {
             merged.secondBestConfidence = bestAlternative.combinedScore
         }
 
         var candidates = match.topCandidates
-        for candidate in wideAlternatives where !candidates.contains(where: { $0.offset == candidate.offset }) {
+        for candidate in diagnosticAlternatives where !candidates.contains(where: { $0.offset == candidate.offset }) {
             candidates.append(candidate)
         }
 

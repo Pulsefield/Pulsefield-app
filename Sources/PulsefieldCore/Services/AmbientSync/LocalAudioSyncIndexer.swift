@@ -794,6 +794,11 @@ struct ValidatedSyncIndexFiles {
     var energyDimensions: Int?
 }
 
+private struct SyncIndexSourceValidationIdentity {
+    var fileSizeBytes: Int64
+    var fullFileSHA256: String
+}
+
 enum SyncIndexManifestValidation {
     static let currentSchemaVersion = 2
     static let currentFeatureExtractorVersion = "ambient-sync-v2"
@@ -906,8 +911,21 @@ enum SyncIndexManifestValidation {
             guard selectedAsset.id == expectedAssetID else {
                 throw AmbientSyncStartError.indexInvalid
             }
-            guard selectedAsset.fileSizeBytes == manifest.source.fileSizeBytes,
-                  selectedAsset.sha256 == manifest.source.fullFileSHA256,
+            let snapshotMatchesSource = selectedAsset.fileSizeBytes == manifest.source.fileSizeBytes
+                && selectedAsset.sha256 == manifest.source.fullFileSHA256
+            let currentIdentityMatchesSource: Bool
+            if snapshotMatchesSource {
+                currentIdentityMatchesSource = false
+            } else if let currentIdentity = currentSourceIdentity(
+                for: selectedAsset,
+                expectedFileSizeBytes: manifest.source.fileSizeBytes
+            ) {
+                currentIdentityMatchesSource = currentIdentity.fileSizeBytes == manifest.source.fileSizeBytes
+                    && currentIdentity.fullFileSHA256 == manifest.source.fullFileSHA256
+            } else {
+                currentIdentityMatchesSource = false
+            }
+            guard (snapshotMatchesSource || currentIdentityMatchesSource),
                   selectedAsset.durationMS == manifest.asset.durationMS,
                   selectedAsset.durationMS == manifest.source.decodedDurationMS
             else {
@@ -987,6 +1005,53 @@ enum SyncIndexManifestValidation {
 
     static func date(fromISO8601 string: String) -> Date? {
         ISO8601DateFormatter().date(from: string)
+    }
+
+    private static func currentSourceIdentity(
+        for asset: LocalAudioAsset,
+        expectedFileSizeBytes: Int64
+    ) -> SyncIndexSourceValidationIdentity? {
+        let url = sourceURL(for: asset)
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessed {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        guard let resourceValues = try? url.resourceValues(forKeys: [.fileSizeKey]),
+              let fileSize = resourceValues.fileSize
+        else {
+            return nil
+        }
+
+        let fileSizeBytes = Int64(fileSize)
+        guard fileSizeBytes == expectedFileSizeBytes,
+              let fullFileSHA256 = try? sha256Hex(contentsOf: url)
+        else {
+            return nil
+        }
+
+        return SyncIndexSourceValidationIdentity(
+            fileSizeBytes: fileSizeBytes,
+            fullFileSHA256: fullFileSHA256
+        )
+    }
+
+    private static func sourceURL(for asset: LocalAudioAsset) -> URL {
+        if let bookmark = asset.fileURLBookmark {
+            var isStale = false
+            if let url = try? URL(
+                resolvingBookmarkData: bookmark,
+                options: LocalAudioSyncIndexer.bookmarkResolutionOptions,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            ) {
+                return url.standardizedFileURL
+            }
+        }
+
+        return URL(fileURLWithPath: asset.displayPath).standardizedFileURL
     }
 
     private static func validateMatrixFileIfPresent(

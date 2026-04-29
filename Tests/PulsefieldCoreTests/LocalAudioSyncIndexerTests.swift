@@ -173,6 +173,44 @@ final class LocalAudioSyncIndexerTests: XCTestCase {
         XCTAssertNotEqual(source["fullFileSHA256"] as? String, asset.sha256)
     }
 
+    func testEstimatorStartsFreshlyBuiltIndexWhenLibrarySnapshotHashIsStale() async throws {
+        let workingDirectory = try makeTemporaryDirectory()
+        let audioURL = workingDirectory.appendingPathComponent("reference.wav")
+        let indexRoot = workingDirectory.appendingPathComponent("indexes", isDirectory: true)
+        try writeSilentWAV(to: audioURL)
+
+        let asset = LocalAudioAsset(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000515")!,
+            directoryID: UUID(uuidString: "00000000-0000-0000-0000-000000000516")!,
+            fileURLBookmark: nil,
+            displayPath: audioURL.path,
+            fileName: audioURL.lastPathComponent,
+            fileExtension: audioURL.pathExtension,
+            fileSizeBytes: Int64((try audioURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0),
+            sha256: "stale-library-snapshot",
+            durationMS: 200,
+            title: "Reference",
+            artists: ["Pulsefield"],
+            album: nil,
+            albumArtist: nil,
+            trackNumber: nil,
+            discNumber: nil,
+            isrc: nil,
+            releaseYear: nil,
+            indexedAt: Date(timeIntervalSince1970: 1_710_000_000),
+            lastSeenAt: Date(timeIntervalSince1970: 1_710_000_000),
+            status: .ready
+        )
+        let indexer = LocalAudioSyncIndexer(rootDirectory: indexRoot, frameHopMS: 50)
+        let estimator = FeatureCorrelationSyncEstimator(capture: NoopAmbientCapture())
+
+        let index = try await indexer.buildIndex(for: asset)
+        try await estimator.start(asset: asset, index: index)
+        let state = await estimator.currentState()
+
+        XCTAssertEqual(state, .listening)
+    }
+
     func testLoadIndexRejectsManifestProcessingSampleRateMismatchEvenWithMatchingSettingsHash() async throws {
         let workingDirectory = try makeTemporaryDirectory()
         let audioURL = workingDirectory.appendingPathComponent("reference.wav")
@@ -541,5 +579,14 @@ final class LocalAudioSyncIndexerTests: XCTestCase {
             }
             return Double(Float32(bitPattern: UInt32(littleEndian: bits)))
         }
+    }
+}
+
+private actor NoopAmbientCapture: AmbientAudioCapturing {
+    func start() async throws {}
+    func stop() async {}
+    func latestWindow(durationMS: Int) async -> AmbientAudioWindow? {
+        _ = durationMS
+        return nil
     }
 }
