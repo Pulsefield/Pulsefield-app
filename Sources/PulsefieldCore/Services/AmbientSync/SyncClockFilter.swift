@@ -6,15 +6,14 @@ public struct SyncClockFilter: Sendable {
     public init() {}
 
     public mutating func apply(_ estimate: SyncEstimate) -> SyncEstimate {
-        guard let previousEstimate else {
+        guard previousEstimate != nil else {
             self.previousEstimate = estimate
             return estimate
         }
 
-        let referenceTime = max(previousEstimate.referenceTimeMS, estimate.referenceTimeMS)
         let smoothed = SyncEstimate(
             hostTime: estimate.hostTime,
-            referenceTimeMS: referenceTime,
+            referenceTimeMS: estimate.referenceTimeMS,
             confidence: estimate.confidence,
             driftPPM: estimate.driftPPM,
             latencyMS: estimate.latencyMS,
