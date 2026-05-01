@@ -1,5 +1,5 @@
 ---
-commit: 8088f42b60c6bd13dfd8cb09d56f3f0fc8d2a8f3
+commit: 93edff6ed57ef9a2a48e3cdbbc5ad12df4644421
 title: Known-Track Ambient Sync Multi-Stage Matching Spec v0.1
 status: frozen spec
 scope: design
@@ -7,7 +7,7 @@ scope: design
 
 # Known-Track Ambient Sync: Multi-Stage Matching Spec v0.1
 
-Baseline commit: `8088f42b60c6bd13dfd8cb09d56f3f0fc8d2a8f3`.
+Baseline commit: `93edff6ed57ef9a2a48e3cdbbc5ad12df4644421`.
 
 This document freezes the known-track ambient sync matching design. It is a
 design spec for audio-to-audio alignment when the local audio asset is already
@@ -19,6 +19,8 @@ plan.
 ### Goals
 
 在已知本地 audio 与外界播放音频为同一首的前提下，用麦克风环境音频估计当前播放位置。
+
+这里的“同一首”在 v0.1 中定义为 sample-identical local audio file：外界播放音频与本地文件应来自同一个音频样本源。Remaster、radio edit、live version、tempo/pitch edited version、不同剪辑版本、或只是在音乐意义上相同的 recording 不在本 spec 保证范围内。
 
 目标指标：
 
@@ -41,6 +43,16 @@ plan.
 ### 1.1 Streaming Mic Feature Buffer
 
 当前不能继续依赖 isolated latestWindow(3s/4s)。Mic audio 必须进入持续 feature stream，并保留跨窗口状态。否则 onset / spectral flux 在窗口边界会断裂，历史证据也无法累计。
+
+Mic stream assembler 必须把输入音频持续拼成连续 buffer，并为每个 feature frame 记录该 frame 的实际录制时间 `recordedTime`。Alignment 和 publish 逻辑必须使用 query endpoint frame 的 `recordedTime`，不能用 estimator 被调用时的 `time.now` 代替 mic window 时间。
+
+Offset sign convention:
+
+```text
+offset = localReferenceTime - micQueryTime
+```
+
+其中 `micQueryTime` 是 mic stream 中被匹配 query endpoint 的时间。发布当前时刻的 reference time 时，应先得到 query endpoint 对应的 `localReferenceTime`，再用 `time.now - recordedTime` 将结果推进到当前时刻。
 
 必须保留：
 
@@ -66,6 +78,8 @@ payload = anchor_time
 ```
 
 Wang 的 Shazam paper 使用 time-frequency constellation，并用 anchor point 与 target zone 中的点组成 pair hash；每个 pair 产生两个 frequency components 和 time difference，absolute anchor time 作为 offset 信息另存，不进入 hash。该设计被描述为能在 noise 和 voice codec compression 下复现。
+
+具体 anchor / target zone、frequency quantization、delta-time range、hash packing、collision handling 和 density tuning 暂不在 v0.1 固定，作为 future concern。
 
 ### 1.3 Offset Histogram
 
@@ -166,6 +180,8 @@ Fail 条件：
 | dense features invalid | reject index |
 
 Fingerprint 系统的关键 tradeoff 包括 robustness、reliability、fingerprint size、granularity、search speed / scalability。低 granularity 需要更多 fingerprint 信息来维持 reliability。
+
+Feature extraction 的具体参数暂不在 v0.1 固定，作为 future concern。包括但不限于 FFT size、window type、mel bins、PCEN 参数、chroma / CENS 参数、onset peak picking、subband layout、normalization、以及 feature serialization format。
 
 ### Stage 1: Streaming Mic Feature Readiness Gate
 
@@ -610,6 +626,8 @@ Fail 条件：
 
 不要使用单一 `combinedScore` 决策。Confidence 应拆成 stage-level confidence。
 
+Score normalization、per-feature score scale、feature weights calibration、margin calibration 和 confidence threshold calibration 暂不在 v0.1 固定，作为 future concern。本节只冻结需要拆分 confidence components 的设计方向和初始权重形状。
+
 Components：
 
 | Component | 来源 |
@@ -641,6 +659,8 @@ Tracking confidence 初始权重：
 | fineAlignmentConfidence | 0.15 |
 | landmarkConfidence | 0.10 |
 | temporalStabilityConfidence | 0.15 |
+
+State machine 的完整 contract 暂不在 v0.1 固定，作为 future concern。后续需要单独冻结 `.locking`、`.locked`、`.drifting`、`.lost`、`.relocking`、`uncertain` 的精确定义、transition guard、withheld update 输出、stale estimate 可见性、confidence decay、以及手动 nudge 后的恢复规则。
 
 ## 5. Diagnostics Spec
 
@@ -713,6 +733,8 @@ Decision diagnostics：
 
 ## 6. Acceptance Tests
 
+本节只定义行为目标。测试 fixture、ground-truth timing 方法、noise / SNR 定义、播放设备假设、自动化方式和人工验收方式暂不在 v0.1 固定，作为 future concern。
+
 ### Test A: Clean Same-Device Playback
 
 | Requirement | Pass |
@@ -768,7 +790,7 @@ This section records dependency order only. It is not an execution plan.
 2. Mic capture 改成 streaming feature ring buffer。
 3. Feature extractor 支持跨 chunk previous-frame state。
 4. 加 Stage 1 query readiness diagnostics。
-5. 加 Stage 2 offset histogram，但可先用现有 landmark 过渡。
+5. 加 Stage 2 offset histogram，并实现最小可用的 query/local landmark extraction；当前已无 existing landmark path 可作为过渡。
 
 ### P1: 真正让算法可用
 
