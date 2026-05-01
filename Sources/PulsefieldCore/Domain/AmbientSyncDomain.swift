@@ -75,6 +75,7 @@ public struct MicFeaturePayload: Equatable, Sendable {
     public let pcenMel: [Float]
     public let chroma: [Float]
     public let cens: [Float]
+    public let landmarks: [MicFeatureLandmark]
     public let landmarkHashes: [UInt64]
     public let energyDBFS: Double
     public let snrDB: Double?
@@ -86,6 +87,7 @@ public struct MicFeaturePayload: Equatable, Sendable {
         chroma: [Float],
         cens: [Float],
         landmarkHashes: [UInt64],
+        landmarks: [MicFeatureLandmark] = [],
         energyDBFS: Double,
         snrDB: Double?
     ) {
@@ -94,9 +96,36 @@ public struct MicFeaturePayload: Equatable, Sendable {
         self.pcenMel = pcenMel
         self.chroma = chroma
         self.cens = cens
-        self.landmarkHashes = landmarkHashes
+        self.landmarks = landmarks
+        self.landmarkHashes = landmarks.isEmpty ? landmarkHashes : landmarks.map(\.hash)
         self.energyDBFS = energyDBFS
         self.snrDB = snrDB
+    }
+}
+
+public struct MicFeatureLandmark: Equatable, Sendable {
+    public let hash: UInt64
+    public let anchorTimeMS: Double
+    public let anchorFrequencyBin: Int
+    public let targetFrequencyBin: Int
+    public let deltaFrames: Int
+
+    public init(
+        hash: UInt64,
+        anchorTimeMS: Double,
+        anchorFrequencyBin: Int,
+        targetFrequencyBin: Int,
+        deltaFrames: Int
+    ) {
+        precondition(anchorFrequencyBin >= 0, "anchorFrequencyBin must be non-negative.")
+        precondition(targetFrequencyBin >= 0, "targetFrequencyBin must be non-negative.")
+        precondition(deltaFrames > 0, "deltaFrames must be positive.")
+
+        self.hash = hash
+        self.anchorTimeMS = anchorTimeMS
+        self.anchorFrequencyBin = anchorFrequencyBin
+        self.targetFrequencyBin = targetFrequencyBin
+        self.deltaFrames = deltaFrames
     }
 }
 
@@ -108,6 +137,7 @@ public struct MicFeatureFrame: Equatable, Sendable {
     public let pcenMel: [Float]
     public let chroma: [Float]
     public let cens: [Float]
+    public let landmarks: [MicFeatureLandmark]
     public let landmarkHashes: [UInt64]
     public let energyDBFS: Double
     public let snrDB: Double?
@@ -121,6 +151,7 @@ public struct MicFeatureFrame: Equatable, Sendable {
         chroma: [Float],
         cens: [Float],
         landmarkHashes: [UInt64],
+        landmarks: [MicFeatureLandmark] = [],
         energyDBFS: Double,
         snrDB: Double?
     ) {
@@ -131,7 +162,8 @@ public struct MicFeatureFrame: Equatable, Sendable {
         self.pcenMel = pcenMel
         self.chroma = chroma
         self.cens = cens
-        self.landmarkHashes = landmarkHashes
+        self.landmarks = landmarks
+        self.landmarkHashes = landmarks.isEmpty ? landmarkHashes : landmarks.map(\.hash)
         self.energyDBFS = energyDBFS
         self.snrDB = snrDB
     }
@@ -150,6 +182,7 @@ public struct MicFeatureFrame: Equatable, Sendable {
             chroma: payload.chroma,
             cens: payload.cens,
             landmarkHashes: payload.landmarkHashes,
+            landmarks: payload.landmarks,
             energyDBFS: payload.energyDBFS,
             snrDB: payload.snrDB
         )

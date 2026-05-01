@@ -7,6 +7,10 @@ public struct MicFeaturePayloadExtractor: Equatable, Sendable {
         public let melBandCount: Int
         public let chromaBinCount: Int
         public let landmarkPeakCount: Int
+        public let landmarkFrequencyBinCount: Int
+        public let landmarkFanOut: Int
+        public let landmarkTargetMinimumDeltaFrames: Int
+        public let landmarkTargetMaximumDeltaFrames: Int
         public let minimumFrequency: Double
         public let maximumFrequency: Double
         public let pcenSmoothingCoefficient: Float
@@ -23,6 +27,10 @@ public struct MicFeaturePayloadExtractor: Equatable, Sendable {
             melBandCount: Int = 24,
             chromaBinCount: Int = 12,
             landmarkPeakCount: Int = 4,
+            landmarkFrequencyBinCount: Int = 256,
+            landmarkFanOut: Int = 2,
+            landmarkTargetMinimumDeltaFrames: Int = 1,
+            landmarkTargetMaximumDeltaFrames: Int = 5,
             minimumFrequency: Double = 40,
             maximumFrequency: Double = 8_000,
             pcenSmoothingCoefficient: Float = 0.025,
@@ -38,6 +46,23 @@ public struct MicFeaturePayloadExtractor: Equatable, Sendable {
             precondition(melBandCount > 0, "melBandCount must be positive.")
             precondition(chromaBinCount > 0, "chromaBinCount must be positive.")
             precondition(landmarkPeakCount > 0, "landmarkPeakCount must be positive.")
+            precondition(
+                (1...65_536).contains(landmarkFrequencyBinCount),
+                "landmarkFrequencyBinCount must fit in 16 bits."
+            )
+            precondition(landmarkFanOut > 0, "landmarkFanOut must be positive.")
+            precondition(
+                landmarkTargetMinimumDeltaFrames > 0,
+                "landmarkTargetMinimumDeltaFrames must be positive."
+            )
+            precondition(
+                landmarkTargetMaximumDeltaFrames >= landmarkTargetMinimumDeltaFrames,
+                "landmarkTargetMaximumDeltaFrames must be at least landmarkTargetMinimumDeltaFrames."
+            )
+            precondition(
+                landmarkTargetMaximumDeltaFrames <= 65_535,
+                "landmarkTargetMaximumDeltaFrames must fit in 16 bits."
+            )
             precondition(minimumFrequency > 0, "minimumFrequency must be positive.")
             precondition(maximumFrequency > minimumFrequency, "maximumFrequency must exceed minimumFrequency.")
             precondition((0...1).contains(pcenSmoothingCoefficient), "pcenSmoothingCoefficient must be between 0 and 1.")
@@ -52,6 +77,10 @@ public struct MicFeaturePayloadExtractor: Equatable, Sendable {
             self.melBandCount = melBandCount
             self.chromaBinCount = chromaBinCount
             self.landmarkPeakCount = landmarkPeakCount
+            self.landmarkFrequencyBinCount = landmarkFrequencyBinCount
+            self.landmarkFanOut = landmarkFanOut
+            self.landmarkTargetMinimumDeltaFrames = landmarkTargetMinimumDeltaFrames
+            self.landmarkTargetMaximumDeltaFrames = landmarkTargetMaximumDeltaFrames
             self.minimumFrequency = minimumFrequency
             self.maximumFrequency = maximumFrequency
             self.pcenSmoothingCoefficient = pcenSmoothingCoefficient
@@ -70,7 +99,8 @@ public struct MicFeaturePayloadExtractor: Equatable, Sendable {
     private var previousSubbandLogEnergies: [Float]?
     private var pcenSmoothers: [Float] = []
     private var censSmoother: [Float] = []
-    private var previousPeaks: [SpectralPeak] = []
+    private var pendingLandmarkAnchors: [LandmarkAnchor] = []
+    private var landmarkFrameIndex = 0
     private var noiseFloorDBFS: Double?
     private var spectrumAnalyzer = MicFeatureSpectrumAnalyzer()
 
@@ -83,7 +113,8 @@ public struct MicFeaturePayloadExtractor: Equatable, Sendable {
             && lhs.previousSubbandLogEnergies == rhs.previousSubbandLogEnergies
             && lhs.pcenSmoothers == rhs.pcenSmoothers
             && lhs.censSmoother == rhs.censSmoother
-            && lhs.previousPeaks == rhs.previousPeaks
+            && lhs.pendingLandmarkAnchors == rhs.pendingLandmarkAnchors
+            && lhs.landmarkFrameIndex == rhs.landmarkFrameIndex
             && lhs.noiseFloorDBFS == rhs.noiseFloorDBFS
     }
 
@@ -91,7 +122,8 @@ public struct MicFeaturePayloadExtractor: Equatable, Sendable {
         previousSubbandLogEnergies = nil
         pcenSmoothers.removeAll(keepingCapacity: true)
         censSmoother.removeAll(keepingCapacity: true)
-        previousPeaks.removeAll(keepingCapacity: true)
+        pendingLandmarkAnchors.removeAll(keepingCapacity: true)
+        landmarkFrameIndex = 0
         noiseFloorDBFS = nil
     }
 
@@ -113,12 +145,11 @@ public struct MicFeaturePayloadExtractor: Equatable, Sendable {
         let pcenMel = calculatePCENMel(from: melEnergies)
         let chroma = calculateChroma(from: spectralBins, sampleRate: window.sampleRate)
         let cens = calculateCENS(from: chroma)
-        let peaks = calculateSpectralPeaks(from: spectralBins)
-        let landmarkHashes = calculateLandmarkHashes(currentPeaks: peaks)
+        let peaks = calculateSpectralPeaks(from: spectralBins, sampleRate: window.sampleRate)
+        let landmarks = calculateLandmarks(currentPeaks: peaks, currentTimeMS: window.recordedTimeMS)
         let snrDB = updateSNR(energyDBFS: energyDBFS)
 
         previousSubbandLogEnergies = subbandLogEnergies
-        previousPeaks = peaks
 
         return MicFeaturePayload(
             onsetEnvelope: subbandOnset.reduce(0, +),
@@ -126,7 +157,8 @@ public struct MicFeaturePayloadExtractor: Equatable, Sendable {
             pcenMel: pcenMel,
             chroma: chroma,
             cens: cens,
-            landmarkHashes: landmarkHashes,
+            landmarkHashes: landmarks.map(\.hash),
+            landmarks: landmarks,
             energyDBFS: energyDBFS,
             snrDB: snrDB
         )
@@ -140,6 +172,7 @@ public struct MicFeaturePayloadExtractor: Equatable, Sendable {
             chroma: Array(repeating: 0, count: configuration.chromaBinCount),
             cens: Array(repeating: 0, count: configuration.chromaBinCount),
             landmarkHashes: [],
+            landmarks: [],
             energyDBFS: configuration.silenceFloorDBFS,
             snrDB: nil
         )
@@ -319,11 +352,13 @@ public struct MicFeaturePayloadExtractor: Equatable, Sendable {
         return l2Normalized(quantized)
     }
 
-    private func calculateSpectralPeaks(from spectralBins: [SpectralBin]) -> [SpectralPeak] {
+    private func calculateSpectralPeaks(from spectralBins: [SpectralBin], sampleRate: Double) -> [SpectralPeak] {
         guard let maximumMagnitude = spectralBins.map(\.magnitude).max(), maximumMagnitude > 0 else {
             return []
         }
 
+        // TODO: Move toward Wang-style 2D time-frequency neighborhood peak picking
+        // with density control; this per-frame frequency-neighbor pass is a scaffold.
         let floorMagnitude = maximumMagnitude * 0.10
         var peaks: [SpectralPeak] = []
 
@@ -335,7 +370,13 @@ public struct MicFeaturePayloadExtractor: Equatable, Sendable {
                 : 0
 
             if magnitude >= floorMagnitude, magnitude >= previousMagnitude, magnitude >= nextMagnitude {
-                peaks.append(SpectralPeak(binIndex: spectralBins[index].index, magnitude: magnitude))
+                let bin = spectralBins[index]
+                peaks.append(
+                    SpectralPeak(
+                        frequencyBin: quantizedFrequencyBin(frequency: bin.frequency, sampleRate: sampleRate),
+                        magnitude: magnitude
+                    )
+                )
             }
         }
 
@@ -345,32 +386,85 @@ public struct MicFeaturePayloadExtractor: Equatable, Sendable {
             .map { $0 }
     }
 
-    private func calculateLandmarkHashes(currentPeaks: [SpectralPeak]) -> [UInt64] {
-        guard !currentPeaks.isEmpty else {
-            return []
-        }
+    private mutating func calculateLandmarks(
+        currentPeaks: [SpectralPeak],
+        currentTimeMS: Double
+    ) -> [MicFeatureLandmark] {
+        let currentFrameIndex = landmarkFrameIndex
+        var updatedAnchors: [LandmarkAnchor] = []
+        var landmarks: [MicFeatureLandmark] = []
 
-        var hashes: [UInt64] = []
-        if previousPeaks.isEmpty {
-            hashes = currentPeaks.map { landmarkHash(anchorBin: $0.binIndex, targetBin: $0.binIndex, deltaFrames: 0) }
-        } else {
-            for anchor in previousPeaks {
-                for target in currentPeaks {
-                    hashes.append(landmarkHash(anchorBin: anchor.binIndex, targetBin: target.binIndex, deltaFrames: 1))
+        for var anchor in pendingLandmarkAnchors {
+            let deltaFrames = currentFrameIndex - anchor.frameIndex
+            if deltaFrames > configuration.landmarkTargetMaximumDeltaFrames {
+                continue
+            }
+
+            if deltaFrames >= configuration.landmarkTargetMinimumDeltaFrames {
+                for target in currentPeaks where anchor.emittedPairCount < configuration.landmarkFanOut {
+                    let hash = landmarkHash(
+                        anchorFrequencyBin: anchor.frequencyBin,
+                        targetFrequencyBin: target.frequencyBin,
+                        deltaFrames: deltaFrames
+                    )
+                    landmarks.append(
+                        MicFeatureLandmark(
+                            hash: hash,
+                            anchorTimeMS: anchor.timeMS,
+                            anchorFrequencyBin: anchor.frequencyBin,
+                            targetFrequencyBin: target.frequencyBin,
+                            deltaFrames: deltaFrames
+                        )
+                    )
+                    anchor.emittedPairCount += 1
                 }
+            }
+
+            if deltaFrames < configuration.landmarkTargetMaximumDeltaFrames,
+               anchor.emittedPairCount < configuration.landmarkFanOut {
+                updatedAnchors.append(anchor)
             }
         }
 
-        return Array(Set(hashes)).sorted()
+        updatedAnchors.append(
+            contentsOf: currentPeaks.map { peak in
+                LandmarkAnchor(
+                    frameIndex: currentFrameIndex,
+                    timeMS: currentTimeMS,
+                    frequencyBin: peak.frequencyBin
+                )
+            }
+        )
+        pendingLandmarkAnchors = updatedAnchors
+        landmarkFrameIndex += 1
+
+        return landmarks
     }
 
-    private func landmarkHash(anchorBin: Int, targetBin: Int, deltaFrames: Int) -> UInt64 {
-        var hash: UInt64 = 0xcbf29ce484222325
-        for value in [UInt64(anchorBin), UInt64(targetBin), UInt64(deltaFrames)] {
-            hash ^= value
-            hash &*= 0x100000001b3
+    private func quantizedFrequencyBin(frequency: Double, sampleRate: Double) -> Int {
+        guard let range = usableFrequencyRange(sampleRate: sampleRate) else {
+            return 0
         }
-        return hash
+
+        let clampedFrequency = min(max(frequency, range.lowerBound), range.upperBound)
+        let lowerLog = log2(range.lowerBound)
+        let upperLog = log2(range.upperBound)
+        guard upperLog > lowerLog else {
+            return 0
+        }
+
+        let position = (log2(clampedFrequency) - lowerLog) / (upperLog - lowerLog)
+        return min(
+            configuration.landmarkFrequencyBinCount - 1,
+            max(0, Int(position * Double(configuration.landmarkFrequencyBinCount)))
+        )
+    }
+
+    private func landmarkHash(anchorFrequencyBin: Int, targetFrequencyBin: Int, deltaFrames: Int) -> UInt64 {
+        let anchor = UInt64(anchorFrequencyBin & 0xffff)
+        let target = UInt64(targetFrequencyBin & 0xffff)
+        let delta = UInt64(deltaFrames & 0xffff)
+        return (anchor << 32) | (target << 16) | delta
     }
 
     private mutating func updateSNR(energyDBFS: Double) -> Double {
@@ -416,8 +510,15 @@ private struct SpectralBin: Equatable, Sendable {
 }
 
 private struct SpectralPeak: Equatable, Sendable {
-    let binIndex: Int
+    let frequencyBin: Int
     let magnitude: Float
+}
+
+private struct LandmarkAnchor: Equatable, Sendable {
+    let frameIndex: Int
+    let timeMS: Double
+    let frequencyBin: Int
+    var emittedPairCount: Int = 0
 }
 
 private struct MicFeatureSpectrumAnalyzer: @unchecked Sendable {
