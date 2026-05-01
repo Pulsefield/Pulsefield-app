@@ -14,10 +14,12 @@
 		0DEE6E284563F3714E560EC2 /* LocalAudioLibraryIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5991A36DCA3E62B56FC958F7 /* LocalAudioLibraryIndexer.swift */; };
 		0FF3A89698A64FC665C1EA12 /* RecognitionArchitecture.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEA92F2BB55484B411AD9D77 /* RecognitionArchitecture.swift */; };
 		1787F44AD3393A1EA967905E /* Mania4KPlaySessionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65931740476AF6B6432DB7FF /* Mania4KPlaySessionModel.swift */; };
+		1792D02A16B92E49951811C8 /* AmbientSyncOffsetHistogram.swift in Sources */ = {isa = PBXBuildFile; fileRef = E508A37754B1BA46F8326CE3 /* AmbientSyncOffsetHistogram.swift */; };
 		24B5A948743695A047C0AEDE /* PulsefieldMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 571E459554DDE450E8EE1726 /* PulsefieldMacApp.swift */; };
 		25F021ED2DE8AB9DAEE5A46E /* LocalResolveDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 474F20DF577B176F3D906B6E /* LocalResolveDebugView.swift */; };
 		2AD790A5ACB1EFFDA192D181 /* CascadingRecognitionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9C0AFD64ABA7C7C86048235 /* CascadingRecognitionServiceTests.swift */; };
 		2B05FC1CF3FF0DC5F76D63D0 /* UnavailableRecognitionProviderClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AD875058E105B569F3F3F40 /* UnavailableRecognitionProviderClient.swift */; };
+		2B2DD81F687FAE2980DB05E7 /* AmbientSyncOffsetHistogramTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD389549C6F4C934EA3E5197 /* AmbientSyncOffsetHistogramTests.swift */; };
 		2D87A22F4C2FF0724BAB02C4 /* PulsefieldCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */; };
 		2FDA8645F7D0651B0F796C44 /* LocalMusicDirectoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29923F0604586898F5BC337B /* LocalMusicDirectoryStore.swift */; };
 		30C064BBD9B8963AABD53194 /* RecognitionDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CA7A26E40728ECEA439A0AA /* RecognitionDashboardView.swift */; };
@@ -215,11 +217,13 @@
 		D234442CBC0035196DB3E68C /* MicFeatureStreamBuffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicFeatureStreamBuffer.swift; sourceTree = "<group>"; };
 		D500FFA522E2376979CED6AA /* CanonicalTrackDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanonicalTrackDomain.swift; sourceTree = "<group>"; };
 		D6AE855CD84CDFD620DA302F /* MockRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockRecognitionService.swift; sourceTree = "<group>"; };
+		E508A37754B1BA46F8326CE3 /* AmbientSyncOffsetHistogram.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncOffsetHistogram.swift; sourceTree = "<group>"; };
 		E522B477DC378F5CF8AB9C4C /* RecognitionServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionServiceProtocol.swift; sourceTree = "<group>"; };
 		EB7AFC1792774B07CAF50615 /* PulsefieldMac.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PulsefieldMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		ED4A20CA439FE4F3513DB1A2 /* CascadingRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CascadingRecognitionService.swift; sourceTree = "<group>"; };
 		EE665E134535975B24A1E332 /* LocalTrackResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalTrackResolverTests.swift; sourceTree = "<group>"; };
 		F45F8208B52EF6BC2629EBDD /* MicrophonePermissionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophonePermissionService.swift; sourceTree = "<group>"; };
+		FD389549C6F4C934EA3E5197 /* AmbientSyncOffsetHistogramTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncOffsetHistogramTests.swift; sourceTree = "<group>"; };
 		FFC2DA5593A0EF4FCF73F870 /* LocalAudioDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalAudioDomain.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -345,6 +349,7 @@
 			isa = PBXGroup;
 			children = (
 				BC7F35314F8729D151EB7084 /* AmbientMicFeatureStreamService.swift */,
+				E508A37754B1BA46F8326CE3 /* AmbientSyncOffsetHistogram.swift */,
 				CA0A2F8B94DABCCF88315C57 /* MicFeaturePayloadExtractor.swift */,
 				D234442CBC0035196DB3E68C /* MicFeatureStreamBuffer.swift */,
 			);
@@ -414,6 +419,7 @@
 			isa = PBXGroup;
 			children = (
 				0A2D35858AAF7B1D943363EE /* AmbientMicCaptureTests.swift */,
+				FD389549C6F4C934EA3E5197 /* AmbientSyncOffsetHistogramTests.swift */,
 				A9C0AFD64ABA7C7C86048235 /* CascadingRecognitionServiceTests.swift */,
 				B2E5A4D715D8CFE3E004CF00 /* LocalAudioLibraryIndexerTests.swift */,
 				22D44B66A82BA504E482BC78 /* LocalLibraryDashboardModelTests.swift */,
@@ -730,6 +736,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				31A6BBF55F843FFFBB687B71 /* AmbientMicCaptureTests.swift in Sources */,
+				2B2DD81F687FAE2980DB05E7 /* AmbientSyncOffsetHistogramTests.swift in Sources */,
 				2AD790A5ACB1EFFDA192D181 /* CascadingRecognitionServiceTests.swift in Sources */,
 				DDA020C2C77C3D38F434521F /* LocalAudioLibraryIndexerTests.swift in Sources */,
 				96727F336BF2101E88CF66B9 /* LocalLibraryDashboardModelTests.swift in Sources */,
@@ -768,6 +775,7 @@
 			files = (
 				F8D61884214728535A45ECF5 /* AmbientMicFeatureStreamService.swift in Sources */,
 				07A450E8EE9DEE0B31550226 /* AmbientSyncDomain.swift in Sources */,
+				1792D02A16B92E49951811C8 /* AmbientSyncOffsetHistogram.swift in Sources */,
 				E2A8570789AC186771AAE508 /* BeatmapDomain.swift in Sources */,
 				49BD393871163EE821A80748 /* BeatmapGenerationService.swift in Sources */,
 				000CDEB89D978210FC127069 /* CanonicalTrackDomain.swift in Sources */,
