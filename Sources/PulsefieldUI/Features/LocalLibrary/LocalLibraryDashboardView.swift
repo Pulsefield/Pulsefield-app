@@ -122,11 +122,9 @@ public final class LocalLibraryDashboardModel {
 public struct LocalLibraryDashboardView: View {
     @Bindable public var model: LocalLibraryDashboardModel
     @State private var isImportingDirectory = false
-    private let onSelectForAmbient: ((LocalAudioAsset) -> Void)?
 
-    public init(model: LocalLibraryDashboardModel, onSelectForAmbient: ((LocalAudioAsset) -> Void)? = nil) {
+    public init(model: LocalLibraryDashboardModel) {
         self.model = model
-        self.onSelectForAmbient = onSelectForAmbient
     }
 
     public var body: some View {
@@ -136,7 +134,7 @@ public struct LocalLibraryDashboardView: View {
                 controls
                 statusGrid
                 directoriesList
-                LocalResolveDebugView(model: model, onSelectForAmbient: onSelectForAmbient)
+                LocalResolveDebugView(model: model)
             }
             .padding(24)
             .frame(maxWidth: 980, alignment: .leading)
