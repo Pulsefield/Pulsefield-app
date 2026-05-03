@@ -11,6 +11,7 @@
 		02BD03125AEA567B23286D53 /* PulsefieldCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */; };
 		06DDCFD6D8C1A39B8B77B06E /* LocalAudioLibraryDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75A5FB5A3BCAE43E8E2A529C /* LocalAudioLibraryDatabase.swift */; };
 		07A450E8EE9DEE0B31550226 /* AmbientSyncDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1174D86E91ECA19D27A820BC /* AmbientSyncDomain.swift */; };
+		0F8E2C3D4A5B67890ABCDE13 /* AmbientSyncReferenceIndexBinaryCacheCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F8E2C3D4A5B67890ABCDE12 /* AmbientSyncReferenceIndexBinaryCacheCodec.swift */; };
 		0DEE6E284563F3714E560EC2 /* LocalAudioLibraryIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5991A36DCA3E62B56FC958F7 /* LocalAudioLibraryIndexer.swift */; };
 		0FF3A89698A64FC665C1EA12 /* RecognitionArchitecture.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEA92F2BB55484B411AD9D77 /* RecognitionArchitecture.swift */; };
 		1787F44AD3393A1EA967905E /* Mania4KPlaySessionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65931740476AF6B6432DB7FF /* Mania4KPlaySessionModel.swift */; };
@@ -170,6 +171,7 @@
 /* Begin PBXFileReference section */
 		0A2D35858AAF7B1D943363EE /* AmbientMicCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientMicCaptureTests.swift; sourceTree = "<group>"; };
 		0B7F34B30233C62EE4CA2746 /* Mania4KPlayExperienceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mania4KPlayExperienceView.swift; sourceTree = "<group>"; };
+		0F8E2C3D4A5B67890ABCDE12 /* AmbientSyncReferenceIndexBinaryCacheCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncReferenceIndexBinaryCacheCodec.swift; sourceTree = "<group>"; };
 		1174D86E91ECA19D27A820BC /* AmbientSyncDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncDomain.swift; sourceTree = "<group>"; };
 		11BD89B20D37F8DEF32673CD /* PulsefieldWorkbenchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PulsefieldWorkbenchView.swift; sourceTree = "<group>"; };
 		134D91BEAB23321AE335188F /* ambient-sync-engine-design-spec.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "ambient-sync-engine-design-spec.md"; sourceTree = "<group>"; };
@@ -369,6 +371,7 @@
 				37A31C8F9E6937A8CA29FAA3 /* AmbientSyncFixtureRecorder.swift */,
 				584518F96762CDD860705275 /* AmbientSyncFixtureReplayRunner.swift */,
 				E508A37754B1BA46F8326CE3 /* AmbientSyncOffsetHistogram.swift */,
+				0F8E2C3D4A5B67890ABCDE12 /* AmbientSyncReferenceIndexBinaryCacheCodec.swift */,
 				1C7010027830EEB3B5B09BC4 /* AmbientSyncReferenceIndexBuilder.swift */,
 				CA0A2F8B94DABCCF88315C57 /* MicFeaturePayloadExtractor.swift */,
 				D234442CBC0035196DB3E68C /* MicFeatureStreamBuffer.swift */,
@@ -807,6 +810,7 @@
 				325788A361B9162DEDC0F928 /* AmbientSyncFixtureRecorder.swift in Sources */,
 				A1F9D5AADD6F155A28523195 /* AmbientSyncFixtureReplayRunner.swift in Sources */,
 				1792D02A16B92E49951811C8 /* AmbientSyncOffsetHistogram.swift in Sources */,
+				0F8E2C3D4A5B67890ABCDE13 /* AmbientSyncReferenceIndexBinaryCacheCodec.swift in Sources */,
 				4F7E59C7A3F4EAA4DFCA7F58 /* AmbientSyncReferenceIndexBuilder.swift in Sources */,
 				E2A8570789AC186771AAE508 /* BeatmapDomain.swift in Sources */,
 				49BD393871163EE821A80748 /* BeatmapGenerationService.swift in Sources */,

@@ -3,7 +3,7 @@ import XCTest
 @testable import PulsefieldCore
 
 final class AmbientSyncReferenceIndexBuilderTests: XCTestCase {
-    func testBuildsReferenceIndexAndReloadsJSONCacheFromGeneratedCAF() throws {
+    func testBuildsReferenceIndexAndReloadsBinaryCacheFromGeneratedCAF() throws {
         let workingDirectory = try makeTemporaryDirectory()
         addTeardownBlock {
             try? FileManager.default.removeItem(at: workingDirectory)
@@ -30,7 +30,7 @@ final class AmbientSyncReferenceIndexBuilderTests: XCTestCase {
         XCTAssertGreaterThan(index.landmarkIndex.hashCount, 0)
         XCTAssertEqual(index.landmarkIndexDebug.landmarkCount, index.landmarks.count)
         XCTAssertEqual(index.landmarkIndexDebug.hashCount, index.landmarkIndex.hashCount)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: builder.cacheURL(forSourceDisplayPath: audioURL.path).path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: builder.binaryCacheURL(forSourceDisplayPath: audioURL.path).path))
 
         let cachedIndex = try XCTUnwrap(builder.loadCachedIndex(forSourceDisplayPath: audioURL.path))
 
@@ -40,6 +40,45 @@ final class AmbientSyncReferenceIndexBuilderTests: XCTestCase {
         XCTAssertEqual(cachedIndex.landmarks, index.landmarks)
         XCTAssertEqual(cachedIndex.landmarkIndex, index.landmarkIndex)
         XCTAssertEqual(cachedIndex.landmarkIndexDebug, index.landmarkIndexDebug)
+    }
+
+    func testReloadsLegacyJSONCacheAndWritesBinarySidecar() throws {
+        let workingDirectory = try makeTemporaryDirectory()
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: workingDirectory)
+        }
+
+        let audioURL = workingDirectory.appendingPathComponent("generated-reference.caf")
+        let cacheDirectoryURL = workingDirectory.appendingPathComponent("reference-indexes", isDirectory: true)
+        try writeGeneratedCAF(to: audioURL)
+
+        let builder = AmbientSyncReferenceIndexBuilder(
+            configuration: AmbientSyncReferenceIndexBuilder.Configuration(
+                cacheDirectoryURL: cacheDirectoryURL
+            )
+        )
+        let index = try builder.index(forSourceURL: audioURL)
+        let binaryCacheURL = builder.binaryCacheURL(forSourceDisplayPath: audioURL.path)
+        let legacyJSONCacheURL = builder.cacheURL(forSourceDisplayPath: audioURL.path)
+        try FileManager.default.removeItem(at: binaryCacheURL)
+
+        let legacyCache = AmbientSyncReferenceIndexCache(
+            sourceDisplayPath: index.sourceDisplayPath,
+            sourceStandardizedPath: audioURL.standardizedFileURL.path,
+            sourceFileIdentity: try AmbientSyncReferenceIndexBuilder.sourceFileIdentity(for: audioURL.standardizedFileURL),
+            featureConfiguration: index.featureConfiguration,
+            frames: index.frames,
+            landmarks: index.landmarks,
+            landmarkIndexDebug: index.landmarkIndexDebug
+        )
+        let encoder = JSONEncoder()
+        try encoder.encode(legacyCache).write(to: legacyJSONCacheURL, options: .atomic)
+
+        let cachedIndex = try XCTUnwrap(builder.loadCachedIndex(forSourceDisplayPath: audioURL.path))
+
+        XCTAssertEqual(cachedIndex.frames, index.frames)
+        XCTAssertEqual(cachedIndex.landmarks, index.landmarks)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: binaryCacheURL.path))
     }
 
     func testSourceFileChangeInvalidatesCachedReferenceIndex() throws {

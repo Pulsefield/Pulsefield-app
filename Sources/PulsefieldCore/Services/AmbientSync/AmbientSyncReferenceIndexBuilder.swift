@@ -410,29 +410,47 @@ public struct AmbientSyncReferenceIndexBuilder: Sendable {
     }
 
     public func loadCachedIndex(forSourceDisplayPath sourceDisplayPath: String) throws -> AmbientSyncReferenceIndex? {
+        let sourceURL = URL(fileURLWithPath: sourceDisplayPath).standardizedFileURL
+        let binaryCacheURL = binaryCacheURL(forSourceDisplayPath: sourceDisplayPath)
         let cacheURL = cacheURL(forSourceDisplayPath: sourceDisplayPath)
-        guard FileManager.default.fileExists(atPath: cacheURL.path) else {
-            return nil
-        }
-        guard let currentSourceIdentity = try? Self.sourceFileIdentity(
-            for: URL(fileURLWithPath: sourceDisplayPath).standardizedFileURL
-        ) else {
+        guard let currentSourceIdentity = try? Self.sourceFileIdentity(for: sourceURL, includeSHA256: false) else {
             return nil
         }
 
         let cache: AmbientSyncReferenceIndexCache
-        do {
-            let data = try Data(contentsOf: cacheURL)
-            cache = try Self.makeDecoder().decode(AmbientSyncReferenceIndexCache.self, from: data)
-        } catch {
-            throw AmbientSyncReferenceIndexBuilderError.cacheReadFailed(error.localizedDescription)
+        let loadedFromLegacyJSON: Bool
+        if FileManager.default.fileExists(atPath: binaryCacheURL.path) {
+            do {
+                cache = try Self.readBinaryCache(at: binaryCacheURL)
+                loadedFromLegacyJSON = false
+            } catch {
+                guard FileManager.default.fileExists(atPath: cacheURL.path) else {
+                    throw error
+                }
+                cache = try Self.readJSONCache(at: cacheURL)
+                loadedFromLegacyJSON = true
+            }
+        } else if FileManager.default.fileExists(atPath: cacheURL.path) {
+            cache = try Self.readJSONCache(at: cacheURL)
+            loadedFromLegacyJSON = true
+        } else {
+            return nil
         }
 
+        let cacheSourceMatches = try? Self.cacheSourceIdentity(
+            cache.sourceFileIdentity,
+            matches: currentSourceIdentity,
+            sourceURL: sourceURL
+        )
         guard cache.schemaVersion == AmbientSyncReferenceIndexCache.schemaVersion,
               cache.featureConfiguration == configuration.featureConfiguration,
-              cache.sourceFileIdentity == currentSourceIdentity
+              cacheSourceMatches == true
         else {
             return nil
+        }
+
+        if loadedFromLegacyJSON {
+            try? Self.writeBinaryCache(cache, to: binaryCacheURL)
         }
 
         return cache.makeIndex()
@@ -446,11 +464,31 @@ public struct AmbientSyncReferenceIndexBuilder: Sendable {
             .appendingPathExtension("ambient-sync-reference-index.json")
     }
 
+    public func binaryCacheURL(forSourceDisplayPath sourceDisplayPath: String) -> URL {
+        let sourceURL = URL(fileURLWithPath: sourceDisplayPath).standardizedFileURL
+        let stem = Self.cacheFileStem(for: sourceURL)
+        return configuration.cacheDirectoryURL
+            .appendingPathComponent(stem)
+            .appendingPathExtension("ambient-sync-reference-index.bin")
+    }
+
+    public static func binaryCacheURL(forLegacyJSONCacheURL cacheURL: URL) -> URL {
+        cacheURL.deletingPathExtension().appendingPathExtension("bin")
+    }
+
+    @discardableResult
+    public static func serializeCachedIndexJSON(at cacheURL: URL, outputURL: URL? = nil) throws -> URL {
+        let binaryCacheURL = outputURL ?? binaryCacheURL(forLegacyJSONCacheURL: cacheURL)
+        let cache = try readJSONCache(at: cacheURL)
+        try writeBinaryCache(cache, to: binaryCacheURL)
+        return binaryCacheURL
+    }
+
     private func writeCache(
         _ index: AmbientSyncReferenceIndex,
         sourceStandardizedPath: String
     ) throws {
-        let cacheURL = cacheURL(forSourceDisplayPath: index.sourceDisplayPath)
+        let cacheURL = binaryCacheURL(forSourceDisplayPath: index.sourceDisplayPath)
 
         do {
             let sourceIdentity = try Self.sourceFileIdentity(
@@ -465,12 +503,7 @@ public struct AmbientSyncReferenceIndexBuilder: Sendable {
                 landmarks: index.landmarks,
                 landmarkIndexDebug: index.landmarkIndexDebug
             )
-            try FileManager.default.createDirectory(
-                at: configuration.cacheDirectoryURL,
-                withIntermediateDirectories: true
-            )
-            let data = try Self.makeEncoder().encode(cache)
-            try data.write(to: cacheURL, options: .atomic)
+            try Self.writeBinaryCache(cache, to: cacheURL)
         } catch {
             throw AmbientSyncReferenceIndexBuilderError.cacheWriteFailed(error.localizedDescription)
         }
@@ -518,7 +551,10 @@ public struct AmbientSyncReferenceIndexBuilder: Sendable {
         return String(format: "%016llx", hash)
     }
 
-    private static func sourceFileIdentity(for sourceURL: URL) throws -> AmbientSyncReferenceSourceFileIdentity {
+    static func sourceFileIdentity(
+        for sourceURL: URL,
+        includeSHA256: Bool = true
+    ) throws -> AmbientSyncReferenceSourceFileIdentity {
         let resourceValues = try sourceURL.resourceValues(forKeys: [
             .contentModificationDateKey,
             .fileSizeKey
@@ -535,8 +571,30 @@ public struct AmbientSyncReferenceIndexBuilder: Sendable {
             standardizedPath: sourceURL.standardizedFileURL.path,
             fileSizeBytes: UInt64(fileSize),
             modificationTimeSince1970: contentModificationDate.timeIntervalSince1970,
-            sha256: try sourceSHA256(for: sourceURL)
+            sha256: includeSHA256 ? try sourceSHA256(for: sourceURL) : nil
         )
+    }
+
+    private static func cacheSourceIdentity(
+        _ cachedIdentity: AmbientSyncReferenceSourceFileIdentity?,
+        matches currentSourceIdentity: AmbientSyncReferenceSourceFileIdentity,
+        sourceURL: URL
+    ) throws -> Bool {
+        guard let cachedIdentity else {
+            return false
+        }
+        guard cachedIdentity.standardizedPath == currentSourceIdentity.standardizedPath,
+              cachedIdentity.fileSizeBytes == currentSourceIdentity.fileSizeBytes,
+              cachedIdentity.modificationTimeSince1970 == currentSourceIdentity.modificationTimeSince1970
+        else {
+            return false
+        }
+
+        guard let cachedSHA256 = cachedIdentity.sha256 else {
+            return false
+        }
+
+        return cachedSHA256 == (try sourceSHA256(for: sourceURL))
     }
 
     private static func sourceSHA256(for sourceURL: URL) throws -> String {
@@ -558,25 +616,53 @@ public struct AmbientSyncReferenceIndexBuilder: Sendable {
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
-    private static func makeEncoder() -> JSONEncoder {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return encoder
-    }
-
     private static func makeDecoder() -> JSONDecoder {
         JSONDecoder()
     }
+
+    private static func readJSONCache(at cacheURL: URL) throws -> AmbientSyncReferenceIndexCache {
+        do {
+            let data = try Data(contentsOf: cacheURL)
+            return try makeDecoder().decode(AmbientSyncReferenceIndexCache.self, from: data)
+        } catch {
+            throw AmbientSyncReferenceIndexBuilderError.cacheReadFailed(error.localizedDescription)
+        }
+    }
+
+    private static func readBinaryCache(at cacheURL: URL) throws -> AmbientSyncReferenceIndexCache {
+        do {
+            let data = try Data(contentsOf: cacheURL)
+            return try AmbientSyncReferenceIndexBinaryCacheCodec.decode(data)
+        } catch {
+            throw AmbientSyncReferenceIndexBuilderError.cacheReadFailed(error.localizedDescription)
+        }
+    }
+
+    private static func writeBinaryCache(
+        _ cache: AmbientSyncReferenceIndexCache,
+        to cacheURL: URL
+    ) throws {
+        do {
+            try FileManager.default.createDirectory(
+                at: cacheURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let data = try AmbientSyncReferenceIndexBinaryCacheCodec.encode(cache)
+            try data.write(to: cacheURL, options: .atomic)
+        } catch {
+            throw AmbientSyncReferenceIndexBuilderError.cacheWriteFailed(error.localizedDescription)
+        }
+    }
 }
 
-private struct AmbientSyncReferenceSourceFileIdentity: Codable, Equatable, Sendable {
+struct AmbientSyncReferenceSourceFileIdentity: Codable, Equatable, Sendable {
     let standardizedPath: String
     let fileSizeBytes: UInt64
     let modificationTimeSince1970: Double
     let sha256: String?
 }
 
-private struct AmbientSyncReferenceIndexCache: Codable, Equatable, Sendable {
+struct AmbientSyncReferenceIndexCache: Codable, Equatable, Sendable {
     static let schemaVersion = 2
 
     let schemaVersion: Int
