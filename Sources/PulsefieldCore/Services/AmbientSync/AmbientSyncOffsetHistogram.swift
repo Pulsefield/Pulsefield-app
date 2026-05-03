@@ -19,6 +19,10 @@ public struct AmbientSyncLandmarkIndex: Equatable, Sendable {
         anchorTimesByHash.count
     }
 
+    public var postingsByHash: [UInt64: [Double]] {
+        anchorTimesByHash
+    }
+
     public func anchorTimes(for hash: UInt64) -> [Double] {
         anchorTimesByHash[hash] ?? []
     }
