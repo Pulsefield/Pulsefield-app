@@ -24,6 +24,7 @@
 		2FDA8645F7D0651B0F796C44 /* LocalMusicDirectoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29923F0604586898F5BC337B /* LocalMusicDirectoryStore.swift */; };
 		30C064BBD9B8963AABD53194 /* RecognitionDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CA7A26E40728ECEA439A0AA /* RecognitionDashboardView.swift */; };
 		31A6BBF55F843FFFBB687B71 /* AmbientMicCaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A2D35858AAF7B1D943363EE /* AmbientMicCaptureTests.swift */; };
+		325788A361B9162DEDC0F928 /* AmbientSyncFixtureRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37A31C8F9E6937A8CA29FAA3 /* AmbientSyncFixtureRecorder.swift */; };
 		35E05459BA1758B1B7E8477A /* MicFeaturePayloadExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0A2F8B94DABCCF88315C57 /* MicFeaturePayloadExtractor.swift */; };
 		3DFE6B740D0A897B64D2A42C /* LocalTrackResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D16F8F551D7CDA0B98C48AB /* LocalTrackResolver.swift */; };
 		458CB10F9A8F527DE5A4C8F5 /* LocalAudioDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFC2DA5593A0EF4FCF73F870 /* LocalAudioDomain.swift */; };
@@ -49,6 +50,7 @@
 		B52D37B2057B4ACE3D7D0F31 /* MicFeatureStreamBufferTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15115A0AE08C960A360BA635 /* MicFeatureStreamBufferTests.swift */; };
 		B63661A777E0A09EB4173E29 /* MicFeaturePayloadExtractorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 958D0935A473AE291732561D /* MicFeaturePayloadExtractorTests.swift */; };
 		BB04DF61AB24DA410A01CDE5 /* Mania4KDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45ECE8CA145AF5FCACE46022 /* Mania4KDomain.swift */; };
+		BC90CBD65B6F79DAED872B3C /* AmbientSyncFixtureRecorderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2D67BC7541E757C08F1424A /* AmbientSyncFixtureRecorderView.swift */; };
 		BD468746F52CA58E04FF9274 /* LocalLibraryDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99AB30263F01EF9180745EB6 /* LocalLibraryDashboardView.swift */; };
 		BDDF99E1182F9FACB65B03C9 /* LocalTrackResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE665E134535975B24A1E332 /* LocalTrackResolverTests.swift */; };
 		C2DC4CA9490680BF832B1AA0 /* PulsefieldUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A9C81D865B64C6D256B24F2B /* PulsefieldUI.framework */; };
@@ -176,6 +178,7 @@
 		29923F0604586898F5BC337B /* LocalMusicDirectoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalMusicDirectoryStore.swift; sourceTree = "<group>"; };
 		29B6C98909AAEFF35D9B16F1 /* recognition-architecture.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "recognition-architecture.md"; sourceTree = "<group>"; };
 		333E4D546E88B031812D5CE9 /* mania-4k-ui-scene-research-plan.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "mania-4k-ui-scene-research-plan.md"; sourceTree = "<group>"; };
+		37A31C8F9E6937A8CA29FAA3 /* AmbientSyncFixtureRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncFixtureRecorder.swift; sourceTree = "<group>"; };
 		3D16F8F551D7CDA0B98C48AB /* LocalTrackResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalTrackResolver.swift; sourceTree = "<group>"; };
 		40490916DA33124F9DB0B512 /* BeatmapDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeatmapDomain.swift; sourceTree = "<group>"; };
 		426CF1CB599BC7B1BB2CEAE8 /* LocalAudioMetadataExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalAudioMetadataExtractor.swift; sourceTree = "<group>"; };
@@ -215,6 +218,7 @@
 		CA0A2F8B94DABCCF88315C57 /* MicFeaturePayloadExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicFeaturePayloadExtractor.swift; sourceTree = "<group>"; };
 		CEA92F2BB55484B411AD9D77 /* RecognitionArchitecture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionArchitecture.swift; sourceTree = "<group>"; };
 		D234442CBC0035196DB3E68C /* MicFeatureStreamBuffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicFeatureStreamBuffer.swift; sourceTree = "<group>"; };
+		D2D67BC7541E757C08F1424A /* AmbientSyncFixtureRecorderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncFixtureRecorderView.swift; sourceTree = "<group>"; };
 		D500FFA522E2376979CED6AA /* CanonicalTrackDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanonicalTrackDomain.swift; sourceTree = "<group>"; };
 		D6AE855CD84CDFD620DA302F /* MockRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockRecognitionService.swift; sourceTree = "<group>"; };
 		E508A37754B1BA46F8326CE3 /* AmbientSyncOffsetHistogram.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncOffsetHistogram.swift; sourceTree = "<group>"; };
@@ -349,6 +353,7 @@
 			isa = PBXGroup;
 			children = (
 				BC7F35314F8729D151EB7084 /* AmbientMicFeatureStreamService.swift */,
+				37A31C8F9E6937A8CA29FAA3 /* AmbientSyncFixtureRecorder.swift */,
 				E508A37754B1BA46F8326CE3 /* AmbientSyncOffsetHistogram.swift */,
 				CA0A2F8B94DABCCF88315C57 /* MicFeaturePayloadExtractor.swift */,
 				D234442CBC0035196DB3E68C /* MicFeatureStreamBuffer.swift */,
@@ -519,6 +524,7 @@
 		B781923653E37312C86A981A /* LocalLibrary */ = {
 			isa = PBXGroup;
 			children = (
+				D2D67BC7541E757C08F1424A /* AmbientSyncFixtureRecorderView.swift */,
 				99AB30263F01EF9180745EB6 /* LocalLibraryDashboardView.swift */,
 				474F20DF577B176F3D906B6E /* LocalResolveDebugView.swift */,
 			);
@@ -753,6 +759,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BC90CBD65B6F79DAED872B3C /* AmbientSyncFixtureRecorderView.swift in Sources */,
 				BD468746F52CA58E04FF9274 /* LocalLibraryDashboardView.swift in Sources */,
 				25F021ED2DE8AB9DAEE5A46E /* LocalResolveDebugView.swift in Sources */,
 				FC9C0773A8A231E694B89EB7 /* Mania4KPlayExperienceView.swift in Sources */,
@@ -775,6 +782,7 @@
 			files = (
 				F8D61884214728535A45ECF5 /* AmbientMicFeatureStreamService.swift in Sources */,
 				07A450E8EE9DEE0B31550226 /* AmbientSyncDomain.swift in Sources */,
+				325788A361B9162DEDC0F928 /* AmbientSyncFixtureRecorder.swift in Sources */,
 				1792D02A16B92E49951811C8 /* AmbientSyncOffsetHistogram.swift in Sources */,
 				E2A8570789AC186771AAE508 /* BeatmapDomain.swift in Sources */,
 				49BD393871163EE821A80748 /* BeatmapGenerationService.swift in Sources */,

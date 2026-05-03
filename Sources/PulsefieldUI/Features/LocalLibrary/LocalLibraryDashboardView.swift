@@ -16,6 +16,10 @@ public final class LocalLibraryDashboardModel {
     public var resolveResults: [LocalResolveResult] = []
     public var errorMessage: String?
 
+    #if os(macOS)
+    public var ambientFixtureRecorderModel: AmbientSyncFixtureRecorderModel?
+    #endif
+
     @ObservationIgnored
     private let directoryStore: any LocalMusicDirectoryManaging
 
@@ -50,11 +54,17 @@ public final class LocalLibraryDashboardModel {
     }
 
     private static func livePrototype(database: LocalAudioLibraryDatabase) -> LocalLibraryDashboardModel {
-        return LocalLibraryDashboardModel(
+        let model = LocalLibraryDashboardModel(
             directoryStore: LocalMusicDirectoryStore(database: database),
             indexer: LocalAudioLibraryIndexer(database: database),
             resolver: LocalTrackResolver(database: database)
         )
+        #if os(macOS)
+        model.ambientFixtureRecorderModel = AmbientSyncFixtureRecorderModel {
+            await database.listAssets()
+        }
+        #endif
+        return model
     }
 
     public func refresh() {
@@ -135,6 +145,11 @@ public struct LocalLibraryDashboardView: View {
                 statusGrid
                 directoriesList
                 LocalResolveDebugView(model: model)
+                #if os(macOS)
+                if let ambientFixtureRecorderModel = model.ambientFixtureRecorderModel {
+                    AmbientSyncFixtureRecorderView(model: ambientFixtureRecorderModel)
+                }
+                #endif
             }
             .padding(24)
             .frame(maxWidth: 980, alignment: .leading)
