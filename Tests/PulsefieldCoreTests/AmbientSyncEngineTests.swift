@@ -35,6 +35,38 @@ final class AmbientSyncEngineTests: XCTestCase {
         XCTAssertEqual(finalSnapshot.finalLockElapsedMS, 5_200)
     }
 
+    func testProvisionalGateAcceptsPCENAndCENSWhenSubbandAndChromaOnsetAreWeak() throws {
+        let queryFrames = makePatternFrames(startMS: 0, count: 320)
+        let referenceFrames = spectralProvisionalReferenceFrames(
+            from: makePatternFrames(startMS: 4_000, count: 320)
+        )
+        var engine = AmbientSyncEngine(
+            reference: AmbientSyncEngine.Reference(
+                sourceDisplayPath: "/tmp/reference.wav",
+                frames: referenceFrames
+            )
+        )
+
+        let snapshot = engine.process(
+            queryWindow: try window(from: queryFrames, throughMS: 3_000),
+            elapsedMS: 3_000
+        )
+
+        XCTAssertEqual(snapshot.phase, .provisional)
+        XCTAssertEqual(snapshot.stage, .fastTimingVerify)
+        XCTAssertNil(snapshot.withholdReason)
+        XCTAssertEqual(snapshot.estimate?.offsetMS ?? 0, 4_000, accuracy: 5)
+
+        let candidate = try XCTUnwrap(snapshot.diagnostics.candidates.first)
+        XCTAssertGreaterThan(candidate.onsetScore, 0.95)
+        XCTAssertEqual(candidate.subbandOnsetScore, 0, accuracy: 0.0001)
+        XCTAssertGreaterThan(candidate.pcenMelScore, 0.95)
+        XCTAssertEqual(candidate.chromaOnsetScore, 0, accuracy: 0.0001)
+        XCTAssertGreaterThan(candidate.censScore, 0.95)
+        XCTAssertGreaterThanOrEqual(candidate.featureAgreementCount, 3)
+        XCTAssertGreaterThan(candidate.combinedDenseScore, 0.90)
+    }
+
     func testFinalLockContinuesTrackingOnShortTrackingWindow() throws {
         let queryFrames = makePatternFrames(startMS: 0, count: 420)
         let referenceFrames = makePatternFrames(startMS: 4_000, count: 420)
@@ -212,6 +244,24 @@ final class AmbientSyncEngineTests: XCTestCase {
         return (0..<12).map { Float($0 == active ? 1 : 0) }
     }
 
+    private func spectralProvisionalReferenceFrames(from frames: [MicFeatureFrame]) -> [MicFeatureFrame] {
+        frames.map { frame in
+            MicFeatureFrame(
+                recordedTimeMS: frame.recordedTimeMS,
+                hostTimeMS: frame.hostTimeMS,
+                onsetEnvelope: frame.onsetEnvelope,
+                subbandOnset: Array(repeating: 0, count: frame.subbandOnset.count),
+                pcenMel: frame.pcenMel,
+                chroma: Array(repeating: 0, count: frame.chroma.count),
+                cens: frame.cens,
+                landmarkHashes: frame.landmarkHashes,
+                landmarks: frame.landmarks,
+                energyDBFS: frame.energyDBFS,
+                snrDB: frame.snrDB
+            )
+        }
+    }
+
     private func robustFeatureMismatchFrames(from frames: [MicFeatureFrame]) -> [MicFeatureFrame] {
         frames.map { frame in
             MicFeatureFrame(
@@ -219,7 +269,7 @@ final class AmbientSyncEngineTests: XCTestCase {
                 hostTimeMS: frame.hostTimeMS,
                 onsetEnvelope: frame.onsetEnvelope,
                 subbandOnset: frame.subbandOnset,
-                pcenMel: Array(repeating: 0, count: frame.pcenMel.count),
+                pcenMel: frame.pcenMel,
                 chroma: frame.chroma,
                 cens: Array(repeating: 0, count: frame.cens.count),
                 landmarkHashes: frame.landmarkHashes,

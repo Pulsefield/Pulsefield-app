@@ -251,6 +251,20 @@ private struct AmbientSyncOffsetVoteAccumulator: Equatable, Sendable {
 public struct AmbientSyncDenseReranker: Equatable, Sendable {
     private static let downweightedDenseFrameWeight = 0.25
 
+    public struct FeatureSet: OptionSet, Equatable, Sendable {
+        public let rawValue: Int
+
+        public init(rawValue: Int) {
+            self.rawValue = rawValue
+        }
+
+        public static let onsetEnvelope = FeatureSet(rawValue: 1 << 0)
+        public static let subbandOnset = FeatureSet(rawValue: 1 << 1)
+        public static let pcenMel = FeatureSet(rawValue: 1 << 2)
+        public static let chromaOnset = FeatureSet(rawValue: 1 << 3)
+        public static let cens = FeatureSet(rawValue: 1 << 4)
+    }
+
     public struct FeatureWeights: Equatable, Sendable {
         public let onsetEnvelope: Double
         public let subbandOnset: Double
@@ -301,6 +315,8 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
         public let minimumDenseMargin: Double
         public let minimumFeatureAgreementCount: Int
         public let maximumDenseLandmarkDisagreementMS: Double
+        public let timingEvidenceFeatures: FeatureSet
+        public let robustEvidenceFeatures: FeatureSet
 
         public init(
             weights: FeatureWeights = FeatureWeights(),
@@ -319,7 +335,9 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
             minimumCombinedDenseScore: Double = 0.52,
             minimumDenseMargin: Double = 0.05,
             minimumFeatureAgreementCount: Int = 2,
-            maximumDenseLandmarkDisagreementMS: Double = 120
+            maximumDenseLandmarkDisagreementMS: Double = 120,
+            timingEvidenceFeatures: FeatureSet = [.onsetEnvelope, .subbandOnset, .chromaOnset],
+            robustEvidenceFeatures: FeatureSet = [.pcenMel, .cens]
         ) {
             precondition(weights.total > 0, "At least one dense rerank feature weight must be positive.")
             precondition(minimumComparableFrameCount > 0, "minimumComparableFrameCount must be positive.")
@@ -358,6 +376,8 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
                 maximumDenseLandmarkDisagreementMS >= 0,
                 "maximumDenseLandmarkDisagreementMS must be non-negative."
             )
+            precondition(!timingEvidenceFeatures.isEmpty, "At least one timing evidence feature must be configured.")
+            precondition(!robustEvidenceFeatures.isEmpty, "At least one robust evidence feature must be configured.")
 
             self.weights = weights
             self.minimumComparableFrameCount = minimumComparableFrameCount
@@ -376,6 +396,8 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
             self.minimumDenseMargin = minimumDenseMargin
             self.minimumFeatureAgreementCount = minimumFeatureAgreementCount
             self.maximumDenseLandmarkDisagreementMS = maximumDenseLandmarkDisagreementMS
+            self.timingEvidenceFeatures = timingEvidenceFeatures
+            self.robustEvidenceFeatures = robustEvidenceFeatures
         }
     }
 
@@ -440,6 +462,26 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
             case .cens:
                 censScore
             }
+        }
+
+        fileprivate func passesAnyFeature(in features: FeatureSet, threshold: Double) -> Bool {
+            if features.contains(.onsetEnvelope), onsetScore >= threshold {
+                return true
+            }
+            if features.contains(.subbandOnset), subbandOnsetScore >= threshold {
+                return true
+            }
+            if features.contains(.pcenMel), pcenMelScore >= threshold {
+                return true
+            }
+            if features.contains(.chromaOnset), chromaOnsetScore >= threshold {
+                return true
+            }
+            if features.contains(.cens), censScore >= threshold {
+                return true
+            }
+
+            return false
         }
 
         fileprivate func withFeatureAgreementCount(_ featureAgreementCount: Int) -> CandidateScore {
@@ -1023,11 +1065,14 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
             return false
         }
 
-        let timingFeaturePasses = candidate.onsetScore >= configuration.minimumTimingFeatureScore
-            || candidate.subbandOnsetScore >= configuration.minimumTimingFeatureScore
-            || candidate.chromaOnsetScore >= configuration.minimumTimingFeatureScore
-        let robustFeaturePasses = candidate.pcenMelScore >= configuration.featureAgreementThreshold
-            || candidate.censScore >= configuration.featureAgreementThreshold
+        let timingFeaturePasses = candidate.passesAnyFeature(
+            in: configuration.timingEvidenceFeatures,
+            threshold: configuration.minimumTimingFeatureScore
+        )
+        let robustFeaturePasses = candidate.passesAnyFeature(
+            in: configuration.robustEvidenceFeatures,
+            threshold: configuration.featureAgreementThreshold
+        )
 
         return timingFeaturePasses && robustFeaturePasses
     }

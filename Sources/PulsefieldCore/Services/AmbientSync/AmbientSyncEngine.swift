@@ -52,10 +52,6 @@ public struct AmbientSyncEngine: Equatable, Sendable {
         public let minimumCoarseVoteRatio: Double
         public let minimumCoarseVoteMargin: Int
         public let minimumCoarseTemporalSpreadMS: Double
-        public let minimumTimingScore: Double
-        public let minimumTimingFeatureScore: Double
-        public let minimumTimingAgreementCount: Int
-        public let minimumTimingDenseMargin: Double
         public let maximumTimingLandmarkDisagreementMS: Double
         public let minimumFinalDenseScore: Double
         public let minimumFinalDenseMargin: Double
@@ -76,11 +72,11 @@ public struct AmbientSyncEngine: Equatable, Sendable {
             ),
             provisionalRerankerConfiguration: AmbientSyncDenseReranker.Configuration = AmbientSyncDenseReranker.Configuration(
                 weights: AmbientSyncDenseReranker.FeatureWeights(
-                    onsetEnvelope: 0.40,
-                    subbandOnset: 0.40,
-                    pcenMel: 0,
-                    chromaOnset: 0.20,
-                    cens: 0
+                    onsetEnvelope: 0.45,
+                    subbandOnset: 0,
+                    pcenMel: 0.30,
+                    chromaOnset: 0.05,
+                    cens: 0.20
                 ),
                 minimumComparableFrameCount: 48,
                 minimumComparableDurationMS: 1_000,
@@ -96,7 +92,9 @@ public struct AmbientSyncEngine: Equatable, Sendable {
                 minimumCombinedDenseScore: 0.55,
                 minimumDenseMargin: 0.02,
                 minimumFeatureAgreementCount: 2,
-                maximumDenseLandmarkDisagreementMS: 100
+                maximumDenseLandmarkDisagreementMS: 100,
+                timingEvidenceFeatures: [.onsetEnvelope, .chromaOnset],
+                robustEvidenceFeatures: [.pcenMel, .cens]
             ),
             finalRerankerConfiguration: AmbientSyncDenseReranker.Configuration = AmbientSyncDenseReranker.Configuration(
                 weights: AmbientSyncDenseReranker.FeatureWeights(),
@@ -128,10 +126,6 @@ public struct AmbientSyncEngine: Equatable, Sendable {
             minimumCoarseVoteRatio: Double = 1.35,
             minimumCoarseVoteMargin: Int = 4,
             minimumCoarseTemporalSpreadMS: Double = 900,
-            minimumTimingScore: Double = 0.58,
-            minimumTimingFeatureScore: Double = 0.55,
-            minimumTimingAgreementCount: Int = 2,
-            minimumTimingDenseMargin: Double = 0.02,
             maximumTimingLandmarkDisagreementMS: Double = 100,
             minimumFinalDenseScore: Double = 0.62,
             minimumFinalDenseMargin: Double = 0.04,
@@ -153,10 +147,6 @@ public struct AmbientSyncEngine: Equatable, Sendable {
             precondition(minimumCoarseVoteRatio >= 1, "minimumCoarseVoteRatio must be at least 1.")
             precondition(minimumCoarseVoteMargin >= 0, "minimumCoarseVoteMargin must be non-negative.")
             precondition(minimumCoarseTemporalSpreadMS >= 0, "minimumCoarseTemporalSpreadMS must be non-negative.")
-            precondition((0...1).contains(minimumTimingScore), "minimumTimingScore must be between 0 and 1.")
-            precondition((0...1).contains(minimumTimingFeatureScore), "minimumTimingFeatureScore must be between 0 and 1.")
-            precondition(minimumTimingAgreementCount > 0, "minimumTimingAgreementCount must be positive.")
-            precondition(minimumTimingDenseMargin >= 0, "minimumTimingDenseMargin must be non-negative.")
             precondition(maximumTimingLandmarkDisagreementMS >= 0, "maximumTimingLandmarkDisagreementMS must be non-negative.")
             precondition((0...1).contains(minimumFinalDenseScore), "minimumFinalDenseScore must be between 0 and 1.")
             precondition(minimumFinalDenseMargin >= 0, "minimumFinalDenseMargin must be non-negative.")
@@ -186,10 +176,6 @@ public struct AmbientSyncEngine: Equatable, Sendable {
             self.minimumCoarseVoteRatio = minimumCoarseVoteRatio
             self.minimumCoarseVoteMargin = minimumCoarseVoteMargin
             self.minimumCoarseTemporalSpreadMS = minimumCoarseTemporalSpreadMS
-            self.minimumTimingScore = minimumTimingScore
-            self.minimumTimingFeatureScore = minimumTimingFeatureScore
-            self.minimumTimingAgreementCount = minimumTimingAgreementCount
-            self.minimumTimingDenseMargin = minimumTimingDenseMargin
             self.maximumTimingLandmarkDisagreementMS = maximumTimingLandmarkDisagreementMS
             self.minimumFinalDenseScore = minimumFinalDenseScore
             self.minimumFinalDenseMargin = minimumFinalDenseMargin
@@ -337,8 +323,7 @@ public struct AmbientSyncEngine: Equatable, Sendable {
 
         if let timingFailure = timingFailureReason(
             timingResult: timingResult,
-            candidate: timingCandidate,
-            topCoarseCandidate: topCoarseCandidate
+            candidate: timingCandidate
         ) {
             return snapshot(
                 state: timingFailureState(for: timingFailure),
@@ -574,24 +559,25 @@ public struct AmbientSyncEngine: Equatable, Sendable {
 
     private func timingFailureReason(
         timingResult: AmbientSyncDenseReranker.Result,
-        candidate: AmbientSyncDenseReranker.CandidateScore,
-        topCoarseCandidate: AmbientSyncOffsetHistogram.Candidate
+        candidate: AmbientSyncDenseReranker.CandidateScore
     ) -> AmbientSyncWithholdReason? {
+        let provisionalGate = configuration.provisionalRerankerConfiguration
         guard candidate.hasSufficientCoverage,
-              candidate.landmarkVoteCount >= configuration.minimumCoarseVoteCount,
-              candidate.landmarkScore >= configuration.minimumCoarseVoteDensity,
-              abs(candidate.offsetMS - topCoarseCandidate.offsetMS) <= configuration.maximumTimingLandmarkDisagreementMS
+              candidate.landmarkVoteCount >= provisionalGate.minimumLandmarkVoteCount,
+              candidate.landmarkScore >= provisionalGate.minimumLandmarkScore,
+              candidate.combinedDenseScore >= provisionalGate.minimumCombinedDenseScore,
+              candidate.featureAgreementCount >= provisionalGate.minimumFeatureAgreementCount
         else {
             return .weakAlignmentPeak
         }
 
         if timingResult.candidates.count > 1,
-           timingResult.denseMargin < configuration.minimumTimingDenseMargin {
+           timingResult.denseMargin < provisionalGate.minimumDenseMargin {
             return .ambiguousOffset
         }
 
-        guard timingAgreementCount(candidate) >= configuration.minimumTimingAgreementCount,
-              timingScore(candidate) >= configuration.minimumTimingScore
+        guard timingResult.bestCandidate != nil,
+              abs(candidate.offsetMS - candidate.coarseOffsetMS) <= configuration.maximumTimingLandmarkDisagreementMS
         else {
             return .weakAlignmentPeak
         }
@@ -699,11 +685,12 @@ public struct AmbientSyncEngine: Equatable, Sendable {
     ) -> Double {
         let voteConfidence = min(1, Double(histogram.topVoteCount) / Double(configuration.minimumCoarseVoteCount * 2))
         let densityConfidence = min(1, candidate.landmarkScore / max(configuration.minimumCoarseVoteDensity * 2, .ulpOfOne))
-        let marginConfidence = min(1, timingResult.denseMargin / max(configuration.minimumTimingDenseMargin * 4, .ulpOfOne))
+        let minimumDenseMargin = configuration.provisionalRerankerConfiguration.minimumDenseMargin
+        let marginConfidence = min(1, timingResult.denseMargin / max(minimumDenseMargin * 4, .ulpOfOne))
         return clampedConfidence(
             voteConfidence * 0.25
                 + densityConfidence * 0.20
-                + timingScore(candidate) * 0.40
+                + candidate.combinedDenseScore * 0.40
                 + marginConfidence * 0.15
         )
     }
@@ -735,20 +722,6 @@ public struct AmbientSyncEngine: Equatable, Sendable {
 
     private func clampedConfidence(_ value: Double) -> Double {
         min(1, max(0, value))
-    }
-
-    private func timingScore(_ candidate: AmbientSyncDenseReranker.CandidateScore) -> Double {
-        (candidate.onsetScore + candidate.subbandOnsetScore + candidate.chromaOnsetScore) / 3
-    }
-
-    private func timingAgreementCount(_ candidate: AmbientSyncDenseReranker.CandidateScore) -> Int {
-        [
-            candidate.onsetScore,
-            candidate.subbandOnsetScore,
-            candidate.chromaOnsetScore
-        ].reduce(0) { count, score in
-            score >= configuration.minimumTimingFeatureScore ? count + 1 : count
-        }
     }
 
     private func makeDiagnostics(
