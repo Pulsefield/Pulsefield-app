@@ -67,6 +67,43 @@ final class AmbientSyncEngineTests: XCTestCase {
         XCTAssertGreaterThan(candidate.combinedDenseScore, 0.90)
     }
 
+    func testCoarseAmbiguousHistogramSoftPassesTopKToDenseRerank() throws {
+        let queryFrames = makePatternFrames(startMS: 0, count: 320)
+        let matchingReference = framesWithLimitedLandmarks(
+            makePatternFrames(startMS: 4_000, count: 320),
+            maximumLandmarkFrameCount: 140
+        )
+        let denseDecoyReference = robustFeatureMismatchFrames(
+            from: makePatternFrames(startMS: 8_000, count: 320)
+        )
+        var engine = AmbientSyncEngine(
+            reference: AmbientSyncEngine.Reference(
+                sourceDisplayPath: "/tmp/reference.wav",
+                frames: matchingReference + denseDecoyReference
+            )
+        )
+
+        let snapshot = engine.process(
+            queryWindow: try window(from: queryFrames, throughMS: 3_000),
+            elapsedMS: 3_000
+        )
+
+        XCTAssertEqual(snapshot.phase, .provisional)
+        XCTAssertEqual(snapshot.stage, .fastTimingVerify)
+        XCTAssertNil(snapshot.withholdReason)
+        XCTAssertTrue(snapshot.diagnostics.coarseAmbiguous)
+        XCTAssertLessThan(
+            snapshot.diagnostics.topToSecondVoteRatio,
+            AmbientSyncEngine.Configuration.v1.minimumCoarseVoteRatio
+        )
+        XCTAssertEqual(snapshot.estimate?.offsetMS ?? 0, 4_000, accuracy: 5)
+
+        let candidate = try XCTUnwrap(snapshot.diagnostics.candidates.first)
+        XCTAssertEqual(candidate.coarseOffsetMS, 4_000, accuracy: 5)
+        XCTAssertLessThan(candidate.landmarkVoteCount, snapshot.diagnostics.topLandmarkVoteCount)
+        XCTAssertGreaterThan(snapshot.diagnostics.denseMargin, 0.06)
+    }
+
     func testFinalLockContinuesTrackingOnShortTrackingWindow() throws {
         let queryFrames = makePatternFrames(startMS: 0, count: 420)
         let referenceFrames = makePatternFrames(startMS: 4_000, count: 420)
@@ -173,7 +210,10 @@ final class AmbientSyncEngineTests: XCTestCase {
         )
 
         XCTAssertNotEqual(snapshot.phase, .final)
+        XCTAssertEqual(snapshot.stage, .fastTimingVerify)
         XCTAssertEqual(snapshot.withholdReason, .ambiguousOffset)
+        XCTAssertTrue(snapshot.diagnostics.coarseAmbiguous)
+        XCTAssertEqual(snapshot.diagnostics.denseMargin, 0, accuracy: 0.0001)
         XCTAssertGreaterThanOrEqual(snapshot.diagnostics.candidates.count, 2)
     }
 
@@ -274,6 +314,28 @@ final class AmbientSyncEngineTests: XCTestCase {
                 cens: Array(repeating: 0, count: frame.cens.count),
                 landmarkHashes: frame.landmarkHashes,
                 landmarks: frame.landmarks,
+                energyDBFS: frame.energyDBFS,
+                snrDB: frame.snrDB
+            )
+        }
+    }
+
+    private func framesWithLimitedLandmarks(
+        _ frames: [MicFeatureFrame],
+        maximumLandmarkFrameCount: Int
+    ) -> [MicFeatureFrame] {
+        frames.enumerated().map { index, frame in
+            let landmarks = index < maximumLandmarkFrameCount ? frame.landmarks : []
+            return MicFeatureFrame(
+                recordedTimeMS: frame.recordedTimeMS,
+                hostTimeMS: frame.hostTimeMS,
+                onsetEnvelope: frame.onsetEnvelope,
+                subbandOnset: frame.subbandOnset,
+                pcenMel: frame.pcenMel,
+                chroma: frame.chroma,
+                cens: frame.cens,
+                landmarkHashes: landmarks.map(\.hash),
+                landmarks: landmarks,
                 energyDBFS: frame.energyDBFS,
                 snrDB: frame.snrDB
             )

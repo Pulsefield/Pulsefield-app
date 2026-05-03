@@ -145,6 +145,7 @@ public struct AmbientSyncFixtureReplayScores: Codable, Equatable, Sendable {
     public let secondLandmarkVoteCount: Int
     public let topToSecondVoteRatio: Double
     public let topVoteMargin: Int
+    public let coarseAmbiguous: Bool
     public let denseMargin: Double
     public let topCandidateOffsetMS: Double?
     public let topCandidateCombinedDenseScore: Double?
@@ -155,6 +156,7 @@ public struct AmbientSyncFixtureReplayScores: Codable, Equatable, Sendable {
         secondLandmarkVoteCount: Int,
         topToSecondVoteRatio: Double,
         topVoteMargin: Int,
+        coarseAmbiguous: Bool = false,
         denseMargin: Double,
         topCandidateOffsetMS: Double?,
         topCandidateCombinedDenseScore: Double?,
@@ -164,6 +166,7 @@ public struct AmbientSyncFixtureReplayScores: Codable, Equatable, Sendable {
         self.secondLandmarkVoteCount = secondLandmarkVoteCount
         self.topToSecondVoteRatio = topToSecondVoteRatio
         self.topVoteMargin = topVoteMargin
+        self.coarseAmbiguous = coarseAmbiguous
         self.denseMargin = denseMargin
         self.topCandidateOffsetMS = topCandidateOffsetMS
         self.topCandidateCombinedDenseScore = topCandidateCombinedDenseScore
@@ -220,6 +223,7 @@ public struct AmbientSyncFixtureReplayTraceEvent: Codable, Equatable, Sendable {
             secondLandmarkVoteCount: snapshot.diagnostics.secondLandmarkVoteCount,
             topToSecondVoteRatio: snapshot.diagnostics.topToSecondVoteRatio,
             topVoteMargin: snapshot.diagnostics.topVoteMargin,
+            coarseAmbiguous: snapshot.diagnostics.coarseAmbiguous,
             denseMargin: snapshot.diagnostics.denseMargin,
             topCandidateOffsetMS: snapshot.diagnostics.candidates.first?.offsetMS,
             topCandidateCombinedDenseScore: snapshot.diagnostics.candidates.first?.combinedDenseScore,

@@ -390,6 +390,7 @@ public struct AmbientSyncDiagnostics: Codable, Equatable, Sendable {
     public let secondLandmarkVoteCount: Int
     public let topToSecondVoteRatio: Double
     public let topVoteMargin: Int
+    public let coarseAmbiguous: Bool
     public let denseMargin: Double
     public let offsetStabilityMS: Double?
     public let candidates: [AmbientSyncCandidateDiagnostics]
@@ -403,6 +404,7 @@ public struct AmbientSyncDiagnostics: Codable, Equatable, Sendable {
         secondLandmarkVoteCount: Int = 0,
         topToSecondVoteRatio: Double = 0,
         topVoteMargin: Int = 0,
+        coarseAmbiguous: Bool = false,
         denseMargin: Double = 0,
         offsetStabilityMS: Double? = nil,
         candidates: [AmbientSyncCandidateDiagnostics] = []
@@ -415,6 +417,7 @@ public struct AmbientSyncDiagnostics: Codable, Equatable, Sendable {
         self.secondLandmarkVoteCount = secondLandmarkVoteCount
         self.topToSecondVoteRatio = topToSecondVoteRatio
         self.topVoteMargin = topVoteMargin
+        self.coarseAmbiguous = coarseAmbiguous
         self.denseMargin = denseMargin
         self.offsetStabilityMS = offsetStabilityMS
         self.candidates = candidates

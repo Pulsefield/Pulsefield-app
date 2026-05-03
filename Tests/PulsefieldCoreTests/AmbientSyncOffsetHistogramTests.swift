@@ -97,7 +97,7 @@ final class AmbientSyncOffsetHistogramTests: XCTestCase {
         XCTAssertEqual(histogram.topToSecondVoteRatio, 3, accuracy: 0.001)
     }
 
-    func testDenseRerankWithholdsBestCandidateWhenDenseWinnerContradictsLandmarkLeader() {
+    func testDenseRerankAcceptsDenseWinnerFromNonLeadingCoarseCandidate() {
         let queryWindow = MicFeatureWindow(
             frames: makeDensePatternFrames(offsetMS: 0)
         )
@@ -115,7 +115,7 @@ final class AmbientSyncOffsetHistogramTests: XCTestCase {
         )
 
         XCTAssertEqual(result.leadingCandidate?.offsetMS ?? 0, 4_000, accuracy: 0.001)
-        XCTAssertNil(result.bestCandidate)
+        XCTAssertEqual(result.bestCandidate?.offsetMS ?? 0, 4_000, accuracy: 0.001)
         XCTAssertGreaterThan(result.leadingCandidate?.combinedDenseScore ?? 0, 0.95)
         XCTAssertGreaterThan(result.denseMargin, 0.20)
         XCTAssertEqual(result.leadingCandidate?.featureAgreementCount, 5)
@@ -351,7 +351,7 @@ final class AmbientSyncOffsetHistogramTests: XCTestCase {
         XCTAssertNil(result.bestCandidate)
     }
 
-    func testDenseRerankWithholdsWhenLandmarkLeaderIsUncovered() {
+    func testDenseRerankAcceptsCoveredCandidateWhenLandmarkLeaderIsUncovered() {
         let queryWindow = MicFeatureWindow(frames: makeDensePatternFrames(offsetMS: 0))
         let localFrames = makeDensePatternFrames(offsetMS: 4_000)
         let candidates = [
@@ -367,7 +367,7 @@ final class AmbientSyncOffsetHistogramTests: XCTestCase {
 
         XCTAssertEqual(result.leadingCandidate?.offsetMS ?? 0, 4_000, accuracy: 0.001)
         XCTAssertTrue(result.leadingCandidate?.hasSufficientCoverage ?? false)
-        XCTAssertNil(result.bestCandidate)
+        XCTAssertEqual(result.bestCandidate?.offsetMS ?? 0, 4_000, accuracy: 0.001)
         XCTAssertEqual(
             result.candidates.first { $0.offsetMS == 9_000 }?.coverageRatio ?? 1,
             0,

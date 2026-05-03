@@ -53,6 +53,7 @@ public struct AmbientSyncEngine: Equatable, Sendable {
         public let minimumCoarseVoteMargin: Int
         public let minimumCoarseTemporalSpreadMS: Double
         public let maximumTimingLandmarkDisagreementMS: Double
+        public let minimumCoarseAmbiguousDenseMargin: Double
         public let minimumFinalDenseScore: Double
         public let minimumFinalDenseMargin: Double
         public let minimumFinalFeatureAgreementCount: Int
@@ -127,6 +128,7 @@ public struct AmbientSyncEngine: Equatable, Sendable {
             minimumCoarseVoteMargin: Int = 4,
             minimumCoarseTemporalSpreadMS: Double = 900,
             maximumTimingLandmarkDisagreementMS: Double = 100,
+            minimumCoarseAmbiguousDenseMargin: Double = 0.06,
             minimumFinalDenseScore: Double = 0.62,
             minimumFinalDenseMargin: Double = 0.04,
             minimumFinalFeatureAgreementCount: Int = 4,
@@ -148,6 +150,7 @@ public struct AmbientSyncEngine: Equatable, Sendable {
             precondition(minimumCoarseVoteMargin >= 0, "minimumCoarseVoteMargin must be non-negative.")
             precondition(minimumCoarseTemporalSpreadMS >= 0, "minimumCoarseTemporalSpreadMS must be non-negative.")
             precondition(maximumTimingLandmarkDisagreementMS >= 0, "maximumTimingLandmarkDisagreementMS must be non-negative.")
+            precondition(minimumCoarseAmbiguousDenseMargin >= 0, "minimumCoarseAmbiguousDenseMargin must be non-negative.")
             precondition((0...1).contains(minimumFinalDenseScore), "minimumFinalDenseScore must be between 0 and 1.")
             precondition(minimumFinalDenseMargin >= 0, "minimumFinalDenseMargin must be non-negative.")
             precondition(minimumFinalFeatureAgreementCount > 0, "minimumFinalFeatureAgreementCount must be positive.")
@@ -177,6 +180,7 @@ public struct AmbientSyncEngine: Equatable, Sendable {
             self.minimumCoarseVoteMargin = minimumCoarseVoteMargin
             self.minimumCoarseTemporalSpreadMS = minimumCoarseTemporalSpreadMS
             self.maximumTimingLandmarkDisagreementMS = maximumTimingLandmarkDisagreementMS
+            self.minimumCoarseAmbiguousDenseMargin = minimumCoarseAmbiguousDenseMargin
             self.minimumFinalDenseScore = minimumFinalDenseScore
             self.minimumFinalDenseMargin = minimumFinalDenseMargin
             self.minimumFinalFeatureAgreementCount = minimumFinalFeatureAgreementCount
@@ -295,6 +299,10 @@ public struct AmbientSyncEngine: Equatable, Sendable {
                 diagnostics: diagnostics
             )
         }
+        let coarseAmbiguous = isCoarseAmbiguous(
+            histogram: histogram,
+            topCandidate: topCoarseCandidate
+        )
 
         let timingResult = AmbientSyncDenseReranker(
             configuration: configuration.provisionalRerankerConfiguration
@@ -323,7 +331,8 @@ public struct AmbientSyncEngine: Equatable, Sendable {
 
         if let timingFailure = timingFailureReason(
             timingResult: timingResult,
-            candidate: timingCandidate
+            candidate: timingCandidate,
+            coarseAmbiguous: coarseAmbiguous
         ) {
             return snapshot(
                 state: timingFailureState(for: timingFailure),
@@ -407,7 +416,8 @@ public struct AmbientSyncEngine: Equatable, Sendable {
         if let finalFailure = finalFailureReason(
             robustResult: robustResult,
             candidate: finalCandidate,
-            offsetStabilityMS: offsetStabilityMS
+            offsetStabilityMS: offsetStabilityMS,
+            coarseAmbiguous: coarseAmbiguous
         ) {
             return snapshot(
                 state: finalFailureState(for: finalFailure),
@@ -537,16 +547,23 @@ public struct AmbientSyncEngine: Equatable, Sendable {
             return .insufficientLandmarkEvidence
         }
 
-        let hasCompetingOffset = histogram.secondVoteCount > 0
-        if hasCompetingOffset {
-            guard histogram.topToSecondVoteRatio >= configuration.minimumCoarseVoteRatio,
-                  histogram.topVoteMargin >= configuration.minimumCoarseVoteMargin
-            else {
-                return .ambiguousOffset
-            }
+        return nil
+    }
+
+    private func isCoarseAmbiguous(
+        histogram: AmbientSyncOffsetHistogram,
+        topCandidate: AmbientSyncOffsetHistogram.Candidate
+    ) -> Bool {
+        guard topCandidate.voteCount >= configuration.minimumCoarseVoteCount,
+              topCandidate.voteDensity >= configuration.minimumCoarseVoteDensity,
+              topCandidate.queryTemporalSpreadMS >= configuration.minimumCoarseTemporalSpreadMS,
+              histogram.secondVoteCount > 0
+        else {
+            return false
         }
 
-        return nil
+        return histogram.topToSecondVoteRatio < configuration.minimumCoarseVoteRatio
+            || histogram.topVoteMargin < configuration.minimumCoarseVoteMargin
     }
 
     private func coarseFailureState(for reason: AmbientSyncWithholdReason) -> AmbientSyncState {
@@ -559,7 +576,8 @@ public struct AmbientSyncEngine: Equatable, Sendable {
 
     private func timingFailureReason(
         timingResult: AmbientSyncDenseReranker.Result,
-        candidate: AmbientSyncDenseReranker.CandidateScore
+        candidate: AmbientSyncDenseReranker.CandidateScore,
+        coarseAmbiguous: Bool
     ) -> AmbientSyncWithholdReason? {
         let provisionalGate = configuration.provisionalRerankerConfiguration
         guard candidate.hasSufficientCoverage,
@@ -571,8 +589,11 @@ public struct AmbientSyncEngine: Equatable, Sendable {
             return .weakAlignmentPeak
         }
 
+        let minimumDenseMargin = coarseAmbiguous
+            ? max(provisionalGate.minimumDenseMargin, configuration.minimumCoarseAmbiguousDenseMargin)
+            : provisionalGate.minimumDenseMargin
         if timingResult.candidates.count > 1,
-           timingResult.denseMargin < provisionalGate.minimumDenseMargin {
+           timingResult.denseMargin < minimumDenseMargin {
             return .ambiguousOffset
         }
 
@@ -596,7 +617,8 @@ public struct AmbientSyncEngine: Equatable, Sendable {
     private func finalFailureReason(
         robustResult: AmbientSyncDenseReranker.Result,
         candidate: AmbientSyncDenseReranker.CandidateScore,
-        offsetStabilityMS: Double?
+        offsetStabilityMS: Double?,
+        coarseAmbiguous: Bool
     ) -> AmbientSyncWithholdReason? {
         if let offsetStabilityMS,
            offsetStabilityMS > configuration.maximumFinalOffsetStabilityMS {
@@ -612,8 +634,11 @@ public struct AmbientSyncEngine: Equatable, Sendable {
             return .weakAlignmentPeak
         }
 
+        let minimumDenseMargin = coarseAmbiguous
+            ? max(configuration.minimumFinalDenseMargin, configuration.minimumCoarseAmbiguousDenseMargin)
+            : configuration.minimumFinalDenseMargin
         if robustResult.candidates.count > 1,
-           robustResult.denseMargin < configuration.minimumFinalDenseMargin {
+           robustResult.denseMargin < minimumDenseMargin {
             return .ambiguousOffset
         }
 
@@ -739,6 +764,9 @@ public struct AmbientSyncEngine: Equatable, Sendable {
             secondLandmarkVoteCount: histogram.secondVoteCount,
             topToSecondVoteRatio: finiteVoteRatio(histogram),
             topVoteMargin: histogram.topVoteMargin,
+            coarseAmbiguous: histogram.candidates.first.map { topCandidate in
+                isCoarseAmbiguous(histogram: histogram, topCandidate: topCandidate)
+            } ?? false,
             denseMargin: rerankResult?.denseMargin ?? 0,
             offsetStabilityMS: offsetStabilityMS,
             candidates: candidateDiagnostics(

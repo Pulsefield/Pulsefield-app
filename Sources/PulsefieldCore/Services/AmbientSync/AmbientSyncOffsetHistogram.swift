@@ -554,7 +554,6 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
                 queryEvidence: queryEvidence
             )
         }
-        let landmarkLeaderOffsetMS = Self.landmarkLeaderOffsetMS(from: scoredCandidates)
         let candidatesWithAgreement = addFeatureAgreement(to: scoredCandidates)
         let rankedCandidates = candidatesWithAgreement.sorted(by: Self.isHigherRanked)
         let denseMargin: Double
@@ -567,8 +566,7 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
         let hasConfidentBestCandidate = rankedCandidates.first.map { candidate in
             passesDenseGate(
                 candidate: candidate,
-                denseMargin: clampedDenseMargin,
-                landmarkLeaderOffsetMS: landmarkLeaderOffsetMS
+                denseMargin: clampedDenseMargin
             )
         } ?? false
 
@@ -1047,8 +1045,7 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
 
     private func passesDenseGate(
         candidate: CandidateScore,
-        denseMargin: Double,
-        landmarkLeaderOffsetMS: Double?
+        denseMargin: Double
     ) -> Bool {
         guard candidate.hasSufficientCoverage,
               candidate.landmarkVoteCount >= configuration.minimumLandmarkVoteCount,
@@ -1060,8 +1057,7 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
             return false
         }
 
-        if let landmarkLeaderOffsetMS,
-           abs(candidate.offsetMS - landmarkLeaderOffsetMS) > configuration.maximumDenseLandmarkDisagreementMS {
+        if abs(candidate.offsetMS - candidate.coarseOffsetMS) > configuration.maximumDenseLandmarkDisagreementMS {
             return false
         }
 
@@ -1137,26 +1133,6 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
         }
 
         return lhs.offsetMS < rhs.offsetMS
-    }
-
-    private static func landmarkLeaderOffsetMS(from candidates: [CandidateScore]) -> Double? {
-        guard !candidates.isEmpty else {
-            return nil
-        }
-
-        return candidates.sorted(by: isHigherRankedLandmarkCandidate).first?.coarseOffsetMS
-    }
-
-    private static func isHigherRankedLandmarkCandidate(lhs: CandidateScore, rhs: CandidateScore) -> Bool {
-        if lhs.landmarkVoteCount != rhs.landmarkVoteCount {
-            return lhs.landmarkVoteCount > rhs.landmarkVoteCount
-        }
-
-        if lhs.landmarkScore != rhs.landmarkScore {
-            return lhs.landmarkScore > rhs.landmarkScore
-        }
-
-        return lhs.coarseOffsetMS < rhs.coarseOffsetMS
     }
 
 }
