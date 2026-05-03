@@ -12,6 +12,28 @@ public struct AmbientSyncFixtureTargetAsset: Codable, Equatable, Sendable {
     public let album: String?
     public let isrc: String?
 
+    public init(
+        id: UUID,
+        displayPath: String,
+        fileName: String,
+        sha256: String,
+        durationMS: Int,
+        title: String?,
+        artists: [String],
+        album: String?,
+        isrc: String?
+    ) {
+        self.id = id
+        self.displayPath = displayPath
+        self.fileName = fileName
+        self.sha256 = sha256
+        self.durationMS = durationMS
+        self.title = title
+        self.artists = artists
+        self.album = album
+        self.isrc = isrc
+    }
+
     public init(asset: LocalAudioAsset) {
         id = asset.id
         displayPath = asset.displayPath
