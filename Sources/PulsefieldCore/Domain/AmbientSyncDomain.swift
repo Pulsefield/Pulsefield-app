@@ -103,7 +103,7 @@ public struct MicFeaturePayload: Equatable, Sendable {
     }
 }
 
-public struct MicFeatureLandmark: Equatable, Sendable {
+public struct MicFeatureLandmark: Codable, Equatable, Sendable {
     public let hash: UInt64
     public let anchorTimeMS: Double
     public let anchorFrequencyBin: Int
@@ -129,7 +129,7 @@ public struct MicFeatureLandmark: Equatable, Sendable {
     }
 }
 
-public struct MicFeatureFrame: Equatable, Sendable {
+public struct MicFeatureFrame: Codable, Equatable, Sendable {
     public let recordedTimeMS: Double
     public let hostTimeMS: Double
     public let onsetEnvelope: Float
@@ -217,6 +217,241 @@ public struct MicFeatureWindow: Equatable, Sendable {
         frames.reduce(0) { count, frame in
             count + frame.landmarkHashes.count
         }
+    }
+}
+
+public enum AmbientSyncState: String, Codable, Equatable, Sendable {
+    case ready
+    case listening
+    case locking
+    case locked
+    case drifting
+    case relocking
+    case lost
+    case failed
+}
+
+public enum AmbientSyncLockPhase: String, Codable, Equatable, Sendable {
+    case none
+    case provisional
+    case final
+}
+
+public enum AmbientSyncStage: String, Codable, Equatable, Sendable {
+    case readiness
+    case landmarkCoarse
+    case fastTimingVerify
+    case robustVerify
+    case tracking
+    case relock
+}
+
+public enum AmbientSyncWithholdReason: String, Codable, Equatable, Sendable {
+    case insufficientDuration
+    case insufficientEnergy
+    case insufficientActiveFrames
+    case insufficientLandmarkEvidence
+    case weakAlignmentPeak
+    case ambiguousOffset
+    case unstableTrackingResidual
+    case lostSignal
+    case decodeFailed
+    case indexUnavailable
+}
+
+public struct AmbientSyncFeatureConfiguration: Codable, Equatable, Sendable {
+    public let processingSampleRate: Double
+    public let featureWindowSizeSamples: Int
+    public let featureHopSizeSamples: Int
+    public let speculativeQueryDurationMS: Double
+    public let firstLockMinimumDurationMS: Double
+    public let firstLockTargetDurationMS: Double
+    public let finalLockMinimumDurationMS: Double
+    public let finalLockTargetDurationMS: Double
+    public let trackingQueryDurationMS: Double
+
+    public init(
+        processingSampleRate: Double = 48_000,
+        featureWindowSizeSamples: Int = 1_024,
+        featureHopSizeSamples: Int = 512,
+        speculativeQueryDurationMS: Double = 1_500,
+        firstLockMinimumDurationMS: Double = 2_500,
+        firstLockTargetDurationMS: Double = 3_000,
+        finalLockMinimumDurationMS: Double = 4_500,
+        finalLockTargetDurationMS: Double = 5_000,
+        trackingQueryDurationMS: Double = 2_000
+    ) {
+        precondition(processingSampleRate > 0, "processingSampleRate must be positive.")
+        precondition(featureWindowSizeSamples > 0, "featureWindowSizeSamples must be positive.")
+        precondition(featureHopSizeSamples > 0, "featureHopSizeSamples must be positive.")
+        precondition(
+            featureHopSizeSamples <= featureWindowSizeSamples,
+            "featureHopSizeSamples must not exceed featureWindowSizeSamples."
+        )
+        precondition(speculativeQueryDurationMS > 0, "speculativeQueryDurationMS must be positive.")
+        precondition(firstLockMinimumDurationMS > 0, "firstLockMinimumDurationMS must be positive.")
+        precondition(firstLockTargetDurationMS >= firstLockMinimumDurationMS, "firstLockTargetDurationMS must not be below firstLockMinimumDurationMS.")
+        precondition(finalLockMinimumDurationMS >= firstLockMinimumDurationMS, "finalLockMinimumDurationMS must not be below firstLockMinimumDurationMS.")
+        precondition(finalLockTargetDurationMS >= finalLockMinimumDurationMS, "finalLockTargetDurationMS must not be below finalLockMinimumDurationMS.")
+        precondition(trackingQueryDurationMS > 0, "trackingQueryDurationMS must be positive.")
+
+        self.processingSampleRate = processingSampleRate
+        self.featureWindowSizeSamples = featureWindowSizeSamples
+        self.featureHopSizeSamples = featureHopSizeSamples
+        self.speculativeQueryDurationMS = speculativeQueryDurationMS
+        self.firstLockMinimumDurationMS = firstLockMinimumDurationMS
+        self.firstLockTargetDurationMS = firstLockTargetDurationMS
+        self.finalLockMinimumDurationMS = finalLockMinimumDurationMS
+        self.finalLockTargetDurationMS = finalLockTargetDurationMS
+        self.trackingQueryDurationMS = trackingQueryDurationMS
+    }
+
+    public static let v1 = AmbientSyncFeatureConfiguration()
+
+    public var featureHopMS: Double {
+        Double(featureHopSizeSamples) / processingSampleRate * 1_000
+    }
+}
+
+public struct AmbientSyncEstimate: Codable, Equatable, Sendable {
+    public let queryEndpointRecordedTimeMS: Double
+    public let referenceTimeMS: Double
+    public let offsetMS: Double
+    public let driftPPM: Double?
+
+    public init(
+        queryEndpointRecordedTimeMS: Double,
+        referenceTimeMS: Double,
+        offsetMS: Double,
+        driftPPM: Double? = nil
+    ) {
+        self.queryEndpointRecordedTimeMS = queryEndpointRecordedTimeMS
+        self.referenceTimeMS = referenceTimeMS
+        self.offsetMS = offsetMS
+        self.driftPPM = driftPPM
+    }
+}
+
+public struct AmbientSyncCandidateDiagnostics: Codable, Equatable, Sendable {
+    public let offsetMS: Double
+    public let coarseOffsetMS: Double
+    public let landmarkVoteCount: Int
+    public let landmarkScore: Double
+    public let voteDensity: Double
+    public let comparableFrameCount: Int
+    public let coverageRatio: Double
+    public let onsetScore: Double
+    public let subbandOnsetScore: Double
+    public let pcenMelScore: Double
+    public let chromaOnsetScore: Double
+    public let censScore: Double
+    public let combinedDenseScore: Double
+    public let featureAgreementCount: Int
+
+    public init(
+        offsetMS: Double,
+        coarseOffsetMS: Double,
+        landmarkVoteCount: Int,
+        landmarkScore: Double,
+        voteDensity: Double,
+        comparableFrameCount: Int,
+        coverageRatio: Double,
+        onsetScore: Double,
+        subbandOnsetScore: Double,
+        pcenMelScore: Double,
+        chromaOnsetScore: Double,
+        censScore: Double,
+        combinedDenseScore: Double,
+        featureAgreementCount: Int
+    ) {
+        self.offsetMS = offsetMS
+        self.coarseOffsetMS = coarseOffsetMS
+        self.landmarkVoteCount = landmarkVoteCount
+        self.landmarkScore = landmarkScore
+        self.voteDensity = voteDensity
+        self.comparableFrameCount = comparableFrameCount
+        self.coverageRatio = coverageRatio
+        self.onsetScore = onsetScore
+        self.subbandOnsetScore = subbandOnsetScore
+        self.pcenMelScore = pcenMelScore
+        self.chromaOnsetScore = chromaOnsetScore
+        self.censScore = censScore
+        self.combinedDenseScore = combinedDenseScore
+        self.featureAgreementCount = featureAgreementCount
+    }
+}
+
+public struct AmbientSyncDiagnostics: Codable, Equatable, Sendable {
+    public let queryDurationMS: Double
+    public let activeFrameFraction: Double
+    public let queryLandmarkCount: Int
+    public let histogramCandidateCount: Int
+    public let topLandmarkVoteCount: Int
+    public let secondLandmarkVoteCount: Int
+    public let topToSecondVoteRatio: Double
+    public let topVoteMargin: Int
+    public let denseMargin: Double
+    public let offsetStabilityMS: Double?
+    public let candidates: [AmbientSyncCandidateDiagnostics]
+
+    public init(
+        queryDurationMS: Double,
+        activeFrameFraction: Double,
+        queryLandmarkCount: Int,
+        histogramCandidateCount: Int = 0,
+        topLandmarkVoteCount: Int = 0,
+        secondLandmarkVoteCount: Int = 0,
+        topToSecondVoteRatio: Double = 0,
+        topVoteMargin: Int = 0,
+        denseMargin: Double = 0,
+        offsetStabilityMS: Double? = nil,
+        candidates: [AmbientSyncCandidateDiagnostics] = []
+    ) {
+        self.queryDurationMS = queryDurationMS
+        self.activeFrameFraction = activeFrameFraction
+        self.queryLandmarkCount = queryLandmarkCount
+        self.histogramCandidateCount = histogramCandidateCount
+        self.topLandmarkVoteCount = topLandmarkVoteCount
+        self.secondLandmarkVoteCount = secondLandmarkVoteCount
+        self.topToSecondVoteRatio = topToSecondVoteRatio
+        self.topVoteMargin = topVoteMargin
+        self.denseMargin = denseMargin
+        self.offsetStabilityMS = offsetStabilityMS
+        self.candidates = candidates
+    }
+}
+
+public struct AmbientSyncSnapshot: Codable, Equatable, Sendable {
+    public let state: AmbientSyncState
+    public let phase: AmbientSyncLockPhase
+    public let stage: AmbientSyncStage
+    public let estimate: AmbientSyncEstimate?
+    public let withholdReason: AmbientSyncWithholdReason?
+    public let confidence: Double
+    public let diagnostics: AmbientSyncDiagnostics
+    public let firstProvisionalLockElapsedMS: Double?
+    public let finalLockElapsedMS: Double?
+
+    public init(
+        state: AmbientSyncState,
+        phase: AmbientSyncLockPhase,
+        stage: AmbientSyncStage,
+        estimate: AmbientSyncEstimate? = nil,
+        withholdReason: AmbientSyncWithholdReason? = nil,
+        confidence: Double = 0,
+        diagnostics: AmbientSyncDiagnostics,
+        firstProvisionalLockElapsedMS: Double? = nil,
+        finalLockElapsedMS: Double? = nil
+    ) {
+        self.state = state
+        self.phase = phase
+        self.stage = stage
+        self.estimate = estimate
+        self.withholdReason = withholdReason
+        self.confidence = confidence
+        self.diagnostics = diagnostics
+        self.firstProvisionalLockElapsedMS = firstProvisionalLockElapsedMS
+        self.finalLockElapsedMS = finalLockElapsedMS
     }
 }
 
