@@ -1,5 +1,17 @@
 import Foundation
 
+public struct LandmarkHashStats: Equatable, Sendable {
+    public let hash: UInt64
+    public let postingCount: Int
+    public let idfWeight: Double
+
+    public init(hash: UInt64, postingCount: Int, idfWeight: Double) {
+        self.hash = hash
+        self.postingCount = postingCount
+        self.idfWeight = idfWeight
+    }
+}
+
 public struct AmbientSyncLandmarkIndex: Equatable, Sendable {
     public let landmarkCount: Int
 
@@ -21,6 +33,22 @@ public struct AmbientSyncLandmarkIndex: Equatable, Sendable {
 
     public var postingsByHash: [UInt64: [Double]] {
         anchorTimesByHash
+    }
+
+    public func postingCount(for hash: UInt64) -> Int {
+        anchorTimesByHash[hash]?.count ?? 0
+    }
+
+    public func idfWeight(for hash: UInt64) -> Double {
+        log1p(Double(landmarkCount) / Double(postingCount(for: hash) + 1))
+    }
+
+    public func hashStats(for hash: UInt64) -> LandmarkHashStats {
+        LandmarkHashStats(
+            hash: hash,
+            postingCount: postingCount(for: hash),
+            idfWeight: idfWeight(for: hash)
+        )
     }
 
     public func anchorTimes(for hash: UInt64) -> [Double] {
@@ -55,7 +83,15 @@ public struct AmbientSyncOffsetHistogram: Equatable, Sendable {
         public let offsetMS: Double
         public let voteCount: Int
         public let voteDensity: Double
+        public let weightedVoteScore: Double
+        public let uniqueHashCount: Int
+        public let commonHashVoteCount: Int
+        public let meanReferencePostingCount: Double
         public let queryTemporalSpreadMS: Double
+
+        public var rawVoteCount: Int {
+            voteCount
+        }
 
         public init(
             binIndex: Int,
@@ -63,6 +99,10 @@ public struct AmbientSyncOffsetHistogram: Equatable, Sendable {
             offsetMS: Double,
             voteCount: Int,
             voteDensity: Double,
+            weightedVoteScore: Double? = nil,
+            uniqueHashCount: Int? = nil,
+            commonHashVoteCount: Int = 0,
+            meanReferencePostingCount: Double = 0,
             queryTemporalSpreadMS: Double
         ) {
             self.binIndex = binIndex
@@ -70,6 +110,10 @@ public struct AmbientSyncOffsetHistogram: Equatable, Sendable {
             self.offsetMS = offsetMS
             self.voteCount = voteCount
             self.voteDensity = voteDensity
+            self.weightedVoteScore = weightedVoteScore ?? Double(voteCount)
+            self.uniqueHashCount = uniqueHashCount ?? voteCount
+            self.commonHashVoteCount = commonHashVoteCount
+            self.meanReferencePostingCount = meanReferencePostingCount
             self.queryTemporalSpreadMS = queryTemporalSpreadMS
         }
     }
@@ -87,8 +131,13 @@ public struct AmbientSyncOffsetHistogram: Equatable, Sendable {
         searchRangeMS: ClosedRange<Double>? = nil
     ) {
         var accumulators: [Int: AmbientSyncOffsetVoteAccumulator] = [:]
+        let queryHashCounts = Self.hashCounts(in: queryLandmarks)
 
         for queryLandmark in queryLandmarks {
+            let hashStats = localIndex.hashStats(for: queryLandmark.hash)
+            let queryTF = queryHashCounts[queryLandmark.hash, default: 1]
+            let weight = Self.matchWeight(idfWeight: hashStats.idfWeight, queryTF: queryTF)
+
             for localAnchorTimeMS in localIndex.anchorTimes(for: queryLandmark.hash) {
                 let offsetMS = AmbientSyncTimeProjection.offsetMS(
                     localReferenceTimeMS: localAnchorTimeMS,
@@ -101,7 +150,10 @@ public struct AmbientSyncOffsetHistogram: Equatable, Sendable {
                 let binIndex = Int((offsetMS / configuration.binWidthMS).rounded(.toNearestOrAwayFromZero))
                 accumulators[binIndex, default: AmbientSyncOffsetVoteAccumulator()].record(
                     offsetMS: offsetMS,
-                    queryAnchorTimeMS: queryLandmark.anchorTimeMS
+                    queryAnchorTimeMS: queryLandmark.anchorTimeMS,
+                    hash: queryLandmark.hash,
+                    weight: weight,
+                    referencePostingCount: hashStats.postingCount
                 )
             }
         }
@@ -130,6 +182,20 @@ public struct AmbientSyncOffsetHistogram: Equatable, Sendable {
         }
         self.bins = bins
         self.candidates = Array(candidates)
+    }
+
+    private static func hashCounts(in landmarks: [MicFeatureLandmark]) -> [UInt64: Int] {
+        var hashCounts: [UInt64: Int] = [:]
+        for landmark in landmarks {
+            hashCounts[landmark.hash, default: 0] += 1
+        }
+
+        return hashCounts
+    }
+
+    private static func matchWeight(idfWeight: Double, queryTF: Int) -> Double {
+        let dampedWeight = idfWeight / sqrt(Double(max(queryTF, 1)))
+        return min(3.0, max(0.05, dampedWeight))
     }
 
     public var topVoteCount: Int {
@@ -191,12 +257,20 @@ public struct AmbientSyncOffsetHistogram: Equatable, Sendable {
         lhs: Candidate,
         rhs: Candidate
     ) -> Bool {
-        if lhs.voteCount != rhs.voteCount {
-            return lhs.voteCount > rhs.voteCount
+        if lhs.weightedVoteScore != rhs.weightedVoteScore {
+            return lhs.weightedVoteScore > rhs.weightedVoteScore
+        }
+
+        if lhs.uniqueHashCount != rhs.uniqueHashCount {
+            return lhs.uniqueHashCount > rhs.uniqueHashCount
         }
 
         if lhs.queryTemporalSpreadMS != rhs.queryTemporalSpreadMS {
             return lhs.queryTemporalSpreadMS > rhs.queryTemporalSpreadMS
+        }
+
+        if lhs.rawVoteCount != rhs.rawVoteCount {
+            return lhs.rawVoteCount > rhs.rawVoteCount
         }
 
         return lhs.binCenterOffsetMS < rhs.binCenterOffsetMS
@@ -205,14 +279,32 @@ public struct AmbientSyncOffsetHistogram: Equatable, Sendable {
 
 private struct AmbientSyncOffsetVoteAccumulator: Equatable, Sendable {
     private var offsetSumMS: Double = 0
+    private var weightedOffsetSumMS: Double = 0
     private var earliestQueryAnchorTimeMS: Double?
     private var latestQueryAnchorTimeMS: Double?
+    private var matchedHashes: Set<UInt64> = []
+    private var referencePostingCountSum: Int = 0
 
     private(set) var voteCount: Int = 0
+    private(set) var weightedVoteScore: Double = 0
+    private(set) var commonHashVoteCount: Int = 0
 
-    mutating func record(offsetMS: Double, queryAnchorTimeMS: Double) {
+    mutating func record(
+        offsetMS: Double,
+        queryAnchorTimeMS: Double,
+        hash: UInt64,
+        weight: Double,
+        referencePostingCount: Int
+    ) {
         offsetSumMS += offsetMS
+        weightedOffsetSumMS += offsetMS * weight
         voteCount += 1
+        weightedVoteScore += weight
+        matchedHashes.insert(hash)
+        referencePostingCountSum += referencePostingCount
+        if referencePostingCount > 1 {
+            commonHashVoteCount += 1
+        }
 
         earliestQueryAnchorTimeMS = min(earliestQueryAnchorTimeMS ?? queryAnchorTimeMS, queryAnchorTimeMS)
         latestQueryAnchorTimeMS = max(latestQueryAnchorTimeMS ?? queryAnchorTimeMS, queryAnchorTimeMS)
@@ -237,12 +329,32 @@ private struct AmbientSyncOffsetVoteAccumulator: Equatable, Sendable {
             voteDensity = 0
         }
 
+        let meanReferencePostingCount: Double
+        if voteCount > 0 {
+            meanReferencePostingCount = Double(referencePostingCountSum) / Double(voteCount)
+        } else {
+            meanReferencePostingCount = 0
+        }
+
+        let meanOffsetMS: Double
+        if weightedVoteScore > 0 {
+            meanOffsetMS = weightedOffsetSumMS / weightedVoteScore
+        } else if voteCount > 0 {
+            meanOffsetMS = offsetSumMS / Double(voteCount)
+        } else {
+            meanOffsetMS = Double(binIndex) * binWidthMS
+        }
+
         return AmbientSyncOffsetHistogram.Candidate(
             binIndex: binIndex,
             binCenterOffsetMS: Double(binIndex) * binWidthMS,
-            offsetMS: voteCount > 0 ? offsetSumMS / Double(voteCount) : Double(binIndex) * binWidthMS,
+            offsetMS: meanOffsetMS,
             voteCount: voteCount,
             voteDensity: voteDensity,
+            weightedVoteScore: weightedVoteScore,
+            uniqueHashCount: matchedHashes.count,
+            commonHashVoteCount: commonHashVoteCount,
+            meanReferencePostingCount: meanReferencePostingCount,
             queryTemporalSpreadMS: temporalSpreadMS
         )
     }
@@ -405,7 +517,13 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
         public let offsetMS: Double
         public let coarseOffsetMS: Double
         public let landmarkVoteCount: Int
+        public let rawVoteCount: Int
+        public let weightedVoteScore: Double
+        public let uniqueHashCount: Int
+        public let commonHashVoteCount: Int
+        public let meanReferencePostingCount: Double
         public let landmarkScore: Double
+        public let voteDensity: Double
         public let comparableFrameCount: Int
         public let coverageRatio: Double
         public let hasSufficientCoverage: Bool
@@ -420,7 +538,13 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
         public init(
             offsetMS: Double,
             landmarkVoteCount: Int,
+            rawVoteCount: Int? = nil,
+            weightedVoteScore: Double? = nil,
+            uniqueHashCount: Int? = nil,
+            commonHashVoteCount: Int = 0,
+            meanReferencePostingCount: Double = 0,
             landmarkScore: Double,
+            voteDensity: Double? = nil,
             comparableFrameCount: Int,
             coverageRatio: Double,
             hasSufficientCoverage: Bool,
@@ -436,7 +560,13 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
             self.offsetMS = offsetMS
             self.coarseOffsetMS = coarseOffsetMS ?? offsetMS
             self.landmarkVoteCount = landmarkVoteCount
+            self.rawVoteCount = rawVoteCount ?? landmarkVoteCount
+            self.weightedVoteScore = weightedVoteScore ?? Double(rawVoteCount ?? landmarkVoteCount)
+            self.uniqueHashCount = uniqueHashCount ?? rawVoteCount ?? landmarkVoteCount
+            self.commonHashVoteCount = commonHashVoteCount
+            self.meanReferencePostingCount = meanReferencePostingCount
             self.landmarkScore = landmarkScore
+            self.voteDensity = voteDensity ?? landmarkScore
             self.comparableFrameCount = comparableFrameCount
             self.coverageRatio = coverageRatio
             self.hasSufficientCoverage = hasSufficientCoverage
@@ -488,7 +618,13 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
             CandidateScore(
                 offsetMS: offsetMS,
                 landmarkVoteCount: landmarkVoteCount,
+                rawVoteCount: rawVoteCount,
+                weightedVoteScore: weightedVoteScore,
+                uniqueHashCount: uniqueHashCount,
+                commonHashVoteCount: commonHashVoteCount,
+                meanReferencePostingCount: meanReferencePostingCount,
                 landmarkScore: landmarkScore,
+                voteDensity: voteDensity,
                 comparableFrameCount: comparableFrameCount,
                 coverageRatio: coverageRatio,
                 hasSufficientCoverage: hasSufficientCoverage,
@@ -593,7 +729,13 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
         return CandidateScore(
             offsetMS: bestEvaluation.offsetMS,
             landmarkVoteCount: candidate.voteCount,
+            rawVoteCount: candidate.rawVoteCount,
+            weightedVoteScore: candidate.weightedVoteScore,
+            uniqueHashCount: candidate.uniqueHashCount,
+            commonHashVoteCount: candidate.commonHashVoteCount,
+            meanReferencePostingCount: candidate.meanReferencePostingCount,
             landmarkScore: min(1, max(0, candidate.voteDensity)),
+            voteDensity: candidate.voteDensity,
             comparableFrameCount: bestEvaluation.comparableFrameCount,
             coverageRatio: bestEvaluation.coverageRatio,
             hasSufficientCoverage: bestEvaluation.hasSufficientCoverage,
@@ -1096,6 +1238,14 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
 
         if lhs.featureAgreementCount != rhs.featureAgreementCount {
             return lhs.featureAgreementCount > rhs.featureAgreementCount
+        }
+
+        if lhs.weightedVoteScore != rhs.weightedVoteScore {
+            return lhs.weightedVoteScore > rhs.weightedVoteScore
+        }
+
+        if lhs.uniqueHashCount != rhs.uniqueHashCount {
+            return lhs.uniqueHashCount > rhs.uniqueHashCount
         }
 
         if lhs.landmarkScore != rhs.landmarkScore {

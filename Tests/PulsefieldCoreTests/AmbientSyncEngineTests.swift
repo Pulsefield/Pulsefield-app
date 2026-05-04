@@ -26,6 +26,12 @@ final class AmbientSyncEngineTests: XCTestCase {
         XCTAssertNil(provisionalSnapshot.withholdReason)
         XCTAssertEqual(provisionalSnapshot.estimate?.offsetMS ?? 0, 4_000, accuracy: 5)
         XCTAssertEqual(provisionalSnapshot.firstProvisionalLockElapsedMS, 3_000)
+        let provisionalCandidate = try XCTUnwrap(provisionalSnapshot.diagnostics.candidates.first)
+        XCTAssertEqual(provisionalCandidate.rawVoteCount, provisionalCandidate.landmarkVoteCount)
+        XCTAssertGreaterThan(provisionalCandidate.weightedVoteScore, Double(provisionalCandidate.rawVoteCount))
+        XCTAssertEqual(provisionalCandidate.uniqueHashCount, provisionalCandidate.rawVoteCount)
+        XCTAssertEqual(provisionalCandidate.commonHashVoteCount, 0)
+        XCTAssertEqual(provisionalCandidate.meanReferencePostingCount, 1, accuracy: 0.001)
 
         XCTAssertEqual(finalSnapshot.state, .locked)
         XCTAssertEqual(finalSnapshot.phase, .final)

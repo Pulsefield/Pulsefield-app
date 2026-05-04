@@ -2,6 +2,54 @@ import XCTest
 @testable import PulsefieldCore
 
 final class AmbientSyncOffsetHistogramTests: XCTestCase {
+    func testLandmarkIndexExposesPostingStats() {
+        let index = AmbientSyncLandmarkIndex(
+            landmarks: [
+                makeLandmark(hash: 7, anchorTimeMS: 1_000),
+                makeLandmark(hash: 7, anchorTimeMS: 2_000),
+                makeLandmark(hash: 8, anchorTimeMS: 3_000)
+            ]
+        )
+
+        XCTAssertEqual(index.postingCount(for: 7), 2)
+        XCTAssertEqual(index.postingCount(for: 99), 0)
+        XCTAssertEqual(index.idfWeight(for: 7), log1p(3.0 / 3.0), accuracy: 0.0001)
+
+        let stats = index.hashStats(for: 8)
+        XCTAssertEqual(stats.hash, 8)
+        XCTAssertEqual(stats.postingCount, 1)
+        XCTAssertEqual(stats.idfWeight, log1p(3.0 / 2.0), accuracy: 0.0001)
+    }
+
+    func testCandidateDiagnosticsDecodesLegacyJSONWithoutWeightedFields() throws {
+        let json = """
+        {
+          "offsetMS": 4000,
+          "coarseOffsetMS": 4000,
+          "landmarkVoteCount": 12,
+          "landmarkScore": 0.6,
+          "voteDensity": 0.6,
+          "comparableFrameCount": 80,
+          "coverageRatio": 0.95,
+          "onsetScore": 0.7,
+          "subbandOnsetScore": 0.1,
+          "pcenMelScore": 0.8,
+          "chromaOnsetScore": 0.2,
+          "censScore": 0.75,
+          "combinedDenseScore": 0.72,
+          "featureAgreementCount": 3
+        }
+        """.data(using: .utf8)!
+
+        let diagnostics = try JSONDecoder().decode(AmbientSyncCandidateDiagnostics.self, from: json)
+
+        XCTAssertEqual(diagnostics.rawVoteCount, 12)
+        XCTAssertEqual(diagnostics.weightedVoteScore, 12, accuracy: 0.0001)
+        XCTAssertEqual(diagnostics.uniqueHashCount, 12)
+        XCTAssertEqual(diagnostics.commonHashVoteCount, 0)
+        XCTAssertEqual(diagnostics.meanReferencePostingCount, 0, accuracy: 0.0001)
+    }
+
     func testRanksOffsetByClusteredHashVotes() {
         let queryLandmarks = [
             makeLandmark(hash: 10, anchorTimeMS: 1_000),
@@ -26,10 +74,173 @@ final class AmbientSyncOffsetHistogramTests: XCTestCase {
         )
 
         XCTAssertEqual(histogram.candidates.first?.voteCount, 3)
-        XCTAssertEqual(histogram.candidates.first?.offsetMS ?? 0, 4_001.33, accuracy: 0.01)
+        let expectedWeightedOffset = (
+            4_003 * localIndex.idfWeight(for: 10)
+                + 3_997 * localIndex.idfWeight(for: 11)
+                + 4_004 * localIndex.idfWeight(for: 12)
+        ) / (
+            localIndex.idfWeight(for: 10)
+                + localIndex.idfWeight(for: 11)
+                + localIndex.idfWeight(for: 12)
+        )
+        XCTAssertEqual(histogram.candidates.first?.offsetMS ?? 0, expectedWeightedOffset, accuracy: 0.01)
         XCTAssertEqual(histogram.candidates.first?.voteDensity ?? 0, 1, accuracy: 0.001)
         XCTAssertEqual(histogram.candidates.first?.queryTemporalSpreadMS ?? 0, 80, accuracy: 0.001)
         XCTAssertEqual(histogram.candidates.dropFirst().first?.voteCount, 1)
+    }
+
+    func testWeightedRankingFavorsRareHashSpreadOverCommonRepeatedHash() throws {
+        let queryLandmarks = (0..<16).map { _ in
+            makeLandmark(hash: 1, anchorTimeMS: 0)
+        } + [
+            makeLandmark(hash: 2, anchorTimeMS: 0),
+            makeLandmark(hash: 3, anchorTimeMS: 40),
+            makeLandmark(hash: 4, anchorTimeMS: 80)
+        ]
+        let commonReferenceLandmarks = (0..<100).map { index in
+            makeLandmark(
+                hash: 1,
+                anchorTimeMS: index == 0 ? 1_000 : 50_000 + Double(index) * 1_000
+            )
+        }
+        let localIndex = AmbientSyncLandmarkIndex(
+            landmarks: commonReferenceLandmarks + [
+                makeLandmark(hash: 2, anchorTimeMS: 2_000),
+                makeLandmark(hash: 3, anchorTimeMS: 2_040),
+                makeLandmark(hash: 4, anchorTimeMS: 2_080)
+            ]
+        )
+
+        let histogram = AmbientSyncOffsetHistogram(
+            queryLandmarks: queryLandmarks,
+            localIndex: localIndex,
+            configuration: AmbientSyncOffsetHistogram.Configuration(
+                binWidthMS: 20,
+                maximumCandidateCount: 4,
+                minimumCandidateSeparationMS: 100
+            )
+        )
+
+        let winningCandidate = try XCTUnwrap(histogram.candidates.first)
+        let commonCandidate = try XCTUnwrap(
+            histogram.candidates.first { $0.binCenterOffsetMS == 1_000 }
+        )
+
+        XCTAssertEqual(winningCandidate.offsetMS, 2_000, accuracy: 0.001)
+        XCTAssertEqual(winningCandidate.rawVoteCount, 3)
+        XCTAssertEqual(winningCandidate.uniqueHashCount, 3)
+        XCTAssertEqual(winningCandidate.commonHashVoteCount, 0)
+        XCTAssertEqual(winningCandidate.meanReferencePostingCount, 1, accuracy: 0.001)
+        XCTAssertEqual(winningCandidate.weightedVoteScore, 9, accuracy: 0.001)
+
+        XCTAssertEqual(commonCandidate.rawVoteCount, 16)
+        XCTAssertEqual(commonCandidate.uniqueHashCount, 1)
+        XCTAssertEqual(commonCandidate.commonHashVoteCount, 16)
+        XCTAssertEqual(commonCandidate.meanReferencePostingCount, 100, accuracy: 0.001)
+        XCTAssertGreaterThan(winningCandidate.weightedVoteScore, commonCandidate.weightedVoteScore)
+        XCTAssertLessThan(winningCandidate.rawVoteCount, commonCandidate.rawVoteCount)
+    }
+
+    func testRepeatedQueryHashUsesSqrtTermFrequencyDampening() throws {
+        let queryLandmarks = (0..<4).map { _ in
+            makeLandmark(hash: 7, anchorTimeMS: 0)
+        }
+        let unrelatedReferenceLandmarks = (0..<10).map { index in
+            makeLandmark(hash: UInt64(100 + index), anchorTimeMS: Double(index) * 1_000)
+        }
+        let localIndex = AmbientSyncLandmarkIndex(
+            landmarks: [makeLandmark(hash: 7, anchorTimeMS: 1_000)] + unrelatedReferenceLandmarks
+        )
+
+        let histogram = AmbientSyncOffsetHistogram(
+            queryLandmarks: queryLandmarks,
+            localIndex: localIndex,
+            configuration: AmbientSyncOffsetHistogram.Configuration(
+                binWidthMS: 20,
+                maximumCandidateCount: 2
+            )
+        )
+
+        let candidate = try XCTUnwrap(histogram.candidates.first)
+        let undampenedScore = localIndex.idfWeight(for: 7) * 4
+        let dampenedScore = localIndex.idfWeight(for: 7) / sqrt(4.0) * 4
+
+        XCTAssertEqual(candidate.rawVoteCount, 4)
+        XCTAssertEqual(candidate.uniqueHashCount, 1)
+        XCTAssertEqual(candidate.weightedVoteScore, dampenedScore, accuracy: 0.0001)
+        XCTAssertLessThan(candidate.weightedVoteScore, undampenedScore)
+    }
+
+    func testWeightedRankingBreaksScoreTiesByUniqueHashCount() throws {
+        let unrelatedReferenceLandmarks = (0..<1_000).map { index in
+            makeLandmark(hash: UInt64(1_000 + index), anchorTimeMS: Double(index) * 1_000)
+        }
+        let localIndex = AmbientSyncLandmarkIndex(
+            landmarks: [
+                makeLandmark(hash: 7, anchorTimeMS: 1_000),
+                makeLandmark(hash: 8, anchorTimeMS: 2_000),
+                makeLandmark(hash: 9, anchorTimeMS: 2_000)
+            ] + unrelatedReferenceLandmarks
+        )
+
+        let histogram = AmbientSyncOffsetHistogram(
+            queryLandmarks: [
+                makeLandmark(hash: 7, anchorTimeMS: 0),
+                makeLandmark(hash: 7, anchorTimeMS: 0),
+                makeLandmark(hash: 8, anchorTimeMS: 0),
+                makeLandmark(hash: 9, anchorTimeMS: 0)
+            ],
+            localIndex: localIndex,
+            configuration: AmbientSyncOffsetHistogram.Configuration(
+                binWidthMS: 20,
+                maximumCandidateCount: 2,
+                minimumCandidateSeparationMS: 100
+            )
+        )
+
+        XCTAssertEqual(histogram.candidates.map(\.binCenterOffsetMS), [2_000, 1_000])
+        XCTAssertEqual(histogram.candidates.map(\.weightedVoteScore), [6, 6])
+        XCTAssertEqual(histogram.candidates.map(\.uniqueHashCount), [2, 1])
+        XCTAssertEqual(histogram.candidates.map(\.rawVoteCount), [2, 2])
+    }
+
+    func testWeightedOffsetMeanFavorsRareVotesInsideBin() throws {
+        let commonReferenceLandmarks = [makeLandmark(hash: 7, anchorTimeMS: 900)]
+            + (1..<20).map { index in
+                makeLandmark(hash: 7, anchorTimeMS: 10_000 + Double(index) * 1_000)
+            }
+        let localIndex = AmbientSyncLandmarkIndex(
+            landmarks: commonReferenceLandmarks + [
+                makeLandmark(hash: 8, anchorTimeMS: 1_090)
+            ]
+        )
+
+        let histogram = AmbientSyncOffsetHistogram(
+            queryLandmarks: [
+                makeLandmark(hash: 7, anchorTimeMS: 0),
+                makeLandmark(hash: 8, anchorTimeMS: 0)
+            ],
+            localIndex: localIndex,
+            configuration: AmbientSyncOffsetHistogram.Configuration(
+                binWidthMS: 200,
+                maximumCandidateCount: 1
+            ),
+            searchRangeMS: 800 ... 1_200
+        )
+
+        let candidate = try XCTUnwrap(histogram.candidates.first)
+        let commonWeight = localIndex.idfWeight(for: 7)
+        let rareWeight = localIndex.idfWeight(for: 8)
+        let expectedWeightedOffset = (900 * commonWeight + 1_090 * rareWeight) / (commonWeight + rareWeight)
+        let rawMeanOffset = (900.0 + 1_090.0) / 2
+
+        XCTAssertEqual(candidate.binCenterOffsetMS, 1_000, accuracy: 0.001)
+        XCTAssertEqual(candidate.rawVoteCount, 2)
+        XCTAssertEqual(candidate.weightedVoteScore, commonWeight + rareWeight, accuracy: 0.0001)
+        XCTAssertEqual(candidate.offsetMS, expectedWeightedOffset, accuracy: 0.0001)
+        XCTAssertLessThan(abs(candidate.offsetMS - 1_090), abs(rawMeanOffset - 1_090))
+        XCTAssertEqual(candidate.commonHashVoteCount, 1)
+        XCTAssertEqual(candidate.meanReferencePostingCount, 10.5, accuracy: 0.001)
     }
 
     func testUsesLocalMinusQueryOffsetSignAndSearchRange() {
@@ -123,6 +334,36 @@ final class AmbientSyncOffsetHistogramTests: XCTestCase {
             result.candidates.first { $0.coarseOffsetMS == 8_000 }?.landmarkScore ?? 0,
             result.leadingCandidate?.landmarkScore ?? 1
         )
+    }
+
+    func testDenseRerankCarriesWeightedLandmarkMetrics() throws {
+        let queryWindow = MicFeatureWindow(frames: makeDensePatternFrames(offsetMS: 0))
+        let localFrames = makeDensePatternFrames(offsetMS: 4_000)
+        let candidates = [
+            makeCandidate(
+                offsetMS: 4_000,
+                voteCount: 10,
+                voteDensity: 0.50,
+                weightedVoteScore: 6.25,
+                uniqueHashCount: 4,
+                commonHashVoteCount: 3,
+                meanReferencePostingCount: 2.5
+            )
+        ]
+
+        let result = makeDenseRerankerForShortFixture().rerank(
+            queryWindow: queryWindow,
+            localFrames: localFrames,
+            candidates: candidates
+        )
+        let candidate = try XCTUnwrap(result.leadingCandidate)
+
+        XCTAssertEqual(candidate.rawVoteCount, 10)
+        XCTAssertEqual(candidate.weightedVoteScore, 6.25, accuracy: 0.0001)
+        XCTAssertEqual(candidate.uniqueHashCount, 4)
+        XCTAssertEqual(candidate.commonHashVoteCount, 3)
+        XCTAssertEqual(candidate.meanReferencePostingCount, 2.5, accuracy: 0.0001)
+        XCTAssertEqual(candidate.voteDensity, 0.50, accuracy: 0.0001)
     }
 
     func testDenseRerankRefinesNearbyCoarseOffsetBeforeScoring() {
@@ -407,7 +648,11 @@ final class AmbientSyncOffsetHistogramTests: XCTestCase {
     private func makeCandidate(
         offsetMS: Double,
         voteCount: Int,
-        voteDensity: Double
+        voteDensity: Double,
+        weightedVoteScore: Double? = nil,
+        uniqueHashCount: Int? = nil,
+        commonHashVoteCount: Int = 0,
+        meanReferencePostingCount: Double = 0
     ) -> AmbientSyncOffsetHistogram.Candidate {
         AmbientSyncOffsetHistogram.Candidate(
             binIndex: Int(offsetMS / 20),
@@ -415,6 +660,10 @@ final class AmbientSyncOffsetHistogramTests: XCTestCase {
             offsetMS: offsetMS,
             voteCount: voteCount,
             voteDensity: voteDensity,
+            weightedVoteScore: weightedVoteScore,
+            uniqueHashCount: uniqueHashCount,
+            commonHashVoteCount: commonHashVoteCount,
+            meanReferencePostingCount: meanReferencePostingCount,
             queryTemporalSpreadMS: 1_000
         )
     }

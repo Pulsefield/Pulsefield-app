@@ -801,11 +801,13 @@ public struct AmbientSyncEngine: Equatable, Sendable {
                     offsetMS: candidate.offsetMS,
                     coarseOffsetMS: candidate.coarseOffsetMS,
                     landmarkVoteCount: candidate.landmarkVoteCount,
+                    rawVoteCount: candidate.rawVoteCount,
+                    weightedVoteScore: candidate.weightedVoteScore,
+                    uniqueHashCount: candidate.uniqueHashCount,
+                    commonHashVoteCount: candidate.commonHashVoteCount,
+                    meanReferencePostingCount: candidate.meanReferencePostingCount,
                     landmarkScore: candidate.landmarkScore,
-                    voteDensity: nearestHistogramCandidate(
-                        to: candidate.coarseOffsetMS,
-                        in: histogram
-                    )?.voteDensity ?? candidate.landmarkScore,
+                    voteDensity: candidate.voteDensity,
                     comparableFrameCount: candidate.comparableFrameCount,
                     coverageRatio: candidate.coverageRatio,
                     onsetScore: candidate.onsetScore,
@@ -824,6 +826,11 @@ public struct AmbientSyncEngine: Equatable, Sendable {
                 offsetMS: candidate.offsetMS,
                 coarseOffsetMS: candidate.offsetMS,
                 landmarkVoteCount: candidate.voteCount,
+                rawVoteCount: candidate.rawVoteCount,
+                weightedVoteScore: candidate.weightedVoteScore,
+                uniqueHashCount: candidate.uniqueHashCount,
+                commonHashVoteCount: candidate.commonHashVoteCount,
+                meanReferencePostingCount: candidate.meanReferencePostingCount,
                 landmarkScore: candidate.voteDensity,
                 voteDensity: candidate.voteDensity,
                 comparableFrameCount: 0,
@@ -836,15 +843,6 @@ public struct AmbientSyncEngine: Equatable, Sendable {
                 combinedDenseScore: 0,
                 featureAgreementCount: 0
             )
-        }
-    }
-
-    private func nearestHistogramCandidate(
-        to offsetMS: Double,
-        in histogram: AmbientSyncOffsetHistogram
-    ) -> AmbientSyncOffsetHistogram.Candidate? {
-        histogram.candidates.min { lhs, rhs in
-            abs(lhs.offsetMS - offsetMS) < abs(rhs.offsetMS - offsetMS)
         }
     }
 

@@ -336,6 +336,11 @@ public struct AmbientSyncCandidateDiagnostics: Codable, Equatable, Sendable {
     public let offsetMS: Double
     public let coarseOffsetMS: Double
     public let landmarkVoteCount: Int
+    public let rawVoteCount: Int
+    public let weightedVoteScore: Double
+    public let uniqueHashCount: Int
+    public let commonHashVoteCount: Int
+    public let meanReferencePostingCount: Double
     public let landmarkScore: Double
     public let voteDensity: Double
     public let comparableFrameCount: Int
@@ -352,6 +357,11 @@ public struct AmbientSyncCandidateDiagnostics: Codable, Equatable, Sendable {
         offsetMS: Double,
         coarseOffsetMS: Double,
         landmarkVoteCount: Int,
+        rawVoteCount: Int? = nil,
+        weightedVoteScore: Double? = nil,
+        uniqueHashCount: Int? = nil,
+        commonHashVoteCount: Int = 0,
+        meanReferencePostingCount: Double = 0,
         landmarkScore: Double,
         voteDensity: Double,
         comparableFrameCount: Int,
@@ -367,6 +377,12 @@ public struct AmbientSyncCandidateDiagnostics: Codable, Equatable, Sendable {
         self.offsetMS = offsetMS
         self.coarseOffsetMS = coarseOffsetMS
         self.landmarkVoteCount = landmarkVoteCount
+        let resolvedRawVoteCount = rawVoteCount ?? landmarkVoteCount
+        self.rawVoteCount = resolvedRawVoteCount
+        self.weightedVoteScore = weightedVoteScore ?? Double(resolvedRawVoteCount)
+        self.uniqueHashCount = uniqueHashCount ?? resolvedRawVoteCount
+        self.commonHashVoteCount = commonHashVoteCount
+        self.meanReferencePostingCount = meanReferencePostingCount
         self.landmarkScore = landmarkScore
         self.voteDensity = voteDensity
         self.comparableFrameCount = comparableFrameCount
@@ -378,6 +394,54 @@ public struct AmbientSyncCandidateDiagnostics: Codable, Equatable, Sendable {
         self.censScore = censScore
         self.combinedDenseScore = combinedDenseScore
         self.featureAgreementCount = featureAgreementCount
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case offsetMS
+        case coarseOffsetMS
+        case landmarkVoteCount
+        case rawVoteCount
+        case weightedVoteScore
+        case uniqueHashCount
+        case commonHashVoteCount
+        case meanReferencePostingCount
+        case landmarkScore
+        case voteDensity
+        case comparableFrameCount
+        case coverageRatio
+        case onsetScore
+        case subbandOnsetScore
+        case pcenMelScore
+        case chromaOnsetScore
+        case censScore
+        case combinedDenseScore
+        case featureAgreementCount
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let landmarkVoteCount = try container.decode(Int.self, forKey: .landmarkVoteCount)
+        self.init(
+            offsetMS: try container.decode(Double.self, forKey: .offsetMS),
+            coarseOffsetMS: try container.decode(Double.self, forKey: .coarseOffsetMS),
+            landmarkVoteCount: landmarkVoteCount,
+            rawVoteCount: try container.decodeIfPresent(Int.self, forKey: .rawVoteCount),
+            weightedVoteScore: try container.decodeIfPresent(Double.self, forKey: .weightedVoteScore),
+            uniqueHashCount: try container.decodeIfPresent(Int.self, forKey: .uniqueHashCount),
+            commonHashVoteCount: try container.decodeIfPresent(Int.self, forKey: .commonHashVoteCount) ?? 0,
+            meanReferencePostingCount: try container.decodeIfPresent(Double.self, forKey: .meanReferencePostingCount) ?? 0,
+            landmarkScore: try container.decode(Double.self, forKey: .landmarkScore),
+            voteDensity: try container.decode(Double.self, forKey: .voteDensity),
+            comparableFrameCount: try container.decode(Int.self, forKey: .comparableFrameCount),
+            coverageRatio: try container.decode(Double.self, forKey: .coverageRatio),
+            onsetScore: try container.decode(Double.self, forKey: .onsetScore),
+            subbandOnsetScore: try container.decode(Double.self, forKey: .subbandOnsetScore),
+            pcenMelScore: try container.decode(Double.self, forKey: .pcenMelScore),
+            chromaOnsetScore: try container.decode(Double.self, forKey: .chromaOnsetScore),
+            censScore: try container.decode(Double.self, forKey: .censScore),
+            combinedDenseScore: try container.decode(Double.self, forKey: .combinedDenseScore),
+            featureAgreementCount: try container.decode(Int.self, forKey: .featureAgreementCount)
+        )
     }
 }
 
