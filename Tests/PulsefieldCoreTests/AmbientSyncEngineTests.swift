@@ -110,6 +110,77 @@ final class AmbientSyncEngineTests: XCTestCase {
         XCTAssertGreaterThan(snapshot.diagnostics.denseMargin, 0.06)
     }
 
+    func testWeightedCoarseAmbiguityUsesWeightedScoresWhenRawCountsFavorCommonHash() throws {
+        let rareQueryIndices = Array(stride(from: 0, through: 140, by: 20))
+        let commonQueryIndices = Array(stride(from: 0, through: 150, by: 10))
+        var queryHashesByFrameIndex: [Int: [UInt64]] = [:]
+        var referenceHashesByFrameIndex: [Int: [UInt64]] = [:]
+
+        for (rareIndex, queryIndex) in rareQueryIndices.enumerated() {
+            let hash = UInt64(30_000 + rareIndex)
+            queryHashesByFrameIndex[queryIndex, default: []].append(hash)
+            referenceHashesByFrameIndex[queryIndex, default: []].append(hash)
+        }
+
+        for queryIndex in commonQueryIndices {
+            queryHashesByFrameIndex[queryIndex, default: []].append(7)
+            referenceHashesByFrameIndex[queryIndex + 200, default: []].append(7)
+        }
+
+        let queryFrames = framesByReplacingLandmarks(
+            makePatternFrames(startMS: 0, count: 320),
+            hashesByFrameIndex: queryHashesByFrameIndex
+        )
+        let referenceFrames = framesByReplacingLandmarks(
+            makePatternFrames(startMS: 4_000, count: 420),
+            hashesByFrameIndex: referenceHashesByFrameIndex
+        )
+        let configuration = AmbientSyncEngine.Configuration(
+            provisionalRerankerConfiguration: AmbientSyncDenseReranker.Configuration(
+                minimumDenseMargin: 0
+            ),
+            minimumCoarseAmbiguousDenseMargin: 1.01
+        )
+        var engine = AmbientSyncEngine(
+            reference: AmbientSyncEngine.Reference(
+                sourceDisplayPath: "/tmp/reference.wav",
+                frames: referenceFrames
+            ),
+            configuration: configuration
+        )
+
+        let snapshot = engine.process(
+            queryWindow: try window(from: queryFrames, throughMS: 3_000),
+            elapsedMS: 3_000
+        )
+
+        XCTAssertEqual(snapshot.phase, .provisional)
+        XCTAssertEqual(snapshot.stage, .fastTimingVerify)
+        XCTAssertNil(snapshot.withholdReason)
+        XCTAssertEqual(snapshot.estimate?.offsetMS ?? 0, 4_000, accuracy: 5)
+        XCTAssertFalse(snapshot.diagnostics.coarseAmbiguous)
+        XCTAssertLessThan(
+            snapshot.diagnostics.topToSecondVoteRatio,
+            AmbientSyncEngine.Configuration.v1.minimumCoarseVoteRatio
+        )
+        XCTAssertGreaterThan(
+            snapshot.diagnostics.topToSecondWeightedVoteRatio,
+            AmbientSyncEngine.Configuration.v1.minimumCoarseVoteRatio
+        )
+        XCTAssertGreaterThan(
+            snapshot.diagnostics.topWeightedVoteMargin,
+            Double(AmbientSyncEngine.Configuration.v1.minimumCoarseVoteMargin)
+        )
+        XCTAssertLessThan(
+            snapshot.diagnostics.topLandmarkVoteCount,
+            snapshot.diagnostics.secondLandmarkVoteCount
+        )
+        XCTAssertGreaterThan(
+            snapshot.diagnostics.topWeightedVoteScore,
+            snapshot.diagnostics.secondWeightedVoteScore
+        )
+    }
+
     func testFinalLockContinuesTrackingOnShortTrackingWindow() throws {
         let queryFrames = makePatternFrames(startMS: 0, count: 420)
         let referenceFrames = makePatternFrames(startMS: 4_000, count: 420)
@@ -142,6 +213,216 @@ final class AmbientSyncEngineTests: XCTestCase {
         XCTAssertEqual(trackingSnapshot.finalLockElapsedMS, 5_200)
     }
 
+    func testConsecutiveShortWindowsPromoteConfirmedWithTimestamp() throws {
+        let queryFrames = makePatternFrames(startMS: 0, count: 320)
+        let referenceFrames = makePatternFrames(startMS: 4_000, count: 320)
+        var engine = AmbientSyncEngine(
+            reference: AmbientSyncEngine.Reference(
+                sourceDisplayPath: "/tmp/reference.wav",
+                frames: referenceFrames
+            )
+        )
+
+        let provisionalSnapshot = engine.process(
+            queryWindow: try window(from: queryFrames, throughMS: 2_600),
+            elapsedMS: 2_600
+        )
+        let confirmedSnapshot = engine.process(
+            queryWindow: try window(from: queryFrames, throughMS: 2_800),
+            elapsedMS: 2_800
+        )
+
+        XCTAssertEqual(provisionalSnapshot.phase, .provisional)
+        XCTAssertEqual(provisionalSnapshot.confirmedLockElapsedMS, nil)
+        XCTAssertEqual(confirmedSnapshot.state, .confirmed)
+        XCTAssertEqual(confirmedSnapshot.phase, .confirmed)
+        XCTAssertEqual(confirmedSnapshot.confirmedLockElapsedMS, 2_800)
+        XCTAssertEqual(confirmedSnapshot.estimate?.offsetMS ?? 0, 4_000, accuracy: 5)
+        XCTAssertTrue(confirmedSnapshot.diagnostics.offsetTrackerConfirmed)
+    }
+
+    func testConfirmedShortWindowDoesNotFallBackToProvisionalAfterTrackLoss() throws {
+        let initialQueryFrames = makePatternFrames(startMS: 0, count: 320)
+        let initialReferenceFrames = makePatternFrames(startMS: 4_000, count: 320)
+        let replacementQueryFrames = framesByRebasingLandmarkHashes(
+            makePatternFrames(startMS: 14_000, count: 140),
+            hashBase: 40_000
+        )
+        let replacementReferenceFrames = framesByRebasingLandmarkHashes(
+            makePatternFrames(startMS: 22_000, count: 140),
+            hashBase: 40_000
+        )
+        var engine = AmbientSyncEngine(
+            reference: AmbientSyncEngine.Reference(
+                sourceDisplayPath: "/tmp/reference.wav",
+                frames: initialReferenceFrames + replacementReferenceFrames
+            )
+        )
+
+        _ = engine.process(
+            queryWindow: try window(from: initialQueryFrames, throughMS: 2_600),
+            elapsedMS: 2_600
+        )
+        let confirmedSnapshot = engine.process(
+            queryWindow: try window(from: initialQueryFrames, throughMS: 2_800),
+            elapsedMS: 2_800
+        )
+        XCTAssertEqual(confirmedSnapshot.phase, .confirmed)
+        XCTAssertNil(confirmedSnapshot.finalLockElapsedMS)
+
+        for missIndex in 0..<5 {
+            let startMS = 3_200 + Double(missIndex) * 2_500
+            let missFrames = framesByRebasingLandmarkHashes(
+                makePatternFrames(startMS: startMS, count: 120),
+                hashBase: UInt64(90_000 + missIndex * 1_000)
+            )
+            _ = engine.process(
+                queryWindow: try window(from: missFrames, throughMS: startMS + 2_380),
+                elapsedMS: startMS + 2_380
+            )
+        }
+
+        let replacementSnapshot = engine.process(
+            queryWindow: try window(from: replacementQueryFrames, throughMS: 16_780),
+            elapsedMS: 16_780
+        )
+
+        XCTAssertEqual(replacementSnapshot.state, .relocking)
+        XCTAssertEqual(replacementSnapshot.phase, .confirmed)
+        XCTAssertEqual(replacementSnapshot.stage, .tracking)
+        XCTAssertEqual(replacementSnapshot.withholdReason, .unstableTrackingResidual)
+        XCTAssertNil(replacementSnapshot.estimate)
+        XCTAssertEqual(replacementSnapshot.confirmedLockElapsedMS, 2_800)
+        XCTAssertNil(replacementSnapshot.finalLockElapsedMS)
+        XCTAssertEqual(replacementSnapshot.diagnostics.candidates.first?.offsetMS ?? 0, 8_000, accuracy: 5)
+        XCTAssertFalse(replacementSnapshot.diagnostics.offsetTrackerConfirmed)
+    }
+
+    func testConfirmedLongWindowDoesNotUseProvisionalEstimateAfterTrackLoss() throws {
+        let initialQueryFrames = makePatternFrames(startMS: 0, count: 320)
+        let initialReferenceFrames = makePatternFrames(startMS: 4_000, count: 320)
+        let replacementQueryFrames = framesByRebasingLandmarkHashes(
+            makePatternFrames(startMS: 14_000, count: 320),
+            hashBase: 40_000
+        )
+        let replacementReferenceFrames = framesByRebasingLandmarkHashes(
+            makePatternFrames(startMS: 22_000, count: 320),
+            hashBase: 40_000
+        )
+        var engine = AmbientSyncEngine(
+            reference: AmbientSyncEngine.Reference(
+                sourceDisplayPath: "/tmp/reference.wav",
+                frames: initialReferenceFrames + replacementReferenceFrames
+            )
+        )
+
+        _ = engine.process(
+            queryWindow: try window(from: initialQueryFrames, throughMS: 2_600),
+            elapsedMS: 2_600
+        )
+        let confirmedSnapshot = engine.process(
+            queryWindow: try window(from: initialQueryFrames, throughMS: 2_800),
+            elapsedMS: 2_800
+        )
+        XCTAssertEqual(confirmedSnapshot.phase, .confirmed)
+        XCTAssertNil(confirmedSnapshot.finalLockElapsedMS)
+
+        for missIndex in 0..<5 {
+            let startMS = 3_200 + Double(missIndex) * 2_500
+            let missFrames = framesByRebasingLandmarkHashes(
+                makePatternFrames(startMS: startMS, count: 120),
+                hashBase: UInt64(90_000 + missIndex * 1_000)
+            )
+            _ = engine.process(
+                queryWindow: try window(from: missFrames, throughMS: startMS + 2_380),
+                elapsedMS: startMS + 2_380
+            )
+        }
+
+        let replacementSnapshot = engine.process(
+            queryWindow: try window(from: replacementQueryFrames, throughMS: 19_200),
+            elapsedMS: 19_200
+        )
+
+        XCTAssertEqual(replacementSnapshot.state, .relocking)
+        XCTAssertEqual(replacementSnapshot.phase, .confirmed)
+        XCTAssertEqual(replacementSnapshot.stage, .robustVerify)
+        XCTAssertEqual(replacementSnapshot.withholdReason, .unstableTrackingResidual)
+        XCTAssertNil(replacementSnapshot.estimate)
+        XCTAssertEqual(replacementSnapshot.confirmedLockElapsedMS, 2_800)
+        XCTAssertNil(replacementSnapshot.finalLockElapsedMS)
+        XCTAssertEqual(replacementSnapshot.diagnostics.candidates.first?.offsetMS ?? 0, 8_000, accuracy: 5)
+        XCTAssertFalse(replacementSnapshot.diagnostics.offsetTrackerConfirmed)
+    }
+
+    func testConfirmedTrackingSearchRangeSuppressesDistantReplacementCandidates() throws {
+        let initialQueryFrames = makePatternFrames(startMS: 0, count: 320)
+        let initialReferenceFrames = makePatternFrames(startMS: 4_000, count: 320)
+        let replacementQueryFrames = framesByRebasingLandmarkHashes(
+            makePatternFrames(startMS: 3_200, count: 140),
+            hashBase: 40_000
+        )
+        let replacementReferenceFrames = framesByRebasingLandmarkHashes(
+            makePatternFrames(startMS: 11_200, count: 140),
+            hashBase: 40_000
+        )
+        var engine = AmbientSyncEngine(
+            reference: AmbientSyncEngine.Reference(
+                sourceDisplayPath: "/tmp/reference.wav",
+                frames: initialReferenceFrames + replacementReferenceFrames
+            )
+        )
+
+        _ = engine.process(
+            queryWindow: try window(from: initialQueryFrames, throughMS: 2_600),
+            elapsedMS: 2_600
+        )
+        let confirmedSnapshot = engine.process(
+            queryWindow: try window(from: initialQueryFrames, throughMS: 2_800),
+            elapsedMS: 2_800
+        )
+        let trackingSnapshot = engine.process(
+            queryWindow: try window(from: replacementQueryFrames, throughMS: 5_580),
+            elapsedMS: 5_580
+        )
+
+        XCTAssertEqual(confirmedSnapshot.phase, .confirmed)
+        XCTAssertNil(confirmedSnapshot.finalLockElapsedMS)
+        XCTAssertEqual(trackingSnapshot.state, .confirmed)
+        XCTAssertEqual(trackingSnapshot.phase, .confirmed)
+        XCTAssertEqual(trackingSnapshot.stage, .tracking)
+        XCTAssertEqual(trackingSnapshot.withholdReason, .insufficientLandmarkEvidence)
+        XCTAssertEqual(trackingSnapshot.estimate?.offsetMS ?? 0, 4_000, accuracy: 5)
+        XCTAssertEqual(trackingSnapshot.diagnostics.histogramCandidateCount, 0)
+        XCTAssertTrue(trackingSnapshot.diagnostics.candidates.isEmpty)
+        XCTAssertNil(trackingSnapshot.finalLockElapsedMS)
+    }
+
+    func testWeakTimingCandidateStillUpdatesOffsetTracker() throws {
+        let queryFrames = makePatternFrames(startMS: 0, count: 180)
+        let referenceFrames = denseFeatureMismatchFrames(
+            from: makePatternFrames(startMS: 4_000, count: 180)
+        )
+        var engine = AmbientSyncEngine(
+            reference: AmbientSyncEngine.Reference(
+                sourceDisplayPath: "/tmp/reference.wav",
+                frames: referenceFrames
+            )
+        )
+
+        let snapshot = engine.process(
+            queryWindow: try window(from: queryFrames, throughMS: 3_000),
+            elapsedMS: 3_000
+        )
+
+        XCTAssertEqual(snapshot.stage, .fastTimingVerify)
+        XCTAssertEqual(snapshot.withholdReason, .weakAlignmentPeak)
+        XCTAssertGreaterThan(snapshot.diagnostics.histogramCandidateCount, 0)
+        XCTAssertFalse(snapshot.diagnostics.candidates.isEmpty)
+        XCTAssertGreaterThan(snapshot.diagnostics.trackCount, 0)
+        XCTAssertFalse(snapshot.diagnostics.offsetTrackerConfirmed)
+    }
+
     func testPostFinalRobustFailurePreservesFinalPhase() throws {
         let queryFrames = makePatternFrames(startMS: 0, count: 700)
         let referenceFrames = makePatternFrames(startMS: 4_000, count: 700)
@@ -170,11 +451,162 @@ final class AmbientSyncEngineTests: XCTestCase {
         )
 
         XCTAssertEqual(finalSnapshot.phase, .final)
-        XCTAssertEqual(trackingFailureSnapshot.state, .relocking)
+        XCTAssertEqual(trackingFailureSnapshot.state, .locked)
         XCTAssertEqual(trackingFailureSnapshot.phase, .final)
-        XCTAssertEqual(trackingFailureSnapshot.stage, .robustVerify)
+        XCTAssertEqual(trackingFailureSnapshot.stage, .tracking)
         XCTAssertEqual(trackingFailureSnapshot.withholdReason, .weakAlignmentPeak)
+        XCTAssertEqual(trackingFailureSnapshot.estimate?.offsetMS ?? 0, 4_000, accuracy: 5)
+        XCTAssertLessThan(
+            trackingFailureSnapshot.diagnostics.trackConfidenceLogOdds,
+            finalSnapshot.diagnostics.trackConfidenceLogOdds
+        )
         XCTAssertEqual(trackingFailureSnapshot.finalLockElapsedMS, 5_200)
+    }
+
+    func testFinalTrackingDoesNotAttachAcceptedTrackToDistantReplacement() throws {
+        let initialQueryFrames = makePatternFrames(startMS: 0, count: 320)
+        let initialReferenceFrames = makePatternFrames(startMS: 4_000, count: 320)
+        let replacementQueryFrames = framesByRebasingLandmarkHashes(
+            makePatternFrames(startMS: 14_000, count: 140),
+            hashBase: 40_000
+        )
+        let replacementReferenceFrames = framesByRebasingLandmarkHashes(
+            makePatternFrames(startMS: 22_000, count: 140),
+            hashBase: 40_000
+        )
+        var engine = AmbientSyncEngine(
+            reference: AmbientSyncEngine.Reference(
+                sourceDisplayPath: "/tmp/reference.wav",
+                frames: initialReferenceFrames + replacementReferenceFrames
+            )
+        )
+
+        _ = engine.process(
+            queryWindow: try window(from: initialQueryFrames, throughMS: 3_000),
+            elapsedMS: 3_000
+        )
+        let finalSnapshot = engine.process(
+            queryWindow: try window(from: initialQueryFrames, throughMS: 5_200),
+            elapsedMS: 5_200
+        )
+        XCTAssertEqual(finalSnapshot.phase, .final)
+
+        for missIndex in 0..<5 {
+            let startMS = 6_000 + Double(missIndex) * 2_500
+            let missFrames = framesByRebasingLandmarkHashes(
+                makePatternFrames(startMS: startMS, count: 120),
+                hashBase: UInt64(90_000 + missIndex * 1_000)
+            )
+            _ = engine.process(
+                queryWindow: try window(from: missFrames, throughMS: startMS + 2_380),
+                elapsedMS: startMS + 2_380
+            )
+        }
+
+        let replacementSnapshot = engine.process(
+            queryWindow: try window(from: replacementQueryFrames, throughMS: 16_780),
+            elapsedMS: 16_780
+        )
+
+        XCTAssertEqual(replacementSnapshot.state, .drifting)
+        XCTAssertEqual(replacementSnapshot.phase, .final)
+        XCTAssertEqual(replacementSnapshot.stage, .tracking)
+        XCTAssertEqual(replacementSnapshot.withholdReason, .unstableTrackingResidual)
+        XCTAssertNil(replacementSnapshot.estimate)
+        XCTAssertEqual(replacementSnapshot.diagnostics.candidates.first?.offsetMS ?? 0, 8_000, accuracy: 5)
+        XCTAssertGreaterThan(replacementSnapshot.diagnostics.trackCount, 0)
+    }
+
+    func testOffsetTrackerConfirmsAfterConsecutiveHitsAtSameOffset() {
+        var tracker = AmbientSyncOffsetTracker()
+
+        var result = tracker.update(
+            candidates: [offsetMeasurement(4_000)],
+            elapsedMS: 1_000
+        )
+        XCTAssertFalse(result.isConfirmed)
+
+        result = tracker.update(
+            candidates: [offsetMeasurement(4_000)],
+            elapsedMS: 2_000
+        )
+
+        XCTAssertTrue(result.isConfirmed)
+        XCTAssertTrue(result.isStable)
+        XCTAssertEqual(result.bestTrack?.offsetMS ?? 0, 4_000, accuracy: 1)
+        XCTAssertEqual(result.bestTrack?.consecutiveHits, 2)
+        XCTAssertGreaterThan(result.confidenceMarginLogOdds, 1)
+    }
+
+    func testOffsetTrackerKeepsDefaultEngineTopKMeasurements() {
+        var tracker = AmbientSyncOffsetTracker()
+        let candidates = (0..<8).map { index in
+            offsetMeasurement(4_000 + Double(index) * 250)
+        }
+
+        let result = tracker.update(candidates: candidates, elapsedMS: 1_000)
+
+        XCTAssertEqual(result.tracks.count, 8)
+        XCTAssertEqual(result.tracks.map(\.offsetMS), candidates.map(\.offsetMS))
+    }
+
+    func testOffsetTrackerDoesNotConfirmConflictingCandidatesPrematurely() {
+        var tracker = AmbientSyncOffsetTracker()
+        let candidates = [
+            offsetMeasurement(4_000),
+            offsetMeasurement(4_220)
+        ]
+
+        _ = tracker.update(candidates: candidates, elapsedMS: 1_000)
+        let result = tracker.update(candidates: candidates, elapsedMS: 2_000)
+
+        XCTAssertEqual(result.tracks.count, 2)
+        XCTAssertFalse(result.isConfirmed)
+        XCTAssertLessThan(result.confidenceMarginLogOdds, 1)
+    }
+
+    func testOffsetTrackerMissingAndSingleConflictDecayWithoutImmediateJump() {
+        var tracker = AmbientSyncOffsetTracker()
+        _ = tracker.update(candidates: [offsetMeasurement(4_000)], elapsedMS: 1_000)
+        let confirmed = tracker.update(candidates: [offsetMeasurement(4_000)], elapsedMS: 2_000)
+
+        let missing = tracker.update(candidates: [], elapsedMS: 3_000)
+        XCTAssertEqual(missing.bestTrack?.offsetMS ?? 0, 4_000, accuracy: 1)
+        XCTAssertLessThan(
+            missing.bestTrack?.confidenceLogOdds ?? 0,
+            confirmed.bestTrack?.confidenceLogOdds ?? 0
+        )
+        XCTAssertTrue(missing.canCoast)
+
+        let conflicting = tracker.update(candidates: [offsetMeasurement(4_260)], elapsedMS: 4_000)
+        XCTAssertEqual(conflicting.bestTrack?.offsetMS ?? 0, 4_000, accuracy: 1)
+        XCTAssertGreaterThanOrEqual(conflicting.tracks.count, 2)
+        XCTAssertFalse(conflicting.isConfirmed)
+    }
+
+    func testOffsetTrackerProtectsConfirmedTrackFromFastTakeover() {
+        var tracker = AmbientSyncOffsetTracker()
+        _ = tracker.update(candidates: [offsetMeasurement(4_000)], elapsedMS: 1_000)
+        _ = tracker.update(candidates: [offsetMeasurement(4_000)], elapsedMS: 2_000)
+
+        _ = tracker.update(candidates: [offsetMeasurement(4_260)], elapsedMS: 3_000)
+        let conflict = tracker.update(candidates: [offsetMeasurement(4_260)], elapsedMS: 4_000)
+
+        XCTAssertEqual(conflict.bestTrack?.offsetMS ?? 0, 4_000, accuracy: 1)
+        XCTAssertGreaterThanOrEqual(conflict.tracks.count, 2)
+        XCTAssertFalse(conflict.isConfirmed)
+    }
+
+    func testOffsetTrackerTreatsWideInnovationAgainstConfirmedTrackAsShadowCandidate() {
+        var tracker = AmbientSyncOffsetTracker()
+        _ = tracker.update(candidates: [offsetMeasurement(4_000)], elapsedMS: 1_000)
+        _ = tracker.update(candidates: [offsetMeasurement(4_000)], elapsedMS: 2_000)
+
+        let conflict = tracker.update(candidates: [offsetMeasurement(4_100)], elapsedMS: 3_000)
+
+        XCTAssertEqual(conflict.bestTrack?.offsetMS ?? 0, 4_000, accuracy: 1)
+        XCTAssertGreaterThanOrEqual(conflict.tracks.count, 2)
+        XCTAssertFalse(conflict.isConfirmed)
     }
 
     func testLowSignalWithholdsBeforeCoarseRetrieval() throws {
@@ -239,6 +671,13 @@ final class AmbientSyncEngineTests: XCTestCase {
         return MicFeatureWindow(frames: try XCTUnwrap(selectedFrames.isEmpty ? nil : selectedFrames))
     }
 
+    private func offsetMeasurement(
+        _ offsetMS: Double,
+        confidence: Double = 1
+    ) -> AmbientSyncOffsetTracker.Measurement {
+        AmbientSyncOffsetTracker.Measurement(offsetMS: offsetMS, confidence: confidence)
+    }
+
     private func makePatternFrames(
         startMS: Double,
         count: Int,
@@ -290,6 +729,37 @@ final class AmbientSyncEngineTests: XCTestCase {
         return (0..<12).map { Float($0 == active ? 1 : 0) }
     }
 
+    private func framesByReplacingLandmarks(
+        _ frames: [MicFeatureFrame],
+        hashesByFrameIndex: [Int: [UInt64]]
+    ) -> [MicFeatureFrame] {
+        frames.enumerated().map { index, frame in
+            let landmarks = hashesByFrameIndex[index, default: []].enumerated().map { landmarkIndex, hash in
+                MicFeatureLandmark(
+                    hash: hash,
+                    anchorTimeMS: frame.recordedTimeMS,
+                    anchorFrequencyBin: 1 + landmarkIndex,
+                    targetFrequencyBin: 32 + landmarkIndex,
+                    deltaFrames: 1
+                )
+            }
+
+            return MicFeatureFrame(
+                recordedTimeMS: frame.recordedTimeMS,
+                hostTimeMS: frame.hostTimeMS,
+                onsetEnvelope: frame.onsetEnvelope,
+                subbandOnset: frame.subbandOnset,
+                pcenMel: frame.pcenMel,
+                chroma: frame.chroma,
+                cens: frame.cens,
+                landmarkHashes: landmarks.map(\.hash),
+                landmarks: landmarks,
+                energyDBFS: frame.energyDBFS,
+                snrDB: frame.snrDB
+            )
+        }
+    }
+
     private func spectralProvisionalReferenceFrames(from frames: [MicFeatureFrame]) -> [MicFeatureFrame] {
         frames.map { frame in
             MicFeatureFrame(
@@ -320,6 +790,53 @@ final class AmbientSyncEngineTests: XCTestCase {
                 cens: Array(repeating: 0, count: frame.cens.count),
                 landmarkHashes: frame.landmarkHashes,
                 landmarks: frame.landmarks,
+                energyDBFS: frame.energyDBFS,
+                snrDB: frame.snrDB
+            )
+        }
+    }
+
+    private func denseFeatureMismatchFrames(from frames: [MicFeatureFrame]) -> [MicFeatureFrame] {
+        frames.map { frame in
+            MicFeatureFrame(
+                recordedTimeMS: frame.recordedTimeMS,
+                hostTimeMS: frame.hostTimeMS,
+                onsetEnvelope: 0,
+                subbandOnset: Array(repeating: 0, count: frame.subbandOnset.count),
+                pcenMel: Array(repeating: 0, count: frame.pcenMel.count),
+                chroma: Array(repeating: 0, count: frame.chroma.count),
+                cens: Array(repeating: 0, count: frame.cens.count),
+                landmarkHashes: frame.landmarkHashes,
+                landmarks: frame.landmarks,
+                energyDBFS: frame.energyDBFS,
+                snrDB: frame.snrDB
+            )
+        }
+    }
+
+    private func framesByRebasingLandmarkHashes(
+        _ frames: [MicFeatureFrame],
+        hashBase: UInt64
+    ) -> [MicFeatureFrame] {
+        frames.enumerated().map { index, frame in
+            let landmark = MicFeatureLandmark(
+                hash: hashBase + UInt64(index),
+                anchorTimeMS: frame.recordedTimeMS,
+                anchorFrequencyBin: frame.landmarks.first?.anchorFrequencyBin ?? 1,
+                targetFrequencyBin: frame.landmarks.first?.targetFrequencyBin ?? 32,
+                deltaFrames: frame.landmarks.first?.deltaFrames ?? 1
+            )
+
+            return MicFeatureFrame(
+                recordedTimeMS: frame.recordedTimeMS,
+                hostTimeMS: frame.hostTimeMS,
+                onsetEnvelope: frame.onsetEnvelope,
+                subbandOnset: frame.subbandOnset,
+                pcenMel: frame.pcenMel,
+                chroma: frame.chroma,
+                cens: frame.cens,
+                landmarkHashes: [landmark.hash],
+                landmarks: [landmark],
                 energyDBFS: frame.energyDBFS,
                 snrDB: frame.snrDB
             )

@@ -224,6 +224,7 @@ public enum AmbientSyncState: String, Codable, Equatable, Sendable {
     case ready
     case listening
     case locking
+    case confirmed
     case locked
     case drifting
     case relocking
@@ -234,6 +235,7 @@ public enum AmbientSyncState: String, Codable, Equatable, Sendable {
 public enum AmbientSyncLockPhase: String, Codable, Equatable, Sendable {
     case none
     case provisional
+    case confirmed
     case final
 }
 
@@ -445,6 +447,34 @@ public struct AmbientSyncCandidateDiagnostics: Codable, Equatable, Sendable {
     }
 }
 
+public struct AmbientSyncOffsetTrackDiagnostics: Codable, Equatable, Sendable {
+    public let offsetMS: Double
+    public let velocityMSPerSecond: Double
+    public let confidenceLogOdds: Double
+    public let lastUpdateElapsedMS: Double
+    public let consecutiveHits: Int
+    public let consecutiveMisses: Int
+    public let lastInnovationMS: Double?
+
+    public init(
+        offsetMS: Double,
+        velocityMSPerSecond: Double,
+        confidenceLogOdds: Double,
+        lastUpdateElapsedMS: Double,
+        consecutiveHits: Int,
+        consecutiveMisses: Int,
+        lastInnovationMS: Double? = nil
+    ) {
+        self.offsetMS = offsetMS
+        self.velocityMSPerSecond = velocityMSPerSecond
+        self.confidenceLogOdds = confidenceLogOdds
+        self.lastUpdateElapsedMS = lastUpdateElapsedMS
+        self.consecutiveHits = consecutiveHits
+        self.consecutiveMisses = consecutiveMisses
+        self.lastInnovationMS = lastInnovationMS
+    }
+}
+
 public struct AmbientSyncDiagnostics: Codable, Equatable, Sendable {
     public let queryDurationMS: Double
     public let activeFrameFraction: Double
@@ -452,11 +482,22 @@ public struct AmbientSyncDiagnostics: Codable, Equatable, Sendable {
     public let histogramCandidateCount: Int
     public let topLandmarkVoteCount: Int
     public let secondLandmarkVoteCount: Int
+    public let topWeightedVoteScore: Double
+    public let secondWeightedVoteScore: Double
+    public let topToSecondWeightedVoteRatio: Double
+    public let topWeightedVoteMargin: Double
     public let topToSecondVoteRatio: Double
     public let topVoteMargin: Int
     public let coarseAmbiguous: Bool
     public let denseMargin: Double
     public let offsetStabilityMS: Double?
+    public let trackInnovationMS: Double?
+    public let trackConfidenceMargin: Double
+    public let trackConfidenceLogOdds: Double
+    public let trackCount: Int
+    public let offsetTrackerConfirmed: Bool
+    public let offsetTrackerStable: Bool
+    public let offsetTracks: [AmbientSyncOffsetTrackDiagnostics]
     public let candidates: [AmbientSyncCandidateDiagnostics]
 
     public init(
@@ -466,11 +507,22 @@ public struct AmbientSyncDiagnostics: Codable, Equatable, Sendable {
         histogramCandidateCount: Int = 0,
         topLandmarkVoteCount: Int = 0,
         secondLandmarkVoteCount: Int = 0,
+        topWeightedVoteScore: Double? = nil,
+        secondWeightedVoteScore: Double? = nil,
+        topToSecondWeightedVoteRatio: Double? = nil,
+        topWeightedVoteMargin: Double? = nil,
         topToSecondVoteRatio: Double = 0,
         topVoteMargin: Int = 0,
         coarseAmbiguous: Bool = false,
         denseMargin: Double = 0,
         offsetStabilityMS: Double? = nil,
+        trackInnovationMS: Double? = nil,
+        trackConfidenceMargin: Double = 0,
+        trackConfidenceLogOdds: Double = 0,
+        trackCount: Int = 0,
+        offsetTrackerConfirmed: Bool = false,
+        offsetTrackerStable: Bool = false,
+        offsetTracks: [AmbientSyncOffsetTrackDiagnostics] = [],
         candidates: [AmbientSyncCandidateDiagnostics] = []
     ) {
         self.queryDurationMS = queryDurationMS
@@ -479,12 +531,98 @@ public struct AmbientSyncDiagnostics: Codable, Equatable, Sendable {
         self.histogramCandidateCount = histogramCandidateCount
         self.topLandmarkVoteCount = topLandmarkVoteCount
         self.secondLandmarkVoteCount = secondLandmarkVoteCount
+        self.topWeightedVoteScore = topWeightedVoteScore ?? Double(topLandmarkVoteCount)
+        self.secondWeightedVoteScore = secondWeightedVoteScore ?? Double(secondLandmarkVoteCount)
+        self.topToSecondWeightedVoteRatio = topToSecondWeightedVoteRatio ?? topToSecondVoteRatio
+        self.topWeightedVoteMargin = topWeightedVoteMargin ?? Double(topVoteMargin)
         self.topToSecondVoteRatio = topToSecondVoteRatio
         self.topVoteMargin = topVoteMargin
         self.coarseAmbiguous = coarseAmbiguous
         self.denseMargin = denseMargin
         self.offsetStabilityMS = offsetStabilityMS
+        self.trackInnovationMS = trackInnovationMS
+        self.trackConfidenceMargin = trackConfidenceMargin
+        self.trackConfidenceLogOdds = trackConfidenceLogOdds
+        self.trackCount = trackCount
+        self.offsetTrackerConfirmed = offsetTrackerConfirmed
+        self.offsetTrackerStable = offsetTrackerStable
+        self.offsetTracks = offsetTracks
         self.candidates = candidates
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case queryDurationMS
+        case activeFrameFraction
+        case queryLandmarkCount
+        case histogramCandidateCount
+        case topLandmarkVoteCount
+        case secondLandmarkVoteCount
+        case topWeightedVoteScore
+        case secondWeightedVoteScore
+        case topToSecondWeightedVoteRatio
+        case topWeightedVoteMargin
+        case topToSecondVoteRatio
+        case topVoteMargin
+        case coarseAmbiguous
+        case denseMargin
+        case offsetStabilityMS
+        case trackInnovationMS
+        case trackConfidenceMargin
+        case trackConfidenceLogOdds
+        case trackCount
+        case offsetTrackerConfirmed
+        case offsetTrackerStable
+        case offsetTracks
+        case candidates
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let topLandmarkVoteCount = try container.decodeIfPresent(Int.self, forKey: .topLandmarkVoteCount) ?? 0
+        let secondLandmarkVoteCount = try container.decodeIfPresent(Int.self, forKey: .secondLandmarkVoteCount) ?? 0
+        let topToSecondVoteRatio = try container.decodeIfPresent(Double.self, forKey: .topToSecondVoteRatio) ?? 0
+        let topVoteMargin = try container.decodeIfPresent(Int.self, forKey: .topVoteMargin) ?? 0
+
+        self.init(
+            queryDurationMS: try container.decode(Double.self, forKey: .queryDurationMS),
+            activeFrameFraction: try container.decode(Double.self, forKey: .activeFrameFraction),
+            queryLandmarkCount: try container.decode(Int.self, forKey: .queryLandmarkCount),
+            histogramCandidateCount: try container.decodeIfPresent(Int.self, forKey: .histogramCandidateCount) ?? 0,
+            topLandmarkVoteCount: topLandmarkVoteCount,
+            secondLandmarkVoteCount: secondLandmarkVoteCount,
+            topWeightedVoteScore: try container.decodeIfPresent(Double.self, forKey: .topWeightedVoteScore)
+                ?? Double(topLandmarkVoteCount),
+            secondWeightedVoteScore: try container.decodeIfPresent(Double.self, forKey: .secondWeightedVoteScore)
+                ?? Double(secondLandmarkVoteCount),
+            topToSecondWeightedVoteRatio: try container.decodeIfPresent(
+                Double.self,
+                forKey: .topToSecondWeightedVoteRatio
+            ) ?? topToSecondVoteRatio,
+            topWeightedVoteMargin: try container.decodeIfPresent(Double.self, forKey: .topWeightedVoteMargin)
+                ?? Double(topVoteMargin),
+            topToSecondVoteRatio: topToSecondVoteRatio,
+            topVoteMargin: topVoteMargin,
+            coarseAmbiguous: try container.decodeIfPresent(Bool.self, forKey: .coarseAmbiguous) ?? false,
+            denseMargin: try container.decodeIfPresent(Double.self, forKey: .denseMargin) ?? 0,
+            offsetStabilityMS: try container.decodeIfPresent(Double.self, forKey: .offsetStabilityMS),
+            trackInnovationMS: try container.decodeIfPresent(Double.self, forKey: .trackInnovationMS),
+            trackConfidenceMargin: try container.decodeIfPresent(Double.self, forKey: .trackConfidenceMargin) ?? 0,
+            trackConfidenceLogOdds: try container.decodeIfPresent(Double.self, forKey: .trackConfidenceLogOdds) ?? 0,
+            trackCount: try container.decodeIfPresent(Int.self, forKey: .trackCount) ?? 0,
+            offsetTrackerConfirmed: try container.decodeIfPresent(
+                Bool.self,
+                forKey: .offsetTrackerConfirmed
+            ) ?? false,
+            offsetTrackerStable: try container.decodeIfPresent(Bool.self, forKey: .offsetTrackerStable) ?? false,
+            offsetTracks: try container.decodeIfPresent(
+                [AmbientSyncOffsetTrackDiagnostics].self,
+                forKey: .offsetTracks
+            ) ?? [],
+            candidates: try container.decodeIfPresent(
+                [AmbientSyncCandidateDiagnostics].self,
+                forKey: .candidates
+            ) ?? []
+        )
     }
 }
 
@@ -497,6 +635,7 @@ public struct AmbientSyncSnapshot: Codable, Equatable, Sendable {
     public let confidence: Double
     public let diagnostics: AmbientSyncDiagnostics
     public let firstProvisionalLockElapsedMS: Double?
+    public let confirmedLockElapsedMS: Double?
     public let finalLockElapsedMS: Double?
 
     public init(
@@ -508,6 +647,7 @@ public struct AmbientSyncSnapshot: Codable, Equatable, Sendable {
         confidence: Double = 0,
         diagnostics: AmbientSyncDiagnostics,
         firstProvisionalLockElapsedMS: Double? = nil,
+        confirmedLockElapsedMS: Double? = nil,
         finalLockElapsedMS: Double? = nil
     ) {
         self.state = state
@@ -518,6 +658,7 @@ public struct AmbientSyncSnapshot: Codable, Equatable, Sendable {
         self.confidence = confidence
         self.diagnostics = diagnostics
         self.firstProvisionalLockElapsedMS = firstProvisionalLockElapsedMS
+        self.confirmedLockElapsedMS = confirmedLockElapsedMS
         self.finalLockElapsedMS = finalLockElapsedMS
     }
 }

@@ -50,6 +50,31 @@ final class AmbientSyncOffsetHistogramTests: XCTestCase {
         XCTAssertEqual(diagnostics.meanReferencePostingCount, 0, accuracy: 0.0001)
     }
 
+    func testDiagnosticsDecodesLegacyJSONWithoutWeightedTopLevelFields() throws {
+        let json = """
+        {
+          "queryDurationMS": 3000,
+          "activeFrameFraction": 0.9,
+          "queryLandmarkCount": 20,
+          "histogramCandidateCount": 2,
+          "topLandmarkVoteCount": 12,
+          "secondLandmarkVoteCount": 8,
+          "topToSecondVoteRatio": 1.5,
+          "topVoteMargin": 4,
+          "coarseAmbiguous": false,
+          "denseMargin": 0.08,
+          "candidates": []
+        }
+        """.data(using: .utf8)!
+
+        let diagnostics = try JSONDecoder().decode(AmbientSyncDiagnostics.self, from: json)
+
+        XCTAssertEqual(diagnostics.topWeightedVoteScore, 12, accuracy: 0.0001)
+        XCTAssertEqual(diagnostics.secondWeightedVoteScore, 8, accuracy: 0.0001)
+        XCTAssertEqual(diagnostics.topToSecondWeightedVoteRatio, 1.5, accuracy: 0.0001)
+        XCTAssertEqual(diagnostics.topWeightedVoteMargin, 4, accuracy: 0.0001)
+    }
+
     func testRanksOffsetByClusteredHashVotes() {
         let queryLandmarks = [
             makeLandmark(hash: 10, anchorTimeMS: 1_000),
@@ -139,6 +164,15 @@ final class AmbientSyncOffsetHistogramTests: XCTestCase {
         XCTAssertEqual(commonCandidate.meanReferencePostingCount, 100, accuracy: 0.001)
         XCTAssertGreaterThan(winningCandidate.weightedVoteScore, commonCandidate.weightedVoteScore)
         XCTAssertLessThan(winningCandidate.rawVoteCount, commonCandidate.rawVoteCount)
+        XCTAssertEqual(histogram.topWeightedVoteScore, winningCandidate.weightedVoteScore, accuracy: 0.001)
+        XCTAssertEqual(histogram.secondWeightedVoteScore, commonCandidate.weightedVoteScore, accuracy: 0.001)
+        XCTAssertEqual(
+            histogram.topWeightedVoteMargin,
+            winningCandidate.weightedVoteScore - commonCandidate.weightedVoteScore,
+            accuracy: 0.001
+        )
+        XCTAssertGreaterThan(histogram.topToSecondWeightedVoteRatio, 1)
+        XCTAssertLessThan(histogram.topToSecondVoteRatio, 1)
     }
 
     func testRepeatedQueryHashUsesSqrtTermFrequencyDampening() throws {

@@ -3,6 +3,35 @@ import XCTest
 @testable import PulsefieldCore
 
 final class AmbientSyncFixtureReplayRunnerTests: XCTestCase {
+    func testReplayScoresDecodesLegacyJSONWithoutWeightedTopLevelFields() throws {
+        let json = """
+        {
+          "topLandmarkVoteCount": 12,
+          "secondLandmarkVoteCount": 8,
+          "topToSecondVoteRatio": 1.5,
+          "topVoteMargin": 4,
+          "coarseAmbiguous": false,
+          "denseMargin": 0.08,
+          "topCandidateOffsetMS": 4000,
+          "topCandidateCombinedDenseScore": 0.72,
+          "topCandidateFeatureAgreementCount": 3
+        }
+        """.data(using: .utf8)!
+
+        let scores = try JSONDecoder().decode(AmbientSyncFixtureReplayScores.self, from: json)
+
+        XCTAssertEqual(scores.topWeightedVoteScore, 12, accuracy: 0.0001)
+        XCTAssertEqual(scores.secondWeightedVoteScore, 8, accuracy: 0.0001)
+        XCTAssertEqual(scores.topToSecondWeightedVoteRatio, 1.5, accuracy: 0.0001)
+        XCTAssertEqual(scores.topWeightedVoteMargin, 4, accuracy: 0.0001)
+        XCTAssertNil(scores.trackInnovationMS)
+        XCTAssertEqual(scores.trackConfidenceMargin, 0, accuracy: 0.0001)
+        XCTAssertEqual(scores.trackConfidenceLogOdds, 0, accuracy: 0.0001)
+        XCTAssertEqual(scores.trackCount, 0)
+        XCTAssertFalse(scores.offsetTrackerConfirmed)
+        XCTAssertFalse(scores.offsetTrackerStable)
+    }
+
     func testProcessesTempCAFFixtureAndEmitsMonotonicJSONLTrace() throws {
         let workingDirectory = try makeTemporaryDirectory()
         addTeardownBlock {
@@ -76,10 +105,11 @@ final class AmbientSyncFixtureReplayRunnerTests: XCTestCase {
             },
             engineFactory: { _ in
                 AmbientSyncFixtureReplayEngine<Int> { input in
-                    AmbientSyncSnapshot(
-                        state: .listening,
-                        phase: .none,
-                        stage: .readiness,
+                    let isConfirmed = input.sequence > 0
+                    return AmbientSyncSnapshot(
+                        state: isConfirmed ? .confirmed : .listening,
+                        phase: isConfirmed ? .confirmed : .none,
+                        stage: isConfirmed ? .tracking : .readiness,
                         diagnostics: AmbientSyncDiagnostics(
                             queryDurationMS: input.queryWindow.durationMS,
                             activeFrameFraction: 1,
@@ -94,6 +124,17 @@ final class AmbientSyncFixtureReplayRunnerTests: XCTestCase {
         let result = try runner.replayFixture(fixture)
 
         XCTAssertFalse(result.events.isEmpty)
+        let confirmedEvent = try XCTUnwrap(result.events.first { $0.phase == .confirmed })
+        XCTAssertEqual(
+            try XCTUnwrap(confirmedEvent.confirmedLockElapsedMS),
+            confirmedEvent.timing.elapsedMS,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(confirmedEvent.firstProvisionalLockElapsedMS),
+            confirmedEvent.timing.elapsedMS,
+            accuracy: 0.0001
+        )
     }
 
     func testDiscoverFixturesIgnoresAudioFileNameWithPathSeparators() throws {

@@ -210,6 +210,18 @@ public struct AmbientSyncOffsetHistogram: Equatable, Sendable {
         return candidates[1].voteCount
     }
 
+    public var topWeightedVoteScore: Double {
+        candidates.first?.weightedVoteScore ?? 0
+    }
+
+    public var secondWeightedVoteScore: Double {
+        guard candidates.count > 1 else {
+            return 0
+        }
+
+        return candidates[1].weightedVoteScore
+    }
+
     public var topToSecondVoteRatio: Double {
         guard topVoteCount > 0 else {
             return 0
@@ -222,8 +234,24 @@ public struct AmbientSyncOffsetHistogram: Equatable, Sendable {
         return Double(topVoteCount) / Double(secondVoteCount)
     }
 
+    public var topToSecondWeightedVoteRatio: Double {
+        guard topWeightedVoteScore > 0 else {
+            return 0
+        }
+
+        guard secondWeightedVoteScore > 0 else {
+            return .infinity
+        }
+
+        return topWeightedVoteScore / secondWeightedVoteScore
+    }
+
     public var topVoteMargin: Int {
         topVoteCount - secondVoteCount
+    }
+
+    public var topWeightedVoteMargin: Double {
+        topWeightedVoteScore - secondWeightedVoteScore
     }
 
     public var candidateOffsetsMS: [Double] {

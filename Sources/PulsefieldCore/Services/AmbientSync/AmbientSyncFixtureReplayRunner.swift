@@ -143,10 +143,20 @@ public struct AmbientSyncFixtureReplayTiming: Codable, Equatable, Sendable {
 public struct AmbientSyncFixtureReplayScores: Codable, Equatable, Sendable {
     public let topLandmarkVoteCount: Int
     public let secondLandmarkVoteCount: Int
+    public let topWeightedVoteScore: Double
+    public let secondWeightedVoteScore: Double
+    public let topToSecondWeightedVoteRatio: Double
+    public let topWeightedVoteMargin: Double
     public let topToSecondVoteRatio: Double
     public let topVoteMargin: Int
     public let coarseAmbiguous: Bool
     public let denseMargin: Double
+    public let trackInnovationMS: Double?
+    public let trackConfidenceMargin: Double
+    public let trackConfidenceLogOdds: Double
+    public let trackCount: Int
+    public let offsetTrackerConfirmed: Bool
+    public let offsetTrackerStable: Bool
     public let topCandidateOffsetMS: Double?
     public let topCandidateCombinedDenseScore: Double?
     public let topCandidateFeatureAgreementCount: Int?
@@ -154,23 +164,107 @@ public struct AmbientSyncFixtureReplayScores: Codable, Equatable, Sendable {
     public init(
         topLandmarkVoteCount: Int,
         secondLandmarkVoteCount: Int,
+        topWeightedVoteScore: Double? = nil,
+        secondWeightedVoteScore: Double? = nil,
+        topToSecondWeightedVoteRatio: Double? = nil,
+        topWeightedVoteMargin: Double? = nil,
         topToSecondVoteRatio: Double,
         topVoteMargin: Int,
         coarseAmbiguous: Bool = false,
         denseMargin: Double,
+        trackInnovationMS: Double? = nil,
+        trackConfidenceMargin: Double = 0,
+        trackConfidenceLogOdds: Double = 0,
+        trackCount: Int = 0,
+        offsetTrackerConfirmed: Bool = false,
+        offsetTrackerStable: Bool = false,
         topCandidateOffsetMS: Double?,
         topCandidateCombinedDenseScore: Double?,
         topCandidateFeatureAgreementCount: Int?
     ) {
         self.topLandmarkVoteCount = topLandmarkVoteCount
         self.secondLandmarkVoteCount = secondLandmarkVoteCount
+        self.topWeightedVoteScore = topWeightedVoteScore ?? Double(topLandmarkVoteCount)
+        self.secondWeightedVoteScore = secondWeightedVoteScore ?? Double(secondLandmarkVoteCount)
+        self.topToSecondWeightedVoteRatio = topToSecondWeightedVoteRatio ?? topToSecondVoteRatio
+        self.topWeightedVoteMargin = topWeightedVoteMargin ?? Double(topVoteMargin)
         self.topToSecondVoteRatio = topToSecondVoteRatio
         self.topVoteMargin = topVoteMargin
         self.coarseAmbiguous = coarseAmbiguous
         self.denseMargin = denseMargin
+        self.trackInnovationMS = trackInnovationMS
+        self.trackConfidenceMargin = trackConfidenceMargin
+        self.trackConfidenceLogOdds = trackConfidenceLogOdds
+        self.trackCount = trackCount
+        self.offsetTrackerConfirmed = offsetTrackerConfirmed
+        self.offsetTrackerStable = offsetTrackerStable
         self.topCandidateOffsetMS = topCandidateOffsetMS
         self.topCandidateCombinedDenseScore = topCandidateCombinedDenseScore
         self.topCandidateFeatureAgreementCount = topCandidateFeatureAgreementCount
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case topLandmarkVoteCount
+        case secondLandmarkVoteCount
+        case topWeightedVoteScore
+        case secondWeightedVoteScore
+        case topToSecondWeightedVoteRatio
+        case topWeightedVoteMargin
+        case topToSecondVoteRatio
+        case topVoteMargin
+        case coarseAmbiguous
+        case denseMargin
+        case trackInnovationMS
+        case trackConfidenceMargin
+        case trackConfidenceLogOdds
+        case trackCount
+        case offsetTrackerConfirmed
+        case offsetTrackerStable
+        case topCandidateOffsetMS
+        case topCandidateCombinedDenseScore
+        case topCandidateFeatureAgreementCount
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let topLandmarkVoteCount = try container.decode(Int.self, forKey: .topLandmarkVoteCount)
+        let secondLandmarkVoteCount = try container.decode(Int.self, forKey: .secondLandmarkVoteCount)
+        let topToSecondVoteRatio = try container.decode(Double.self, forKey: .topToSecondVoteRatio)
+        let topVoteMargin = try container.decode(Int.self, forKey: .topVoteMargin)
+
+        self.init(
+            topLandmarkVoteCount: topLandmarkVoteCount,
+            secondLandmarkVoteCount: secondLandmarkVoteCount,
+            topWeightedVoteScore: try container.decodeIfPresent(Double.self, forKey: .topWeightedVoteScore)
+                ?? Double(topLandmarkVoteCount),
+            secondWeightedVoteScore: try container.decodeIfPresent(Double.self, forKey: .secondWeightedVoteScore)
+                ?? Double(secondLandmarkVoteCount),
+            topToSecondWeightedVoteRatio: try container.decodeIfPresent(
+                Double.self,
+                forKey: .topToSecondWeightedVoteRatio
+            ) ?? topToSecondVoteRatio,
+            topWeightedVoteMargin: try container.decodeIfPresent(Double.self, forKey: .topWeightedVoteMargin)
+                ?? Double(topVoteMargin),
+            topToSecondVoteRatio: topToSecondVoteRatio,
+            topVoteMargin: topVoteMargin,
+            coarseAmbiguous: try container.decodeIfPresent(Bool.self, forKey: .coarseAmbiguous) ?? false,
+            denseMargin: try container.decode(Double.self, forKey: .denseMargin),
+            trackInnovationMS: try container.decodeIfPresent(Double.self, forKey: .trackInnovationMS),
+            trackConfidenceMargin: try container.decodeIfPresent(Double.self, forKey: .trackConfidenceMargin) ?? 0,
+            trackConfidenceLogOdds: try container.decodeIfPresent(Double.self, forKey: .trackConfidenceLogOdds) ?? 0,
+            trackCount: try container.decodeIfPresent(Int.self, forKey: .trackCount) ?? 0,
+            offsetTrackerConfirmed: try container.decodeIfPresent(Bool.self, forKey: .offsetTrackerConfirmed) ?? false,
+            offsetTrackerStable: try container.decodeIfPresent(Bool.self, forKey: .offsetTrackerStable) ?? false,
+            topCandidateOffsetMS: try container.decodeIfPresent(Double.self, forKey: .topCandidateOffsetMS),
+            topCandidateCombinedDenseScore: try container.decodeIfPresent(
+                Double.self,
+                forKey: .topCandidateCombinedDenseScore
+            ),
+            topCandidateFeatureAgreementCount: try container.decodeIfPresent(
+                Int.self,
+                forKey: .topCandidateFeatureAgreementCount
+            )
+        )
     }
 }
 
@@ -190,6 +284,7 @@ public struct AmbientSyncFixtureReplayTraceEvent: Codable, Equatable, Sendable {
     public let candidates: [AmbientSyncCandidateDiagnostics]
     public let scores: AmbientSyncFixtureReplayScores
     public let firstProvisionalLockElapsedMS: Double?
+    public let confirmedLockElapsedMS: Double?
     public let finalLockElapsedMS: Double?
 
     public init(
@@ -198,6 +293,7 @@ public struct AmbientSyncFixtureReplayTraceEvent: Codable, Equatable, Sendable {
         queryWindow: MicFeatureWindow,
         snapshot: AmbientSyncSnapshot,
         firstProvisionalLockElapsedMS: Double?,
+        confirmedLockElapsedMS: Double?,
         finalLockElapsedMS: Double?
     ) {
         self.sequence = sequence
@@ -221,16 +317,27 @@ public struct AmbientSyncFixtureReplayTraceEvent: Codable, Equatable, Sendable {
         scores = AmbientSyncFixtureReplayScores(
             topLandmarkVoteCount: snapshot.diagnostics.topLandmarkVoteCount,
             secondLandmarkVoteCount: snapshot.diagnostics.secondLandmarkVoteCount,
+            topWeightedVoteScore: snapshot.diagnostics.topWeightedVoteScore,
+            secondWeightedVoteScore: snapshot.diagnostics.secondWeightedVoteScore,
+            topToSecondWeightedVoteRatio: snapshot.diagnostics.topToSecondWeightedVoteRatio,
+            topWeightedVoteMargin: snapshot.diagnostics.topWeightedVoteMargin,
             topToSecondVoteRatio: snapshot.diagnostics.topToSecondVoteRatio,
             topVoteMargin: snapshot.diagnostics.topVoteMargin,
             coarseAmbiguous: snapshot.diagnostics.coarseAmbiguous,
             denseMargin: snapshot.diagnostics.denseMargin,
+            trackInnovationMS: snapshot.diagnostics.trackInnovationMS,
+            trackConfidenceMargin: snapshot.diagnostics.trackConfidenceMargin,
+            trackConfidenceLogOdds: snapshot.diagnostics.trackConfidenceLogOdds,
+            trackCount: snapshot.diagnostics.trackCount,
+            offsetTrackerConfirmed: snapshot.diagnostics.offsetTrackerConfirmed,
+            offsetTrackerStable: snapshot.diagnostics.offsetTrackerStable,
             topCandidateOffsetMS: snapshot.diagnostics.candidates.first?.offsetMS,
             topCandidateCombinedDenseScore: snapshot.diagnostics.candidates.first?.combinedDenseScore,
             topCandidateFeatureAgreementCount: snapshot.diagnostics.candidates.first?.featureAgreementCount
         )
         self.firstProvisionalLockElapsedMS = snapshot.firstProvisionalLockElapsedMS
             ?? firstProvisionalLockElapsedMS
+        self.confirmedLockElapsedMS = snapshot.confirmedLockElapsedMS ?? confirmedLockElapsedMS
         self.finalLockElapsedMS = snapshot.finalLockElapsedMS ?? finalLockElapsedMS
     }
 }
@@ -494,6 +601,7 @@ public final class AmbientSyncFixtureReplayRunner<ReferenceIndex: Sendable>: @un
         var startIndex = 0
         var previousSnapshot: AmbientSyncSnapshot?
         var firstProvisionalLockElapsedMS: Double?
+        var confirmedLockElapsedMS: Double?
         var finalLockElapsedMS: Double?
         var events: [AmbientSyncFixtureReplayTraceEvent] = []
 
@@ -522,8 +630,12 @@ public final class AmbientSyncFixtureReplayRunner<ReferenceIndex: Sendable>: @un
                 )
             )
 
-            if firstProvisionalLockElapsedMS == nil, snapshot.phase == .provisional || snapshot.phase == .final {
+            if firstProvisionalLockElapsedMS == nil,
+               snapshot.phase == .provisional || snapshot.phase == .confirmed || snapshot.phase == .final {
                 firstProvisionalLockElapsedMS = queryWindow.endpointRecordedTimeMS
+            }
+            if confirmedLockElapsedMS == nil, snapshot.phase == .confirmed || snapshot.phase == .final {
+                confirmedLockElapsedMS = queryWindow.endpointRecordedTimeMS
             }
             if finalLockElapsedMS == nil, snapshot.phase == .final {
                 finalLockElapsedMS = queryWindow.endpointRecordedTimeMS
@@ -536,6 +648,7 @@ public final class AmbientSyncFixtureReplayRunner<ReferenceIndex: Sendable>: @un
                     queryWindow: queryWindow,
                     snapshot: snapshot,
                     firstProvisionalLockElapsedMS: firstProvisionalLockElapsedMS,
+                    confirmedLockElapsedMS: confirmedLockElapsedMS,
                     finalLockElapsedMS: finalLockElapsedMS
                 )
             )
