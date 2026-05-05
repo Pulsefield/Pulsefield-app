@@ -396,15 +396,23 @@ public final class AmbientSyncFixtureReplayRunner<ReferenceIndex: Sendable>: @un
         public let referenceIndexCacheDirectoryURL: URL
         public let featureConfiguration: AmbientSyncFeatureConfiguration
         public let audioChunkSizeSamples: Int
+        public let replayStepDurationMS: Double?
 
         public init(
             fixtureDirectoryURL: URL = AmbientSyncFixtureRecorder.defaultFixtureDirectoryURL(),
             traceOutputDirectoryURL: URL? = nil,
             referenceIndexCacheDirectoryURL: URL? = nil,
             featureConfiguration: AmbientSyncFeatureConfiguration = .v1,
-            audioChunkSizeSamples: Int = 16_384
+            audioChunkSizeSamples: Int = 16_384,
+            replayStepDurationMS: Double? = nil
         ) {
             precondition(audioChunkSizeSamples > 0, "audioChunkSizeSamples must be positive.")
+            if let replayStepDurationMS {
+                precondition(
+                    replayStepDurationMS > 0 && replayStepDurationMS.isFinite,
+                    "replayStepDurationMS must be finite and positive."
+                )
+            }
 
             self.fixtureDirectoryURL = fixtureDirectoryURL
             self.traceOutputDirectoryURL = traceOutputDirectoryURL
@@ -413,6 +421,7 @@ public final class AmbientSyncFixtureReplayRunner<ReferenceIndex: Sendable>: @un
                 ?? fixtureDirectoryURL.appendingPathComponent(".ambient-sync-reference-indexes", isDirectory: true)
             self.featureConfiguration = featureConfiguration
             self.audioChunkSizeSamples = audioChunkSizeSamples
+            self.replayStepDurationMS = replayStepDurationMS
         }
     }
 
@@ -603,10 +612,21 @@ public final class AmbientSyncFixtureReplayRunner<ReferenceIndex: Sendable>: @un
         var firstProvisionalLockElapsedMS: Double?
         var confirmedLockElapsedMS: Double?
         var finalLockElapsedMS: Double?
+        var nextReplayEndpointMS: Double?
         var events: [AmbientSyncFixtureReplayTraceEvent] = []
 
         for endIndex in fixtureFrames.indices {
             let endpointMS = fixtureFrames[endIndex].recordedTimeMS
+            if configuration.replayStepDurationMS != nil,
+               let replayEndpointMS = nextReplayEndpointMS,
+               endpointMS < replayEndpointMS,
+               endIndex != fixtureFrames.index(before: fixtureFrames.endIndex) {
+                continue
+            }
+            if let replayStepDurationMS = configuration.replayStepDurationMS {
+                nextReplayEndpointMS = endpointMS + replayStepDurationMS
+            }
+
             let desiredDurationMS = queryDurationMS(
                 endpointMS: endpointMS,
                 previousSnapshot: previousSnapshot,

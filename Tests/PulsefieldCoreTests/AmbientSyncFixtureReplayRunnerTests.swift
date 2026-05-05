@@ -137,6 +137,62 @@ final class AmbientSyncFixtureReplayRunnerTests: XCTestCase {
         )
     }
 
+    func testReplayStepDurationSamplesTraceAndIncludesFixtureTail() throws {
+        let workingDirectory = try makeTemporaryDirectory()
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: workingDirectory)
+        }
+
+        let fixtureDirectoryURL = workingDirectory.appendingPathComponent("fixtures", isDirectory: true)
+        let tracesDirectoryURL = workingDirectory.appendingPathComponent("traces", isDirectory: true)
+        let cacheDirectoryURL = workingDirectory.appendingPathComponent("reference-indexes", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixtureDirectoryURL, withIntermediateDirectories: true)
+
+        let targetAudioURL = workingDirectory.appendingPathComponent("target.caf")
+        let fixtureAudioURL = fixtureDirectoryURL.appendingPathComponent("take-01.caf")
+        try Data([0x70, 0x66, 0x6C, 0x64]).write(to: targetAudioURL, options: .atomic)
+        try writeGeneratedCAF(to: fixtureAudioURL, durationSeconds: 3.2)
+        try writeSidecar(
+            audioFileName: fixtureAudioURL.lastPathComponent,
+            targetAudioURL: targetAudioURL,
+            to: fixtureDirectoryURL.appendingPathComponent("take-01.ambient-sync-fixture.json")
+        )
+
+        let runner = AmbientSyncFixtureReplayRunner<Int>(
+            configuration: AmbientSyncFixtureReplayRunner<Int>.Configuration(
+                fixtureDirectoryURL: fixtureDirectoryURL,
+                traceOutputDirectoryURL: tracesDirectoryURL,
+                referenceIndexCacheDirectoryURL: cacheDirectoryURL,
+                replayStepDurationMS: 1_000
+            ),
+            referenceIndexBuilder: { _ in
+                1
+            },
+            engineFactory: { _ in
+                AmbientSyncFixtureReplayEngine<Int> { input in
+                    AmbientSyncSnapshot(
+                        state: .listening,
+                        phase: .none,
+                        stage: .readiness,
+                        diagnostics: AmbientSyncDiagnostics(
+                            queryDurationMS: input.queryWindow.durationMS,
+                            activeFrameFraction: 1,
+                            queryLandmarkCount: input.queryWindow.landmarkCount
+                        )
+                    )
+                }
+            }
+        )
+
+        let fixture = try XCTUnwrap(try runner.discoverFixtures().first)
+        let result = try runner.replayFixture(fixture)
+
+        XCTAssertLessThan(result.events.count, 10)
+        XCTAssertGreaterThan(result.events.count, 1)
+        XCTAssertEqual(result.events.map(\.sequence), Array(0..<result.events.count))
+        XCTAssertGreaterThan(result.events.last?.timing.elapsedMS ?? 0, 3_000)
+    }
+
     func testDiscoverFixturesIgnoresAudioFileNameWithPathSeparators() throws {
         let workingDirectory = try makeTemporaryDirectory()
         addTeardownBlock {
@@ -178,7 +234,11 @@ final class AmbientSyncFixtureReplayRunnerTests: XCTestCase {
             throw XCTSkip("No local ambient sync fixture directory.")
         }
 
-        let runner = AmbientSyncFixtureReplayRunner<AmbientSyncReferenceIndex>()
+        let runner = AmbientSyncFixtureReplayRunner<AmbientSyncReferenceIndex>(
+            configuration: AmbientSyncFixtureReplayRunner<AmbientSyncReferenceIndex>.Configuration(
+                replayStepDurationMS: 1_000
+            )
+        )
         let fixtures = try runner.discoverFixtures().filter { fixture in
             FileManager.default.fileExists(atPath: fixture.targetAudioURL.path)
         }

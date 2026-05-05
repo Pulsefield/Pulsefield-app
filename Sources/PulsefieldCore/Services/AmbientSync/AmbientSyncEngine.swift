@@ -168,6 +168,7 @@ public struct AmbientSyncEngine: Equatable, Sendable {
         .rerank(
             queryWindow: queryWindow,
             localFrames: reference.frames,
+            localFramesAreSorted: true,
             candidates: histogram.candidates
         )
         diagnostics = makeDiagnostics(
@@ -353,6 +354,7 @@ public struct AmbientSyncEngine: Equatable, Sendable {
         .rerank(
             queryWindow: queryWindow,
             localFrames: reference.frames,
+            localFramesAreSorted: true,
             candidates: histogram.candidates
         )
         diagnostics = makeDiagnostics(
