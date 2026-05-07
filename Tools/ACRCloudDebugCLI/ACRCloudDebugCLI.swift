@@ -335,7 +335,7 @@ private struct ACRCloudDebugOptions {
             accessToken: resolvedToken,
             executablePath: acrcloudExecutablePath
                 ?? environment["ACRCLOUD_CLI"]?.trimmedNilIfEmpty
-                ?? Self.defaultACRCloudExecutablePath(),
+                ?? ACRCloudFileScanConfiguration.defaultExecutablePath(environment: environment),
             region: resolvedRegion,
             containerID: resolvedContainerID,
             buckets: buckets ?? environment["ACRCLOUD_FILESCAN_BUCKETS"]?.trimmedNilIfEmpty ?? "23",
@@ -350,17 +350,6 @@ private struct ACRCloudDebugOptions {
             configuration: configuration,
             loadedEnvFileURL: loadedEnvFile?.url
         )
-    }
-
-    private static func defaultACRCloudExecutablePath() -> String {
-        let userLocalCLI = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Python/3.9/bin/acrcloud")
-
-        if FileManager.default.isExecutableFile(atPath: userLocalCLI.path) {
-            return userLocalCLI.path
-        }
-
-        return "acrcloud"
     }
 
     private func loadEnvFile() throws -> LoadedEnvFile? {

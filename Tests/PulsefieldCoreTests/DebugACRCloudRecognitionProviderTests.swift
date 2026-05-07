@@ -4,6 +4,46 @@ import XCTest
 @testable import PulsefieldCore
 
 final class DebugACRCloudRecognitionProviderTests: XCTestCase {
+    func testFilescanClientResolvesBareExecutableFromConfiguredPath() throws {
+        let directoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PulsefieldACRCloudCLI-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: directoryURL)
+        }
+
+        let executableURL = directoryURL.appendingPathComponent("acrcloud")
+        let script = """
+        #!/bin/sh
+        printf '%s\\n' '{"data":{"id":"file-id","state":1,"results":{"music":[{"result":{"acrid":"acr-id","title":"Track","artists":[{"name":"Artist"}]}}]}}}'
+        """
+        try script.write(to: executableURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o755)],
+            ofItemAtPath: executableURL.path
+        )
+
+        let clipURL = directoryURL.appendingPathComponent("clip.wav")
+        try Data([0]).write(to: clipURL)
+        let clip = RecognitionAudioClip(
+            fileURL: clipURL,
+            mimeType: "audio/wav",
+            duration: 1,
+            recordedAt: Date(timeIntervalSince1970: 1_710_000_000)
+        )
+        let configuration = ACRCloudFileScanConfiguration(
+            accessToken: "token",
+            executablePath: "acrcloud",
+            environment: ["PATH": directoryURL.path]
+        )
+
+        let execution = try ACRCloudFileScanClient().scan(clip: clip, configuration: configuration)
+
+        XCTAssertEqual(execution.command.first, executableURL.path)
+        XCTAssertEqual(execution.result.music?.title, "Track")
+        XCTAssertEqual(execution.result.music?.artists, ["Artist"])
+    }
+
     func testNormalizerBuildsMusicMatchFromFilescanScanJSON() throws {
         let json = """
         {

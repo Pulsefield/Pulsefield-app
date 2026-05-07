@@ -15,7 +15,7 @@ public struct ACRCloudFileScanConfiguration: Equatable, Sendable {
 
     public init(
         accessToken: String,
-        executablePath: String = "acrcloud",
+        executablePath: String = ACRCloudFileScanConfiguration.defaultExecutablePath(),
         region: String = "eu-west-1",
         containerID: Int? = nil,
         buckets: String = "23",
@@ -70,9 +70,97 @@ public struct ACRCloudFileScanConfiguration: Equatable, Sendable {
     }
 
     public func processEnvironment() -> [String: String] {
-        var resolvedEnvironment = environment
+        var resolvedEnvironment = Self.defaultProcessEnvironment(base: environment)
         resolvedEnvironment["ACRCLOUD_ACCESS_TOKEN"] = accessToken
         return resolvedEnvironment
+    }
+
+    public static func defaultExecutablePath(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> String {
+        let resolvedEnvironment = defaultProcessEnvironment(base: environment)
+
+        if let configuredPath = environment["ACRCLOUD_CLI"]?.trimmedNilIfEmpty {
+            let expandedPath = expandedExecutablePath(configuredPath)
+            return resolveExecutablePath(expandedPath, environment: resolvedEnvironment) ?? expandedPath
+        }
+
+        return resolveExecutablePath("acrcloud", environment: resolvedEnvironment) ?? "acrcloud"
+    }
+
+    public static func defaultProcessEnvironment(
+        base environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> [String: String] {
+        var resolvedEnvironment = environment
+        resolvedEnvironment["PATH"] = executableSearchPath(environment: environment).joined(separator: ":")
+        return resolvedEnvironment
+    }
+
+    public static func resolveExecutablePath(
+        _ executablePath: String,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> String? {
+        let expandedPath = expandedExecutablePath(executablePath)
+        guard !expandedPath.isEmpty else {
+            return nil
+        }
+
+        if expandedPath.contains("/") {
+            return FileManager.default.isExecutableFile(atPath: expandedPath) ? expandedPath : nil
+        }
+
+        for directory in executableSearchPath(environment: environment) {
+            let candidatePath = URL(fileURLWithPath: directory, isDirectory: true)
+                .appendingPathComponent(expandedPath)
+                .path
+
+            if FileManager.default.isExecutableFile(atPath: candidatePath) {
+                return candidatePath
+            }
+        }
+
+        return nil
+    }
+
+    private static func executableSearchPath(environment: [String: String]) -> [String] {
+        var directories = environment["PATH"]?
+            .split(separator: ":", omittingEmptySubsequences: true)
+            .map(String.init)
+            ?? []
+
+        directories.append(contentsOf: commonExecutableDirectories())
+
+        var seen: Set<String> = []
+        return directories.compactMap { directory in
+            let expandedDirectory = NSString(string: directory).expandingTildeInPath
+            guard !expandedDirectory.isEmpty, seen.insert(expandedDirectory).inserted else {
+                return nil
+            }
+
+            return expandedDirectory
+        }
+    }
+
+    private static func commonExecutableDirectories() -> [String] {
+        let homePath = FileManager.default.homeDirectoryForCurrentUser.path
+        let pythonVersions = ["3.13", "3.12", "3.11", "3.10", "3.9", "3.8"]
+        let userPythonDirectories = pythonVersions.map { "\(homePath)/Library/Python/\($0)/bin" }
+
+        return [
+            "\(homePath)/.local/bin"
+        ] + userPythonDirectories + [
+            "/opt/homebrew/bin",
+            "/opt/homebrew/sbin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin"
+        ]
+    }
+
+    private static func expandedExecutablePath(_ executablePath: String) -> String {
+        NSString(string: executablePath.trimmed).expandingTildeInPath
     }
 }
 
@@ -252,11 +340,16 @@ public struct ACRCloudFileScanClient: Sendable {
         configuration: ACRCloudFileScanConfiguration
     ) throws -> ACRCloudFileScanExecution {
         let scanArguments = configuration.scanArguments(for: clip.fileURL)
-        let processCommand = [configuration.executablePath] + scanArguments
+        let environment = configuration.processEnvironment()
+        let resolvedExecutablePath = ACRCloudFileScanConfiguration.resolveExecutablePath(
+            configuration.executablePath,
+            environment: environment
+        ) ?? configuration.executablePath
+        let processCommand = [resolvedExecutablePath] + scanArguments
         let processOutput = try Self.runProcess(
             executablePath: configuration.executablePath,
             arguments: scanArguments,
-            environment: configuration.processEnvironment()
+            environment: environment
         )
 
         guard processOutput.exitCode == 0 else {
@@ -281,10 +374,21 @@ public struct ACRCloudFileScanClient: Sendable {
         arguments: [String],
         environment: [String: String]
     ) throws -> (exitCode: Int32, output: String) {
+        guard let resolvedExecutablePath = ACRCloudFileScanConfiguration.resolveExecutablePath(
+            executablePath,
+            environment: environment
+        ) else {
+            throw RecognitionFailure(
+                title: "acrcloud CLI Not Available",
+                message: "Could not find executable `\(executablePath)` on the app process PATH.",
+                recoverySuggestion: "Install the official CLI with `pip install acrcloud-cli`, or set ACRCLOUD_CLI to the full executable path in .env."
+            )
+        }
+
         let outputPipe = Pipe()
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = [executablePath] + arguments
+        process.executableURL = URL(fileURLWithPath: resolvedExecutablePath)
+        process.arguments = arguments
         process.environment = environment
         process.standardOutput = outputPipe
         process.standardError = outputPipe
@@ -295,7 +399,7 @@ public struct ACRCloudFileScanClient: Sendable {
             throw RecognitionFailure(
                 title: "acrcloud CLI Not Available",
                 message: error.localizedDescription,
-                recoverySuggestion: "Install the official CLI with `pip install acrcloud-cli`, or pass --acrcloud-cli with the executable path."
+                recoverySuggestion: "Install the official CLI with `pip install acrcloud-cli`, or set ACRCLOUD_CLI to the full executable path in .env."
             )
         }
 
@@ -309,7 +413,7 @@ public struct ACRCloudFileScanClient: Sendable {
 
     private static func recoverySuggestion(for output: String) -> String {
         if output.contains("No such file") || output.contains("not found") {
-            return "Install the official CLI with `pip install acrcloud-cli`, or pass --acrcloud-cli with the executable path."
+            return "Install the official CLI with `pip install acrcloud-cli`, or set ACRCLOUD_CLI to the full executable path in .env."
         }
 
         if output.localizedCaseInsensitiveContains("Access token") ||

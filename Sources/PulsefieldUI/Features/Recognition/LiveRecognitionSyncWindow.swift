@@ -1,0 +1,1179 @@
+#if os(macOS) && DEBUG
+import Foundation
+import Observation
+import PulsefieldCore
+import SwiftUI
+
+@MainActor
+@Observable
+public final class LiveRecognitionSyncModel {
+    public private(set) var phase: LiveRecognitionSyncPhase = .idle
+    public private(set) var permissionStatus: MicrophonePermissionStatus = .undetermined
+    public private(set) var statusMessage = "Ready"
+    public private(set) var errorMessage: String?
+    public private(set) var loadedEnvFilePath: String?
+    public private(set) var localLibraryStatus: LocalAudioLibraryStatus = .empty
+    public private(set) var latestClip: RecognitionAudioClip?
+    public private(set) var latestExecution: ACRCloudFileScanExecution?
+    public private(set) var latestMatch: ACRCloudMusicMatch?
+    public private(set) var recognitionSnapshot: RecognitionSnapshot?
+    public private(set) var resolveResults: [LocalResolveResult] = []
+    public private(set) var referenceSummary: AmbientReferenceSummary?
+    public private(set) var latestAmbientSnapshot: AmbientSyncSnapshot?
+    public private(set) var ambientUpdateCount = 0
+    public private(set) var latestFrameBatchCount = 0
+
+    public var clipDurationText = "10"
+    public var accessToken = ""
+    public var acrcloudExecutablePath = "acrcloud"
+    public var region = "eu-west-1"
+    public var containerIDText = ""
+    public var buckets = "23"
+    public var engineText = "1"
+    public var audioType = "recorded"
+    public var scanTimeoutText = "600"
+    public var pollIntervalText = "5"
+    public var selectedResolveAssetID: UUID?
+
+    @ObservationIgnored
+    private let permissionService: any MicrophonePermissionProviding
+
+    @ObservationIgnored
+    private let captureService: AudioClipCaptureService
+
+    @ObservationIgnored
+    private let database: LocalAudioLibraryDatabase
+
+    @ObservationIgnored
+    private let resolver: LocalTrackResolver
+
+    @ObservationIgnored
+    private let referenceIndexBuilder: AmbientSyncReferenceIndexBuilder
+
+    @ObservationIgnored
+    private var environmentValues = ACRCloudFileScanConfiguration.defaultProcessEnvironment()
+
+    @ObservationIgnored
+    private var flowTask: Task<Void, Never>?
+
+    @ObservationIgnored
+    private var ambientStreamService: AmbientMicFeatureStreamService?
+
+    @ObservationIgnored
+    private var ambientRuntime: LiveAmbientSyncRuntime?
+
+    public init(
+        database: LocalAudioLibraryDatabase,
+        permissionService: any MicrophonePermissionProviding = MicrophonePermissionService(),
+        captureService: AudioClipCaptureService = AudioClipCaptureService(),
+        referenceIndexBuilder: AmbientSyncReferenceIndexBuilder = AmbientSyncReferenceIndexBuilder()
+    ) {
+        self.database = database
+        self.permissionService = permissionService
+        self.captureService = captureService
+        self.resolver = LocalTrackResolver(database: database)
+        self.referenceIndexBuilder = referenceIndexBuilder
+
+        loadEnvironmentDefaults()
+    }
+
+    deinit {
+        ambientStreamService?.stop()
+        flowTask?.cancel()
+    }
+
+    public static func liveDebug() -> LiveRecognitionSyncModel {
+        do {
+            return LiveRecognitionSyncModel(database: try LocalAudioLibraryDatabase.openDefault())
+        } catch {
+            let fallback = try! LocalAudioLibraryDatabase.openInMemory()
+            let model = LiveRecognitionSyncModel(database: fallback)
+            model.errorMessage = "Could not open persistent local audio library: \(error.localizedDescription)"
+            return model
+        }
+    }
+
+    public var canStartFlow: Bool {
+        !phase.isBusy && phase != .ambientSyncing
+    }
+
+    public var canStartAmbientSync: Bool {
+        selectedResolveResult != nil && !phase.isBusy && phase != .ambientSyncing
+    }
+
+    public var selectedResolveResult: LocalResolveResult? {
+        guard let selectedResolveAssetID else {
+            return nil
+        }
+
+        return resolveResults.first { $0.asset.id == selectedResolveAssetID }
+    }
+
+    public func refreshLocalLibraryStatus() {
+        Task {
+            localLibraryStatus = await database.libraryStatus()
+        }
+    }
+
+    public func startFlow() {
+        guard canStartFlow else {
+            return
+        }
+
+        stopAmbientSync(markStopped: false)
+        flowTask?.cancel()
+        flowTask = Task { [weak self] in
+            await self?.runFlow()
+        }
+    }
+
+    public func startAmbientSyncForSelectedResult() {
+        guard let selectedResolveResult, !phase.isBusy else {
+            return
+        }
+
+        flowTask?.cancel()
+        flowTask = Task { [weak self] in
+            await self?.startAmbientSync(for: selectedResolveResult.asset)
+            self?.flowTask = nil
+        }
+    }
+
+    public func stop() {
+        flowTask?.cancel()
+        flowTask = nil
+
+        Task {
+            await captureService.cancelCapture()
+        }
+
+        stopAmbientSync(markStopped: true)
+    }
+
+    private func runFlow() async {
+        resetRunState()
+        phase = .requestingPermission
+        statusMessage = "Requesting microphone access"
+        permissionStatus = await permissionService.requestAccess()
+
+        guard permissionStatus == .authorized else {
+            fail("Microphone access is \(permissionStatus.label).")
+            flowTask = nil
+            return
+        }
+
+        let clipDuration: TimeInterval
+        let fileScanConfiguration: ACRCloudFileScanConfiguration
+        do {
+            clipDuration = try parsePositiveTimeInterval(clipDurationText, fieldName: "Clip duration")
+            fileScanConfiguration = try makeFileScanConfiguration()
+        } catch {
+            fail(error.localizedDescription)
+            flowTask = nil
+            return
+        }
+
+        phase = .recordingClip
+        statusMessage = "Recording \(clipDuration.secondsLabel)"
+        let captureResult = await captureService.captureClip(duration: clipDuration)
+
+        guard !Task.isCancelled else {
+            flowTask = nil
+            return
+        }
+
+        let clip: RecognitionAudioClip
+        switch captureResult {
+        case .success(let capturedClip):
+            clip = capturedClip
+            latestClip = capturedClip
+            statusMessage = "Saved \(capturedClip.fileURL.lastPathComponent)"
+
+        case .failure(let failure):
+            fail("\(failure.title): \(failure.message)")
+            flowTask = nil
+            return
+        }
+
+        phase = .scanningACRCloud
+        statusMessage = "Scanning with ACRCloud"
+        let provider = DebugACRCloudRecognitionProvider(configuration: fileScanConfiguration)
+        let scanResult = await provider.scan(clip: clip)
+
+        guard !Task.isCancelled else {
+            flowTask = nil
+            return
+        }
+
+        let match: ACRCloudMusicMatch
+        switch scanResult {
+        case .success(let execution):
+            latestExecution = execution
+            guard let music = execution.result.music else {
+                phase = .completed
+                statusMessage = "ACRCloud returned no match"
+                flowTask = nil
+                return
+            }
+
+            latestMatch = music
+            recognitionSnapshot = ACRCloudFileScanNormalizer.snapshot(from: music, clip: clip)
+            match = music
+
+        case .failure(let failure):
+            fail("\(failure.title): \(failure.message)")
+            flowTask = nil
+            return
+        }
+
+        phase = .resolvingLocalAsset
+        statusMessage = "Resolving local asset"
+        let results = await resolver.resolve(match.canonicalTrack)
+
+        guard !Task.isCancelled else {
+            flowTask = nil
+            return
+        }
+
+        resolveResults = results.filter { $0.decision != .rejected }
+        selectedResolveAssetID = resolveResults.first?.asset.id
+
+        guard let bestResult = resolveResults.first else {
+            phase = .completed
+            statusMessage = "No local asset candidate found"
+            flowTask = nil
+            return
+        }
+
+        if bestResult.decision == .autoAccepted {
+            selectedResolveAssetID = bestResult.asset.id
+            await startAmbientSync(for: bestResult.asset)
+        } else {
+            phase = .awaitingLocalConfirmation
+            statusMessage = "Local match needs confirmation"
+        }
+
+        flowTask = nil
+    }
+
+    private func startAmbientSync(for asset: LocalAudioAsset) async {
+        stopAmbientSync(markStopped: false)
+        phase = .buildingReferenceIndex
+        statusMessage = "Building ambient reference index"
+
+        do {
+            let builder = referenceIndexBuilder
+            let sourceDisplayPath = asset.displayPath
+            let referenceIndex = try await Task.detached(priority: .userInitiated) {
+                try builder.index(forSourceDisplayPath: sourceDisplayPath)
+            }.value
+
+            try Task.checkCancellation()
+
+            referenceSummary = AmbientReferenceSummary(
+                assetFileName: asset.fileName,
+                sourceDisplayPath: referenceIndex.sourceDisplayPath,
+                frameCount: referenceIndex.frames.count,
+                landmarkCount: referenceIndex.landmarks.count
+            )
+
+            try startAmbientMicStream(referenceIndex: referenceIndex)
+            latestAmbientSnapshot = nil
+            ambientUpdateCount = 0
+            latestFrameBatchCount = 0
+            phase = .ambientSyncing
+            statusMessage = "Ambient sync listening"
+        } catch is CancellationError {
+            statusMessage = "Stopped"
+            phase = .idle
+        } catch {
+            fail(error.localizedDescription)
+        }
+    }
+
+    private func startAmbientMicStream(referenceIndex: AmbientSyncReferenceIndex) throws {
+        let featureConfiguration = referenceIndex.featureConfiguration
+        let streamConfiguration = AmbientMicFeatureStreamService.Configuration(
+            retentionDurationMS: featureConfiguration.finalLockTargetDurationMS + 1_000,
+            expectedHopMS: featureConfiguration.featureHopMS,
+            featureWindowSizeSamples: featureConfiguration.featureWindowSizeSamples,
+            featureHopSizeSamples: featureConfiguration.featureHopSizeSamples
+        )
+        let streamService = AmbientMicFeatureStreamService(configuration: streamConfiguration)
+        let runtime = LiveAmbientSyncRuntime(referenceIndex: referenceIndex)
+
+        try streamService.start { [weak self, runtime] frames in
+            Task {
+                guard let update = await runtime.append(frames: frames) else {
+                    return
+                }
+
+                await MainActor.run {
+                    self?.applyAmbientUpdate(update)
+                }
+            }
+        }
+
+        ambientRuntime = runtime
+        ambientStreamService = streamService
+    }
+
+    private func applyAmbientUpdate(_ update: LiveAmbientSyncUpdate) {
+        latestAmbientSnapshot = update.snapshot
+        ambientUpdateCount += 1
+        latestFrameBatchCount = update.frameBatchCount
+    }
+
+    private func resetRunState() {
+        errorMessage = nil
+        latestClip = nil
+        latestExecution = nil
+        latestMatch = nil
+        recognitionSnapshot = nil
+        resolveResults = []
+        selectedResolveAssetID = nil
+        referenceSummary = nil
+        latestAmbientSnapshot = nil
+        ambientUpdateCount = 0
+        latestFrameBatchCount = 0
+        refreshLocalLibraryStatus()
+    }
+
+    private func stopAmbientSync(markStopped: Bool) {
+        ambientStreamService?.stop()
+        ambientStreamService = nil
+        ambientRuntime = nil
+
+        if markStopped {
+            statusMessage = "Stopped"
+            if phase == .ambientSyncing || phase.isBusy {
+                phase = .idle
+            }
+        }
+    }
+
+    private func fail(_ message: String) {
+        errorMessage = message
+        statusMessage = "Failed"
+        phase = .failed
+    }
+
+    private func makeFileScanConfiguration() throws -> ACRCloudFileScanConfiguration {
+        let trimmedAccessToken = accessToken.trimmed
+        guard !trimmedAccessToken.isEmpty else {
+            throw LiveRecognitionSyncError.invalidConfiguration("ACRCLOUD_ACCESS_TOKEN is required.")
+        }
+
+        let processEnvironment = ACRCloudFileScanConfiguration.defaultProcessEnvironment(base: environmentValues)
+        let executableInput = acrcloudExecutablePath.trimmed.isEmpty
+            ? ACRCloudFileScanConfiguration.defaultExecutablePath(environment: processEnvironment)
+            : acrcloudExecutablePath.trimmed
+        guard let executable = ACRCloudFileScanConfiguration.resolveExecutablePath(
+            executableInput,
+            environment: processEnvironment
+        ) else {
+            throw LiveRecognitionSyncError.invalidConfiguration(
+                "ACRCloud CLI not found. Set ACRCLOUD_CLI in .env or enter the full acrcloud executable path."
+            )
+        }
+
+        let resolvedEngine = try parsePositiveInt(engineText, fieldName: "Engine")
+        guard (1...4).contains(resolvedEngine) else {
+            throw LiveRecognitionSyncError.invalidConfiguration("Engine must be one of 1, 2, 3, or 4.")
+        }
+
+        let resolvedTimeout = try parsePositiveInt(scanTimeoutText, fieldName: "Scan timeout")
+        let resolvedPollInterval = try parsePositiveInt(pollIntervalText, fieldName: "Poll interval")
+        let resolvedContainerID = try parseOptionalPositiveInt(containerIDText, fieldName: "Container ID")
+
+        return ACRCloudFileScanConfiguration(
+            accessToken: trimmedAccessToken,
+            executablePath: executable,
+            region: region.trimmed.isEmpty ? "eu-west-1" : region.trimmed,
+            containerID: resolvedContainerID,
+            buckets: buckets.trimmed.isEmpty ? "23" : buckets.trimmed,
+            engine: resolvedEngine,
+            audioType: audioType.trimmed.isEmpty ? "recorded" : audioType.trimmed,
+            timeoutSeconds: resolvedTimeout,
+            pollIntervalSeconds: resolvedPollInterval,
+            environment: processEnvironment
+        )
+    }
+
+    private func loadEnvironmentDefaults() {
+        let environment = LiveRecognitionSyncEnvironment.load()
+        environmentValues = ACRCloudFileScanConfiguration.defaultProcessEnvironment(base: environment.values)
+        loadedEnvFilePath = environment.loadedEnvFileURL?.path
+
+        accessToken = environment.values["ACRCLOUD_ACCESS_TOKEN"]
+            ?? environment.values["ACRCLOUD_PERSONAL_ACCESS_TOKEN"]
+            ?? accessToken
+        acrcloudExecutablePath = ACRCloudFileScanConfiguration.defaultExecutablePath(environment: environmentValues)
+        region = environment.values["ACRCLOUD_FILESCAN_REGION"] ?? region
+        containerIDText = environment.values["ACRCLOUD_FILESCAN_CONTAINER_ID"] ?? containerIDText
+        buckets = environment.values["ACRCLOUD_FILESCAN_BUCKETS"] ?? buckets
+        engineText = environment.values["ACRCLOUD_FILESCAN_ENGINE"] ?? engineText
+        audioType = environment.values["ACRCLOUD_FILESCAN_AUDIO_TYPE"] ?? audioType
+        scanTimeoutText = environment.values["ACRCLOUD_FILESCAN_TIMEOUT"] ?? scanTimeoutText
+        pollIntervalText = environment.values["ACRCLOUD_FILESCAN_POLL_INTERVAL"] ?? pollIntervalText
+    }
+}
+
+public enum LiveRecognitionSyncPhase: String, CaseIterable, Sendable {
+    case idle
+    case requestingPermission
+    case recordingClip
+    case scanningACRCloud
+    case resolvingLocalAsset
+    case awaitingLocalConfirmation
+    case buildingReferenceIndex
+    case ambientSyncing
+    case completed
+    case failed
+
+    public var title: String {
+        switch self {
+        case .idle:
+            return "Ready"
+        case .requestingPermission:
+            return "Permission"
+        case .recordingClip:
+            return "Recording"
+        case .scanningACRCloud:
+            return "ACRCloud"
+        case .resolvingLocalAsset:
+            return "Local Match"
+        case .awaitingLocalConfirmation:
+            return "Confirm Match"
+        case .buildingReferenceIndex:
+            return "Reference Index"
+        case .ambientSyncing:
+            return "Ambient Sync"
+        case .completed:
+            return "Complete"
+        case .failed:
+            return "Failed"
+        }
+    }
+
+    public var isBusy: Bool {
+        switch self {
+        case .requestingPermission, .recordingClip, .scanningACRCloud, .resolvingLocalAsset, .buildingReferenceIndex:
+            return true
+        case .idle, .awaitingLocalConfirmation, .ambientSyncing, .completed, .failed:
+            return false
+        }
+    }
+}
+
+public struct AmbientReferenceSummary: Equatable, Sendable {
+    public let assetFileName: String
+    public let sourceDisplayPath: String
+    public let frameCount: Int
+    public let landmarkCount: Int
+}
+
+public struct LiveRecognitionSyncWindow: View {
+    public static let windowID = "live-recognition-sync"
+    public static let windowTitle = "Recognition Sync Flow"
+
+    @Bindable public var model: LiveRecognitionSyncModel
+
+    public init(model: LiveRecognitionSyncModel) {
+        self.model = model
+    }
+
+    public var body: some View {
+        VStack(spacing: 0) {
+            toolbar
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    flowStatus
+                    configurationSection
+                    recognitionSection
+                    localResolveSection
+                    ambientSyncSection
+                }
+                .padding(20)
+                .frame(maxWidth: 980, alignment: .leading)
+            }
+        }
+        .frame(minWidth: 900, minHeight: 680)
+        .task {
+            model.refreshLocalLibraryStatus()
+        }
+    }
+
+    private var toolbar: some View {
+        HStack(spacing: 10) {
+            Button {
+                model.startFlow()
+            } label: {
+                Label("Start Flow", systemImage: "record.circle")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!model.canStartFlow)
+
+            Button {
+                model.startAmbientSyncForSelectedResult()
+            } label: {
+                Label("Start Ambient Sync", systemImage: "waveform")
+            }
+            .buttonStyle(.bordered)
+            .disabled(!model.canStartAmbientSync)
+
+            Button {
+                model.stop()
+            } label: {
+                Label("Stop", systemImage: "stop.circle")
+            }
+            .buttonStyle(.bordered)
+
+            Spacer()
+
+            Text(model.phase.title)
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(model.phase == .failed ? .red : .secondary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+    private var flowStatus: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                ForEach(LiveRecognitionSyncPhase.flowSteps, id: \.self) { phase in
+                    FlowStepBadge(
+                        title: phase.title,
+                        systemImage: phase.systemImage,
+                        state: stepState(for: phase)
+                    )
+                }
+            }
+
+            Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
+                metricRow("status", model.statusMessage)
+                metricRow("microphone", model.permissionStatus.rawValue)
+                metricRow("indexed assets", "\(model.localLibraryStatus.indexedCount)")
+                if let loadedEnvFilePath = model.loadedEnvFilePath {
+                    metricRow("env", loadedEnvFilePath)
+                }
+                if let error = model.errorMessage {
+                    metricRow("error", error, valueStyle: .error)
+                }
+            }
+        }
+        .sectionPanel()
+    }
+
+    private var configurationSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Configuration")
+                .font(.headline)
+
+            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
+                inputRow("clip", text: $model.clipDurationText, suffix: "seconds", width: 90)
+                secureInputRow("token", text: $model.accessToken)
+                inputRow("cli", text: $model.acrcloudExecutablePath, width: 300)
+
+                GridRow {
+                    Text("region")
+                        .foregroundStyle(.secondary)
+                    Picker("Region", selection: $model.region) {
+                        Text("eu-west-1").tag("eu-west-1")
+                        Text("us-west-2").tag("us-west-2")
+                        Text("ap-southeast-1").tag("ap-southeast-1")
+                    }
+                    .labelsHidden()
+                    .frame(width: 180)
+                }
+
+                inputRow("container", text: $model.containerIDText, suffix: "optional", width: 120)
+                inputRow("buckets", text: $model.buckets, width: 90)
+                inputRow("engine", text: $model.engineText, width: 90)
+                inputRow("audio type", text: $model.audioType, width: 120)
+                inputRow("timeout", text: $model.scanTimeoutText, suffix: "seconds", width: 90)
+                inputRow("poll", text: $model.pollIntervalText, suffix: "seconds", width: 90)
+            }
+        }
+        .sectionPanel()
+    }
+
+    @ViewBuilder
+    private var recognitionSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Recognition")
+                .font(.headline)
+
+            if let match = model.latestMatch {
+                Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
+                    metricRow("title", match.title)
+                    metricRow("artist", match.artists.isEmpty ? "Unknown Artist" : match.artists.joined(separator: ", "))
+                    if let album = match.album {
+                        metricRow("album", album)
+                    }
+                    if let isrc = match.isrc {
+                        metricRow("ISRC", isrc)
+                    }
+                    metricRow("ACRCloud ID", match.acrid)
+                    if let score = match.score {
+                        metricRow("score", "\(score)")
+                    }
+                    if let offset = match.offsetSeconds {
+                        metricRow("offset", offset.secondsLabel)
+                    }
+                    if let durationMS = match.durationMS {
+                        metricRow("duration", durationMS.durationLabel)
+                    }
+                }
+            } else {
+                Text("No ACRCloud match yet.")
+                    .foregroundStyle(.secondary)
+            }
+
+            if let latestClip = model.latestClip {
+                Divider()
+                metricLine("clip", latestClip.fileURL.path)
+            }
+
+            if let command = model.latestExecution?.command {
+                metricLine("command", command.shellCommand)
+            }
+        }
+        .sectionPanel()
+    }
+
+    @ViewBuilder
+    private var localResolveSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Local Match")
+                .font(.headline)
+
+            if model.resolveResults.isEmpty {
+                Text("No local candidates yet.")
+                    .foregroundStyle(.secondary)
+            } else {
+                Picker("Candidate", selection: Binding(
+                    get: { model.selectedResolveAssetID },
+                    set: { model.selectedResolveAssetID = $0 }
+                )) {
+                    ForEach(model.resolveResults.prefix(8), id: \.asset.id) { result in
+                        Text(result.asset.matchPickerLabel)
+                            .tag(Optional(result.asset.id))
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 520)
+
+                ForEach(model.resolveResults.prefix(5), id: \.asset.id) { result in
+                    ResolveCandidateRow(
+                        result: result,
+                        isSelected: model.selectedResolveAssetID == result.asset.id
+                    )
+                }
+            }
+        }
+        .sectionPanel()
+    }
+
+    @ViewBuilder
+    private var ambientSyncSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Ambient Sync")
+                .font(.headline)
+
+            if let referenceSummary = model.referenceSummary {
+                Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
+                    metricRow("asset", referenceSummary.assetFileName)
+                    metricRow("frames", "\(referenceSummary.frameCount)")
+                    metricRow("landmarks", "\(referenceSummary.landmarkCount)")
+                    metricRow("path", referenceSummary.sourceDisplayPath)
+                }
+            }
+
+            if let snapshot = model.latestAmbientSnapshot {
+                Divider()
+                Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
+                    metricRow("state", snapshot.state.rawValue)
+                    metricRow("phase", snapshot.phase.rawValue)
+                    metricRow("stage", snapshot.stage.rawValue)
+                    metricRow("confidence", snapshot.confidence.formatted(.number.precision(.fractionLength(3))))
+                    if let reason = snapshot.withholdReason {
+                        metricRow("withheld", reason.rawValue)
+                    }
+                    if let estimate = snapshot.estimate {
+                        metricRow("offset", (estimate.offsetMS / 1_000).secondsLabel)
+                        metricRow("reference", (estimate.referenceTimeMS / 1_000).secondsLabel)
+                    }
+                    metricRow("query", (snapshot.diagnostics.queryDurationMS / 1_000).secondsLabel)
+                    metricRow("updates", "\(model.ambientUpdateCount)")
+                    metricRow("last batch", "\(model.latestFrameBatchCount) frames")
+                }
+            } else {
+                Text("Ambient sync has not emitted a snapshot yet.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .sectionPanel()
+    }
+
+    private func inputRow(
+        _ label: String,
+        text: Binding<String>,
+        suffix: String? = nil,
+        width: CGFloat = 180
+    ) -> some View {
+        GridRow {
+            Text(label)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                TextField(label, text: text)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: width)
+                if let suffix {
+                    Text(suffix)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func secureInputRow(_ label: String, text: Binding<String>) -> some View {
+        GridRow {
+            Text(label)
+                .foregroundStyle(.secondary)
+            SecureField(label, text: text)
+                .textFieldStyle(.roundedBorder)
+                .frame(maxWidth: 420)
+        }
+    }
+
+    private func metricRow(
+        _ label: String,
+        _ value: String,
+        valueStyle: MetricValueStyle = .normal
+    ) -> some View {
+        GridRow {
+            Text(label)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .foregroundStyle(valueStyle == .error ? .red : .primary)
+                .lineLimit(2)
+                .truncationMode(.middle)
+        }
+    }
+
+    private func metricLine(_ label: String, _ value: String) -> some View {
+        HStack(spacing: 8) {
+            Text(label)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.monospaced())
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+    }
+
+    private func stepState(for phase: LiveRecognitionSyncPhase) -> FlowStepBadge.State {
+        if model.phase == phase {
+            return .active
+        }
+
+        guard let currentIndex = LiveRecognitionSyncPhase.flowSteps.firstIndex(of: model.phase),
+              let phaseIndex = LiveRecognitionSyncPhase.flowSteps.firstIndex(of: phase),
+              phaseIndex < currentIndex
+        else {
+            return .pending
+        }
+
+        return .complete
+    }
+}
+
+private struct FlowStepBadge: View {
+    enum State {
+        case pending
+        case active
+        case complete
+    }
+
+    let title: String
+    let systemImage: String
+    let state: State
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: systemImage)
+                .frame(width: 16)
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(foregroundStyle)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(backgroundStyle, in: Capsule())
+    }
+
+    private var foregroundStyle: Color {
+        switch state {
+        case .pending:
+            return .secondary
+        case .active:
+            return .accentColor
+        case .complete:
+            return .green
+        }
+    }
+
+    private var backgroundStyle: Color {
+        switch state {
+        case .pending:
+            return Color.primary.opacity(0.05)
+        case .active:
+            return Color.accentColor.opacity(0.12)
+        case .complete:
+            return Color.green.opacity(0.12)
+        }
+    }
+}
+
+private struct ResolveCandidateRow: View {
+    let result: LocalResolveResult
+    let isSelected: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                Text(result.asset.fileName)
+                    .font(.body.weight(.semibold))
+                    .lineLimit(1)
+                Spacer()
+                Text(result.decision.label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(result.decision == .autoAccepted ? .green : .secondary)
+            }
+
+            Text(result.asset.displayPath)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            Text("confidence \(result.confidence.formatted(.number.precision(.fractionLength(2))))")
+                .font(.caption.monospaced())
+
+            if !result.evidence.isEmpty {
+                Text(result.evidence.map(\.label).joined(separator: ", "))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        .padding(10)
+        .background(Color.primary.opacity(isSelected ? 0.08 : 0.04), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private actor LiveAmbientSyncRuntime {
+    private var engine: AmbientSyncEngine
+    private var streamBuffer: MicFeatureStreamBuffer
+    private let queryDurationMS: Double
+    private let startedAt = Date()
+
+    init(referenceIndex: AmbientSyncReferenceIndex) {
+        let engine = AmbientSyncEngine(referenceIndex: referenceIndex)
+        let featureConfiguration = engine.configuration.featureConfiguration
+        self.engine = engine
+        self.queryDurationMS = featureConfiguration.finalLockTargetDurationMS
+        self.streamBuffer = MicFeatureStreamBuffer(
+            retentionDurationMS: featureConfiguration.finalLockTargetDurationMS + 1_000,
+            expectedHopMS: featureConfiguration.featureHopMS
+        )
+    }
+
+    func append(frames: [MicFeatureFrame]) -> LiveAmbientSyncUpdate? {
+        streamBuffer.append(frames)
+
+        guard let queryWindow = streamBuffer.latestWindow(durationMS: queryDurationMS) else {
+            return nil
+        }
+
+        let elapsedMS = Date().timeIntervalSince(startedAt) * 1_000
+        let snapshot = engine.process(queryWindow: queryWindow, elapsedMS: elapsedMS)
+        return LiveAmbientSyncUpdate(snapshot: snapshot, frameBatchCount: frames.count)
+    }
+}
+
+private struct LiveAmbientSyncUpdate: Sendable {
+    let snapshot: AmbientSyncSnapshot
+    let frameBatchCount: Int
+}
+
+private struct LiveRecognitionSyncEnvironment {
+    let values: [String: String]
+    let loadedEnvFileURL: URL?
+
+    static func load() -> LiveRecognitionSyncEnvironment {
+        var values = ProcessInfo.processInfo.environment
+        var loadedEnvFileURL: URL?
+
+        for envFileURL in envFileCandidates() where FileManager.default.fileExists(atPath: envFileURL.path) {
+            if let envValues = try? parseEnvFile(at: envFileURL) {
+                values.merge(envValues) { _, fileValue in fileValue }
+                loadedEnvFileURL = envFileURL
+                break
+            }
+        }
+
+        return LiveRecognitionSyncEnvironment(values: values, loadedEnvFileURL: loadedEnvFileURL)
+    }
+
+    private static func envFileCandidates() -> [URL] {
+        var candidates: [URL] = [
+            URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+                .appendingPathComponent(".env")
+        ]
+
+        if let projectRootURL = projectRootURL() {
+            candidates.append(projectRootURL.appendingPathComponent(".env"))
+        }
+
+        return candidates
+    }
+
+    private static func projectRootURL() -> URL? {
+        var url = URL(fileURLWithPath: #filePath)
+
+        while url.path != "/" {
+            if FileManager.default.fileExists(atPath: url.appendingPathComponent("project.yml").path) {
+                return url
+            }
+            url.deleteLastPathComponent()
+        }
+
+        return nil
+    }
+
+    private static func parseEnvFile(at url: URL) throws -> [String: String] {
+        let contents = try String(contentsOf: url, encoding: .utf8)
+        var values: [String: String] = [:]
+
+        for rawLine in contents.components(separatedBy: .newlines) {
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !line.isEmpty, !line.hasPrefix("#"), let equalsIndex = line.firstIndex(of: "=") else {
+                continue
+            }
+
+            let key = String(line[..<equalsIndex]).trimmed
+            let rawValue = String(line[line.index(after: equalsIndex)...]).trimmed
+            guard !key.isEmpty else {
+                continue
+            }
+
+            values[key] = unquoted(rawValue)
+        }
+
+        return values
+    }
+
+    private static func unquoted(_ value: String) -> String {
+        guard value.count >= 2,
+              let first = value.first,
+              let last = value.last,
+              (first == "\"" && last == "\"") || (first == "'" && last == "'")
+        else {
+            return value
+        }
+
+        return String(value.dropFirst().dropLast())
+    }
+}
+
+private enum LiveRecognitionSyncError: LocalizedError {
+    case invalidConfiguration(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidConfiguration(let message):
+            return message
+        }
+    }
+}
+
+private enum MetricValueStyle {
+    case normal
+    case error
+}
+
+private extension LiveRecognitionSyncPhase {
+    static let flowSteps: [LiveRecognitionSyncPhase] = [
+        .recordingClip,
+        .scanningACRCloud,
+        .resolvingLocalAsset,
+        .buildingReferenceIndex,
+        .ambientSyncing
+    ]
+
+    var systemImage: String {
+        switch self {
+        case .idle:
+            return "circle"
+        case .requestingPermission:
+            return "mic"
+        case .recordingClip:
+            return "record.circle"
+        case .scanningACRCloud:
+            return "cloud"
+        case .resolvingLocalAsset:
+            return "music.note.list"
+        case .awaitingLocalConfirmation:
+            return "checkmark.circle"
+        case .buildingReferenceIndex:
+            return "waveform.path"
+        case .ambientSyncing:
+            return "waveform"
+        case .completed:
+            return "checkmark"
+        case .failed:
+            return "xmark"
+        }
+    }
+}
+
+private extension View {
+    func sectionPanel() -> some View {
+        padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private extension MicrophonePermissionStatus {
+    var label: String {
+        switch self {
+        case .undetermined:
+            return "undetermined"
+        case .authorized:
+            return "authorized"
+        case .denied:
+            return "denied"
+        case .restricted:
+            return "restricted"
+        }
+    }
+}
+
+private extension LocalResolveDecision {
+    var label: String {
+        switch self {
+        case .autoAccepted:
+            return "auto"
+        case .requiresUserConfirmation:
+            return "confirm"
+        case .rejected:
+            return "rejected"
+        }
+    }
+}
+
+private extension LocalAudioAsset {
+    var matchPickerLabel: String {
+        if let title, !artists.isEmpty {
+            return "\(title) - \(artists.joined(separator: ", "))"
+        }
+
+        if let title {
+            return title
+        }
+
+        return fileName
+    }
+}
+
+private extension MatchEvidence {
+    var label: String {
+        switch self {
+        case .isrcExact:
+            return "ISRC exact"
+        case .titleExact:
+            return "title exact"
+        case .artistExact:
+            return "artist exact"
+        case .albumExact:
+            return "album exact"
+        case .durationWithinTolerance(let deltaMS):
+            return "duration delta \(deltaMS)ms"
+        case .titleFuzzy(let score):
+            return "title fuzzy \(score.formatted(.number.precision(.fractionLength(2))))"
+        case .artistFuzzy(let score):
+            return "artist fuzzy \(score.formatted(.number.precision(.fractionLength(2))))"
+        case .fileNameFuzzy(let score):
+            return "filename fuzzy \(score.formatted(.number.precision(.fractionLength(2))))"
+        }
+    }
+}
+
+private extension Array where Element == String {
+    var shellCommand: String {
+        map { argument in
+            if argument.rangeOfCharacter(from: CharacterSet.whitespacesAndNewlines.union(.init(charactersIn: "'\""))) == nil {
+                return argument
+            }
+
+            return "'\(argument.replacingOccurrences(of: "'", with: "'\\''"))'"
+        }
+        .joined(separator: " ")
+    }
+}
+
+private extension String {
+    var trimmed: String {
+        trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+private extension Int {
+    var durationLabel: String {
+        (Double(self) / 1_000).secondsLabel
+    }
+}
+
+private extension TimeInterval {
+    var secondsLabel: String {
+        String(format: "%.2fs", self)
+    }
+}
+
+private func parsePositiveTimeInterval(_ value: String, fieldName: String) throws -> TimeInterval {
+    guard let parsed = TimeInterval(value.trimmed), parsed > 0 else {
+        throw LiveRecognitionSyncError.invalidConfiguration("\(fieldName) must be a positive number.")
+    }
+
+    return parsed
+}
+
+private func parsePositiveInt(_ value: String, fieldName: String) throws -> Int {
+    guard let parsed = Int(value.trimmed), parsed > 0 else {
+        throw LiveRecognitionSyncError.invalidConfiguration("\(fieldName) must be a positive integer.")
+    }
+
+    return parsed
+}
+
+private func parseOptionalPositiveInt(_ value: String, fieldName: String) throws -> Int? {
+    let trimmed = value.trimmed
+    guard !trimmed.isEmpty else {
+        return nil
+    }
+
+    return try parsePositiveInt(trimmed, fieldName: fieldName)
+}
+
+#Preview {
+    LiveRecognitionSyncWindow(model: .liveDebug())
+}
+#endif

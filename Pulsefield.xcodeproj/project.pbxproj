@@ -41,6 +41,7 @@
 		4B59F19EC0E3380CE1A99D4E /* UnavailableLiveRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C01A60D735C381292553A5F8 /* UnavailableLiveRecognitionService.swift */; };
 		4F7E59C7A3F4EAA4DFCA7F58 /* AmbientSyncReferenceIndexBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C7010027830EEB3B5B09BC4 /* AmbientSyncReferenceIndexBuilder.swift */; };
 		5C3FAFADD702D6CFFE48A72B /* Mania4KPlaySessionModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BAF8E8D435CA620D624CE54 /* Mania4KPlaySessionModelTests.swift */; };
+		5DD258EC07B4CCFF39A77D95 /* LiveRecognitionSyncWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB3AB8BC1BBB70660A5FB599 /* LiveRecognitionSyncWindow.swift */; };
 		6429F19A1E91047DA472D6B7 /* PulsefieldCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		64860B379E78038EE6CF9426 /* PulsefieldCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		64D4C026BA6CA9BC4223E654 /* AmbientSyncEngineLandmarks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 621549848369AB0874642115 /* AmbientSyncEngineLandmarks.swift */; };
@@ -269,6 +270,7 @@
 		D2D67BC7541E757C08F1424A /* AmbientSyncFixtureRecorderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncFixtureRecorderView.swift; sourceTree = "<group>"; };
 		D500FFA522E2376979CED6AA /* CanonicalTrackDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanonicalTrackDomain.swift; sourceTree = "<group>"; };
 		D6AE855CD84CDFD620DA302F /* MockRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockRecognitionService.swift; sourceTree = "<group>"; };
+		DB3AB8BC1BBB70660A5FB599 /* LiveRecognitionSyncWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRecognitionSyncWindow.swift; sourceTree = "<group>"; };
 		DF50496D18C3AAD786776BE0 /* AmbientSyncEngineReference.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncEngineReference.swift; sourceTree = "<group>"; };
 		E508A37754B1BA46F8326CE3 /* AmbientSyncOffsetHistogram.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncOffsetHistogram.swift; sourceTree = "<group>"; };
 		E522B477DC378F5CF8AB9C4C /* RecognitionServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionServiceProtocol.swift; sourceTree = "<group>"; };
@@ -598,6 +600,7 @@
 		9856F28F595C97EEE192D7EF /* Recognition */ = {
 			isa = PBXGroup;
 			children = (
+				DB3AB8BC1BBB70660A5FB599 /* LiveRecognitionSyncWindow.swift */,
 				6CA7A26E40728ECEA439A0AA /* RecognitionDashboardView.swift */,
 			);
 			path = Recognition;
@@ -907,6 +910,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				BC90CBD65B6F79DAED872B3C /* AmbientSyncFixtureRecorderView.swift in Sources */,
+				5DD258EC07B4CCFF39A77D95 /* LiveRecognitionSyncWindow.swift in Sources */,
 				BD468746F52CA58E04FF9274 /* LocalLibraryDashboardView.swift in Sources */,
 				25F021ED2DE8AB9DAEE5A46E /* LocalResolveDebugView.swift in Sources */,
 				FC9C0773A8A231E694B89EB7 /* Mania4KPlayExperienceView.swift in Sources */,

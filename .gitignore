@@ -5,5 +5,8 @@ build/
 
 xcuserdata/
 
+# Local environment files
+.env
+
 # Local real-audio fixtures for ambient sync experiments.
 LocalFixtures/ambient-sync-voice-memos/*
