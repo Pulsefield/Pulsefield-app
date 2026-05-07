@@ -33,6 +33,11 @@ public final class LiveRecognitionSyncModel {
     public var audioType = "recorded"
     public var scanTimeoutText = "600"
     public var pollIntervalText = "5"
+    public var resolveTitle = ""
+    public var resolveArtist = ""
+    public var resolveAlbum = ""
+    public var resolveISRC = ""
+    public var resolveDurationMS = ""
     public var selectedResolveAssetID: UUID?
 
     @ObservationIgnored
@@ -98,7 +103,11 @@ public final class LiveRecognitionSyncModel {
     }
 
     public var canStartAmbientSync: Bool {
-        selectedResolveResult != nil && !phase.isBusy && phase != .ambientSyncing
+        guard let selectedResolveResult else {
+            return false
+        }
+
+        return selectedResolveResult.decision != .rejected && !phase.isBusy && phase != .ambientSyncing
     }
 
     public var selectedResolveResult: LocalResolveResult? {
@@ -128,7 +137,10 @@ public final class LiveRecognitionSyncModel {
     }
 
     public func startAmbientSyncForSelectedResult() {
-        guard let selectedResolveResult, !phase.isBusy else {
+        guard let selectedResolveResult,
+              selectedResolveResult.decision != .rejected,
+              !phase.isBusy
+        else {
             return
         }
 
@@ -148,6 +160,29 @@ public final class LiveRecognitionSyncModel {
         }
 
         stopAmbientSync(markStopped: true)
+    }
+
+    public func resolveManualTrack() {
+        guard !resolveTitle.trimmed.isEmpty else {
+            return
+        }
+
+        Task {
+            phase = .resolvingLocalAsset
+            statusMessage = "Resolving local asset"
+            let results = await resolveManualTrackNow()
+
+            if let bestResult = firstConfirmableResult(in: results) {
+                selectedResolveAssetID = bestResult.asset.id
+                phase = .awaitingLocalConfirmation
+                statusMessage = bestResult.decision == .autoAccepted
+                    ? "Local match ready"
+                    : "Local match needs confirmation"
+            } else {
+                phase = .completed
+                statusMessage = "No confirmable local asset candidate"
+            }
+        }
     }
 
     private func runFlow() async {
@@ -205,7 +240,6 @@ public final class LiveRecognitionSyncModel {
             return
         }
 
-        let match: ACRCloudMusicMatch
         switch scanResult {
         case .success(let execution):
             latestExecution = execution
@@ -218,7 +252,7 @@ public final class LiveRecognitionSyncModel {
 
             latestMatch = music
             recognitionSnapshot = ACRCloudFileScanNormalizer.snapshot(from: music, clip: clip)
-            match = music
+            fillResolveFields(from: music)
 
         case .failure(let failure):
             fail("\(failure.title): \(failure.message)")
@@ -228,19 +262,16 @@ public final class LiveRecognitionSyncModel {
 
         phase = .resolvingLocalAsset
         statusMessage = "Resolving local asset"
-        let results = await resolver.resolve(match.canonicalTrack)
+        let results = await resolveManualTrackNow()
 
         guard !Task.isCancelled else {
             flowTask = nil
             return
         }
 
-        resolveResults = results.filter { $0.decision != .rejected }
-        selectedResolveAssetID = resolveResults.first?.asset.id
-
-        guard let bestResult = resolveResults.first else {
+        guard let bestResult = firstConfirmableResult(in: results) else {
             phase = .completed
-            statusMessage = "No local asset candidate found"
+            statusMessage = "No confirmable local asset candidate"
             flowTask = nil
             return
         }
@@ -254,6 +285,51 @@ public final class LiveRecognitionSyncModel {
         }
 
         flowTask = nil
+    }
+
+    private func fillResolveFields(from match: ACRCloudMusicMatch) {
+        resolveTitle = match.title
+        resolveArtist = match.artists.joined(separator: ", ")
+        resolveAlbum = match.album ?? ""
+        resolveISRC = match.isrc ?? ""
+        resolveDurationMS = match.durationMS.map(String.init) ?? ""
+    }
+
+    private func resolveManualTrackNow() async -> [LocalResolveResult] {
+        let results = await resolver.resolve(manualResolveTrack())
+        applyResolveResults(results)
+        return results
+    }
+
+    private func manualResolveTrack() -> CanonicalTrack {
+        let artists = resolveArtist
+            .components(separatedBy: CharacterSet(charactersIn: ",;&"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let duration = Int(resolveDurationMS.trimmed)
+        let providerValue = latestMatch.map { "recognition-sync:\($0.acrid)" } ?? "recognition-sync"
+
+        return CanonicalTrack(
+            title: resolveTitle.trimmed,
+            artists: artists,
+            album: resolveAlbum.trimmedNilIfEmpty,
+            durationMS: duration,
+            isrc: resolveISRC.trimmedNilIfEmpty,
+            providerIDs: [.init(provider: .manual, value: providerValue)]
+        )
+    }
+
+    private func applyResolveResults(_ results: [LocalResolveResult]) {
+        resolveResults = results
+        selectedResolveAssetID = preferredSelectedResult(in: results)?.asset.id
+    }
+
+    private func preferredSelectedResult(in results: [LocalResolveResult]) -> LocalResolveResult? {
+        firstConfirmableResult(in: results) ?? results.first
+    }
+
+    private func firstConfirmableResult(in results: [LocalResolveResult]) -> LocalResolveResult? {
+        results.first { $0.decision != .rejected }
     }
 
     private func startAmbientSync(for asset: LocalAudioAsset) async {
@@ -331,6 +407,11 @@ public final class LiveRecognitionSyncModel {
         latestMatch = nil
         recognitionSnapshot = nil
         resolveResults = []
+        resolveTitle = ""
+        resolveArtist = ""
+        resolveAlbum = ""
+        resolveISRC = ""
+        resolveDurationMS = ""
         selectedResolveAssetID = nil
         referenceSummary = nil
         latestAmbientSnapshot = nil
@@ -646,35 +727,18 @@ public struct LiveRecognitionSyncWindow: View {
 
     @ViewBuilder
     private var localResolveSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Local Match")
-                .font(.headline)
-
-            if model.resolveResults.isEmpty {
-                Text("No local candidates yet.")
-                    .foregroundStyle(.secondary)
-            } else {
-                Picker("Candidate", selection: Binding(
-                    get: { model.selectedResolveAssetID },
-                    set: { model.selectedResolveAssetID = $0 }
-                )) {
-                    ForEach(model.resolveResults.prefix(8), id: \.asset.id) { result in
-                        Text(result.asset.matchPickerLabel)
-                            .tag(Optional(result.asset.id))
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 520)
-
-                ForEach(model.resolveResults.prefix(5), id: \.asset.id) { result in
-                    ResolveCandidateRow(
-                        result: result,
-                        isSelected: model.selectedResolveAssetID == result.asset.id
-                    )
-                }
-            }
-        }
-        .sectionPanel()
+        LocalResolveDebugPanel(
+            title: "Local Match",
+            resolveTitle: $model.resolveTitle,
+            resolveArtist: $model.resolveArtist,
+            resolveAlbum: $model.resolveAlbum,
+            resolveISRC: $model.resolveISRC,
+            resolveDurationMS: $model.resolveDurationMS,
+            resolveResults: model.resolveResults,
+            selectedAssetID: $model.selectedResolveAssetID,
+            resolveActionTitle: "Resolve Against Local Library",
+            onResolve: model.resolveManualTrack
+        )
     }
 
     @ViewBuilder
@@ -836,45 +900,6 @@ private struct FlowStepBadge: View {
         case .complete:
             return Color.green.opacity(0.12)
         }
-    }
-}
-
-private struct ResolveCandidateRow: View {
-    let result: LocalResolveResult
-    let isSelected: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
-                Text(result.asset.fileName)
-                    .font(.body.weight(.semibold))
-                    .lineLimit(1)
-                Spacer()
-                Text(result.decision.label)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(result.decision == .autoAccepted ? .green : .secondary)
-            }
-
-            Text(result.asset.displayPath)
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-
-            Text("confidence \(result.confidence.formatted(.number.precision(.fractionLength(2))))")
-                .font(.caption.monospaced())
-
-            if !result.evidence.isEmpty {
-                Text(result.evidence.map(\.label).joined(separator: ", "))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-        }
-        .padding(10)
-        .background(Color.primary.opacity(isSelected ? 0.08 : 0.04), in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -1067,56 +1092,6 @@ private extension MicrophonePermissionStatus {
     }
 }
 
-private extension LocalResolveDecision {
-    var label: String {
-        switch self {
-        case .autoAccepted:
-            return "auto"
-        case .requiresUserConfirmation:
-            return "confirm"
-        case .rejected:
-            return "rejected"
-        }
-    }
-}
-
-private extension LocalAudioAsset {
-    var matchPickerLabel: String {
-        if let title, !artists.isEmpty {
-            return "\(title) - \(artists.joined(separator: ", "))"
-        }
-
-        if let title {
-            return title
-        }
-
-        return fileName
-    }
-}
-
-private extension MatchEvidence {
-    var label: String {
-        switch self {
-        case .isrcExact:
-            return "ISRC exact"
-        case .titleExact:
-            return "title exact"
-        case .artistExact:
-            return "artist exact"
-        case .albumExact:
-            return "album exact"
-        case .durationWithinTolerance(let deltaMS):
-            return "duration delta \(deltaMS)ms"
-        case .titleFuzzy(let score):
-            return "title fuzzy \(score.formatted(.number.precision(.fractionLength(2))))"
-        case .artistFuzzy(let score):
-            return "artist fuzzy \(score.formatted(.number.precision(.fractionLength(2))))"
-        case .fileNameFuzzy(let score):
-            return "filename fuzzy \(score.formatted(.number.precision(.fractionLength(2))))"
-        }
-    }
-}
-
 private extension Array where Element == String {
     var shellCommand: String {
         map { argument in
@@ -1133,6 +1108,11 @@ private extension Array where Element == String {
 private extension String {
     var trimmed: String {
         trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var trimmedNilIfEmpty: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 
