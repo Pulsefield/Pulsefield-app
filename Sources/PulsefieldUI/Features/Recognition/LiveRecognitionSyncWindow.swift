@@ -14,7 +14,7 @@ public final class LiveRecognitionSyncModel {
     public private(set) var loadedEnvFilePath: String?
     public private(set) var localLibraryStatus: LocalAudioLibraryStatus = .empty
     public private(set) var latestClip: RecognitionAudioClip?
-    public private(set) var latestExecution: ACRCloudFileScanExecution?
+    public private(set) var latestExecution: ACRCloudIdentificationExecution?
     public private(set) var latestMatch: ACRCloudMusicMatch?
     public private(set) var recognitionSnapshot: RecognitionSnapshot?
     public private(set) var resolveResults: [LocalResolveResult] = []
@@ -24,9 +24,12 @@ public final class LiveRecognitionSyncModel {
     public private(set) var ambientUpdateCount = 0
     public private(set) var latestFrameBatchCount = 0
 
-    public var firstRequestAtText = "2"
+    public var firstRequestAtText = "3"
     public var requestCadenceText = "1"
     public var maxRequestWindowText = "10"
+    public var identificationHost = "identify-ap-southeast-1.acrcloud.com"
+    public var identificationAccessKey = ""
+    public var identificationAccessSecret = ""
     public var accessToken = ""
     public var acrcloudExecutablePath = "acrcloud"
     public var region = "eu-west-1"
@@ -201,10 +204,10 @@ public final class LiveRecognitionSyncModel {
         }
 
         let clipRetryConfiguration: LiveRecognitionClipRetryConfiguration
-        let fileScanConfiguration: ACRCloudFileScanConfiguration
+        let identificationConfiguration: ACRCloudConfiguration
         do {
             clipRetryConfiguration = try makeClipRetryConfiguration()
-            fileScanConfiguration = try makeFileScanConfiguration()
+            identificationConfiguration = try makeIdentificationConfiguration()
         } catch {
             fail(error.localizedDescription)
             flowTask = nil
@@ -213,7 +216,7 @@ public final class LiveRecognitionSyncModel {
 
         let scanResult = await scanACRCloudWithGrowingClips(
             clipRetryConfiguration: clipRetryConfiguration,
-            fileScanConfiguration: fileScanConfiguration
+            identificationConfiguration: identificationConfiguration
         )
 
         guard !Task.isCancelled else {
@@ -224,7 +227,7 @@ public final class LiveRecognitionSyncModel {
         switch scanResult {
         case .success(let attempt):
             latestExecution = attempt.execution
-            guard let music = attempt.execution.result.music else {
+            guard let music = attempt.execution.response.music else {
                 phase = .completed
                 statusMessage = "ACRCloud returned no match"
                 flowTask = nil
@@ -471,7 +474,7 @@ public final class LiveRecognitionSyncModel {
 
     private func scanACRCloudWithGrowingClips(
         clipRetryConfiguration: LiveRecognitionClipRetryConfiguration,
-        fileScanConfiguration: ACRCloudFileScanConfiguration
+        identificationConfiguration: ACRCloudConfiguration
     ) async -> Result<LiveRecognitionACRCloudScanAttempt, RecognitionFailure> {
         switch captureService.startCachedClipCapture() {
         case .success:
@@ -531,8 +534,8 @@ public final class LiveRecognitionSyncModel {
                 statusMessage = "Submitted ACRCloud request for \(requestWindow.secondsLabel) window"
                 submittedScanCount += 1
                 group.addTask {
-                    let provider = DebugACRCloudRecognitionProvider(configuration: fileScanConfiguration)
-                    let scanResult = await provider.scan(clip: clip)
+                    let provider = ACRCloudIdentificationProvider(configuration: identificationConfiguration)
+                    let scanResult = await provider.identify(clip: clip)
 
                     switch scanResult {
                     case .success(let execution):
@@ -556,7 +559,7 @@ public final class LiveRecognitionSyncModel {
                 switch scanResult {
                 case .success(let attempt):
                     latestExecution = attempt.execution
-                    if attempt.execution.result.music != nil {
+                    if attempt.execution.response.music != nil {
                         // TODO: Demo-usable for now, but refine result arbitration later.
                         // Completion order can prefer a longer request window over an earlier shorter match.
                         group.cancelAll()
@@ -583,6 +586,31 @@ public final class LiveRecognitionSyncModel {
                 message: "No recognition request windows were configured."
             ))
         }
+    }
+
+    private func makeIdentificationConfiguration() throws -> ACRCloudConfiguration {
+        let host = identificationHost.trimmed
+        let accessKey = identificationAccessKey.trimmed
+        let accessSecret = identificationAccessSecret.trimmed
+
+        var missingFields: [String] = []
+        if host.isEmpty {
+            missingFields.append("ACRCLOUD_IDENTIFICATION_HOST")
+        }
+        if accessKey.isEmpty {
+            missingFields.append("ACRCLOUD_ACCESS_KEY")
+        }
+        if accessSecret.isEmpty {
+            missingFields.append("ACRCLOUD_ACCESS_SECRET")
+        }
+
+        guard missingFields.isEmpty else {
+            throw LiveRecognitionSyncError.invalidConfiguration(
+                "ACRCloud Identification API is missing required configuration: \(missingFields.joined(separator: ", "))."
+            )
+        }
+
+        return ACRCloudConfiguration(host: host, accessKey: accessKey, accessSecret: accessSecret)
     }
 
     private func makeClipRetryConfiguration() throws -> LiveRecognitionClipRetryConfiguration {
@@ -647,6 +675,11 @@ public final class LiveRecognitionSyncModel {
         accessToken = environment.values["ACRCLOUD_ACCESS_TOKEN"]
             ?? environment.values["ACRCLOUD_PERSONAL_ACCESS_TOKEN"]
             ?? accessToken
+        identificationHost = environment.values["ACRCLOUD_IDENTIFICATION_HOST"]
+            ?? environment.values["ACRCLOUD_HOST"]
+            ?? identificationHost
+        identificationAccessKey = environment.values["ACRCLOUD_ACCESS_KEY"] ?? identificationAccessKey
+        identificationAccessSecret = environment.values["ACRCLOUD_ACCESS_SECRET"] ?? identificationAccessSecret
         acrcloudExecutablePath = ACRCloudFileScanConfiguration.defaultExecutablePath(environment: environmentValues)
         region = environment.values["ACRCLOUD_FILESCAN_REGION"] ?? region
         containerIDText = environment.values["ACRCLOUD_FILESCAN_CONTAINER_ID"] ?? containerIDText
@@ -815,27 +848,9 @@ public struct LiveRecognitionSyncWindow: View {
                 inputRow("first request", text: $model.firstRequestAtText, suffix: "seconds", width: 90)
                 inputRow("cadence", text: $model.requestCadenceText, suffix: "seconds", width: 90)
                 inputRow("max window", text: $model.maxRequestWindowText, suffix: "seconds", width: 90)
-                secureInputRow("token", text: $model.accessToken)
-                inputRow("cli", text: $model.acrcloudExecutablePath, width: 300)
-
-                GridRow {
-                    Text("region")
-                        .foregroundStyle(.secondary)
-                    Picker("Region", selection: $model.region) {
-                        Text("eu-west-1").tag("eu-west-1")
-                        Text("us-west-2").tag("us-west-2")
-                        Text("ap-southeast-1").tag("ap-southeast-1")
-                    }
-                    .labelsHidden()
-                    .frame(width: 180)
-                }
-
-                inputRow("container", text: $model.containerIDText, suffix: "optional", width: 120)
-                inputRow("buckets", text: $model.buckets, width: 90)
-                inputRow("engine", text: $model.engineText, width: 90)
-                inputRow("audio type", text: $model.audioType, width: 120)
-                inputRow("timeout", text: $model.scanTimeoutText, suffix: "seconds", width: 90)
-                inputRow("poll", text: $model.pollIntervalText, suffix: "seconds", width: 90)
+                inputRow("host", text: $model.identificationHost, width: 300)
+                secureInputRow("access key", text: $model.identificationAccessKey)
+                secureInputRow("access secret", text: $model.identificationAccessSecret)
             }
         }
         .sectionPanel()
@@ -878,8 +893,15 @@ public struct LiveRecognitionSyncWindow: View {
                 metricLine("clip", latestClip.fileURL.path)
             }
 
-            if let command = model.latestExecution?.command {
-                metricLine("command", command.shellCommand)
+            if let execution = model.latestExecution {
+                metricLine("endpoint", execution.endpoint.absoluteString)
+                if let httpStatusCode = execution.httpStatusCode {
+                    metricLine("http", String(httpStatusCode))
+                }
+                metricLine(
+                    "ACRCloud status",
+                    "\(execution.response.statusCode) \(execution.response.statusMessage)"
+                )
             }
         }
         .sectionPanel()
@@ -1213,7 +1235,7 @@ public struct AmbientReferencePlaybackAnchor: Equatable, Sendable {
 
 private struct LiveRecognitionACRCloudScanAttempt: Sendable {
     let clip: RecognitionAudioClip
-    let execution: ACRCloudFileScanExecution
+    let execution: ACRCloudIdentificationExecution
 }
 
 private struct LiveRecognitionClipRetryConfiguration: Equatable, Sendable {

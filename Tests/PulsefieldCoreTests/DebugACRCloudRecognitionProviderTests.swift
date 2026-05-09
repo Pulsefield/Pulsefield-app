@@ -4,6 +4,74 @@ import XCTest
 @testable import PulsefieldCore
 
 final class DebugACRCloudRecognitionProviderTests: XCTestCase {
+    func testIdentificationSignatureMatchesACRCloudStringToSign() {
+        let signature = ACRCloudIdentificationClient.signature(
+            accessKey: "access",
+            accessSecret: "secret",
+            timestamp: "1700000000"
+        )
+
+        XCTAssertEqual(signature, "HKwxEnL0W2jQ1BT9U9khozrFVD4=")
+    }
+
+    func testIdentificationNormalizerBuildsMusicMatchFromAPIJSON() throws {
+        let json = """
+        {
+          "status": {
+            "msg": "Success",
+            "code": 0
+          },
+          "metadata": {
+            "music": [
+              {
+                "acrid": "6049f11da7095e8bb8266871d4a70873",
+                "title": "Hello",
+                "artists": [{ "name": "Adele" }],
+                "album": { "name": "Hello" },
+                "external_ids": { "isrc": "GBBKS1500214" },
+                "duration_ms": 295000,
+                "score": 100,
+                "release_date": "2015-10-23",
+                "play_offset_ms": 10920
+              }
+            ]
+          }
+        }
+        """
+
+        let result = try ACRCloudIdentificationNormalizer.result(from: Data(json.utf8))
+
+        XCTAssertEqual(result.statusCode, 0)
+        XCTAssertEqual(result.statusMessage, "Success")
+        XCTAssertEqual(result.music?.title, "Hello")
+        XCTAssertEqual(result.music?.artists, ["Adele"])
+        XCTAssertEqual(result.music?.album, "Hello")
+        XCTAssertEqual(result.music?.durationMS, 295_000)
+        XCTAssertEqual(result.music?.isrc, "GBBKS1500214")
+        XCTAssertEqual(result.music?.score, 100)
+        XCTAssertEqual(result.music?.releaseDate, "2015-10-23")
+        XCTAssertEqual(result.music?.offsetSeconds, 10.92)
+        XCTAssertEqual(result.music?.canonicalTrack.providerIDs, [
+            ProviderTrackID(provider: .acrCloud, value: "6049f11da7095e8bb8266871d4a70873")
+        ])
+    }
+
+    func testIdentificationNormalizerTreatsNoResultAsNoMatch() throws {
+        let json = """
+        {
+          "status": {
+            "msg": "No result",
+            "code": 1001
+          }
+        }
+        """
+
+        let result = try ACRCloudIdentificationNormalizer.result(from: Data(json.utf8))
+
+        XCTAssertTrue(result.isNoResult)
+        XCTAssertNil(result.music)
+    }
+
     func testFilescanClientResolvesBareExecutableFromConfiguredPath() throws {
         let directoryURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("PulsefieldACRCloudCLI-\(UUID().uuidString)", isDirectory: true)

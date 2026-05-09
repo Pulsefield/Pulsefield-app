@@ -1,4 +1,5 @@
 #if DEBUG
+import CryptoKit
 import Foundation
 
 public struct ACRCloudFileScanConfiguration: Equatable, Sendable {
@@ -332,6 +333,260 @@ public actor DebugACRCloudRecognitionProvider: RecognitionProviderClient {
     public func cancelRecognition() async {}
 }
 
+public struct ACRCloudIdentificationExecution: Equatable, Sendable {
+    public let endpoint: URL
+    public let httpStatusCode: Int?
+    public let response: ACRCloudIdentificationResult
+
+    public init(
+        endpoint: URL,
+        httpStatusCode: Int?,
+        response: ACRCloudIdentificationResult
+    ) {
+        self.endpoint = endpoint
+        self.httpStatusCode = httpStatusCode
+        self.response = response
+    }
+}
+
+public struct ACRCloudIdentificationResult: Equatable, Sendable {
+    public let statusCode: Int
+    public let statusMessage: String
+    public let music: ACRCloudMusicMatch?
+
+    public init(
+        statusCode: Int,
+        statusMessage: String,
+        music: ACRCloudMusicMatch?
+    ) {
+        self.statusCode = statusCode
+        self.statusMessage = statusMessage
+        self.music = music
+    }
+
+    public var isNoResult: Bool {
+        statusCode == 1001
+    }
+}
+
+public actor ACRCloudIdentificationProvider: RecognitionProviderClient {
+    public nonisolated let provider: RecognitionProvider = .acrCloud
+    public nonisolated let backendLabel = "ACRCloud Identification API"
+
+    private let configuration: ACRCloudConfiguration
+    private let client: ACRCloudIdentificationClient
+
+    public init(
+        configuration: ACRCloudConfiguration,
+        client: ACRCloudIdentificationClient = ACRCloudIdentificationClient()
+    ) {
+        self.configuration = configuration
+        self.client = client
+    }
+
+    public func prepare() async {}
+
+    public func recognize(clip: RecognitionAudioClip) async -> RecognitionOutcome {
+        let result = await identify(clip: clip)
+
+        switch result {
+        case .success(let execution):
+            guard let music = execution.response.music else {
+                return .noMatch
+            }
+
+            return .matched(ACRCloudFileScanNormalizer.snapshot(from: music, clip: clip))
+
+        case .failure(let failure):
+            return .failed(failure)
+        }
+    }
+
+    public func identify(clip: RecognitionAudioClip) async -> Result<ACRCloudIdentificationExecution, RecognitionFailure> {
+        let missingFields = missingConfigurationFields()
+        guard missingFields.isEmpty else {
+            return .failure(.providerConfigurationMissing(
+                providerName: RecognitionProvider.acrCloud.displayName,
+                missingFields: missingFields
+            ))
+        }
+
+        do {
+            let execution = try await client.identify(clip: clip, configuration: configuration)
+            if execution.response.statusCode == 0 || execution.response.isNoResult {
+                return .success(execution)
+            }
+
+            return .failure(RecognitionFailure(
+                title: "ACRCloud Identification Failed",
+                message: "ACRCloud returned status \(execution.response.statusCode): \(execution.response.statusMessage).",
+                recoverySuggestion: "Check the ACRCloud Identification host, access key, secret, and project region."
+            ))
+        } catch let failure as RecognitionFailure {
+            return .failure(failure)
+        } catch {
+            return .failure(RecognitionFailure(
+                title: "ACRCloud Identification Failed",
+                message: error.localizedDescription,
+                recoverySuggestion: "Check network access and the ACRCloud Identification API credentials."
+            ))
+        }
+    }
+
+    public func cancelRecognition() async {}
+
+    private func missingConfigurationFields() -> [String] {
+        var fields: [String] = []
+        if configuration.host.trimmed.isEmpty {
+            fields.append("ACRCLOUD_IDENTIFICATION_HOST")
+        }
+        if configuration.accessKey.trimmed.isEmpty {
+            fields.append("ACRCLOUD_ACCESS_KEY")
+        }
+        if configuration.accessSecret.trimmed.isEmpty {
+            fields.append("ACRCLOUD_ACCESS_SECRET")
+        }
+        return fields
+    }
+}
+
+public struct ACRCloudIdentificationClient: Sendable {
+    public init() {}
+
+    public func identify(
+        clip: RecognitionAudioClip,
+        configuration: ACRCloudConfiguration
+    ) async throws -> ACRCloudIdentificationExecution {
+        let sample = try Data(contentsOf: clip.fileURL)
+        let endpoint = try Self.endpointURL(host: configuration.host)
+        let request = try Self.makeRequest(
+            endpoint: endpoint,
+            configuration: configuration,
+            clip: clip,
+            sample: sample,
+            timestamp: String(Int(Date().timeIntervalSince1970))
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let httpStatusCode = (response as? HTTPURLResponse)?.statusCode
+
+        guard let httpStatusCode, (200..<300).contains(httpStatusCode) else {
+            throw RecognitionFailure(
+                title: "ACRCloud Identification Failed",
+                message: "HTTP request failed with status \(httpStatusCode.map(String.init) ?? "unknown").",
+                recoverySuggestion: "Check network access and the ACRCloud Identification host."
+            )
+        }
+
+        let result = try ACRCloudIdentificationNormalizer.result(from: data)
+        return ACRCloudIdentificationExecution(
+            endpoint: endpoint,
+            httpStatusCode: httpStatusCode,
+            response: result
+        )
+    }
+
+    public static func makeRequest(
+        endpoint: URL,
+        configuration: ACRCloudConfiguration,
+        clip: RecognitionAudioClip,
+        sample: Data,
+        timestamp: String,
+        boundary: String = "PulsefieldBoundary-\(UUID().uuidString)"
+    ) throws -> URLRequest {
+        let signature = signature(
+            accessKey: configuration.accessKey,
+            accessSecret: configuration.accessSecret,
+            timestamp: timestamp
+        )
+        let fields = [
+            ("access_key", configuration.accessKey),
+            ("sample_bytes", String(sample.count)),
+            ("timestamp", timestamp),
+            ("signature", signature),
+            ("data_type", "audio"),
+            ("signature_version", "1")
+        ]
+
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.httpBody = multipartBody(
+            fields: fields,
+            sample: sample,
+            fileName: clip.fileURL.lastPathComponent,
+            mimeType: clip.mimeType,
+            boundary: boundary
+        )
+        return request
+    }
+
+    public static func signature(
+        method: String = "POST",
+        path: String = "/v1/identify",
+        accessKey: String,
+        accessSecret: String,
+        dataType: String = "audio",
+        signatureVersion: String = "1",
+        timestamp: String
+    ) -> String {
+        let stringToSign = [
+            method,
+            path,
+            accessKey,
+            dataType,
+            signatureVersion,
+            timestamp
+        ].joined(separator: "\n")
+        let key = SymmetricKey(data: Data(accessSecret.utf8))
+        let code = HMAC<Insecure.SHA1>.authenticationCode(for: Data(stringToSign.utf8), using: key)
+        return Data(code).base64EncodedString()
+    }
+
+    public static func endpointURL(host: String) throws -> URL {
+        var trimmedHost = host.trimmed
+        if trimmedHost.hasPrefix("https://") {
+            trimmedHost.removeFirst("https://".count)
+        } else if trimmedHost.hasPrefix("http://") {
+            trimmedHost.removeFirst("http://".count)
+        }
+
+        guard !trimmedHost.isEmpty,
+              let url = URL(string: "https://\(trimmedHost)/v1/identify")
+        else {
+            throw RecognitionFailure(
+                title: "ACRCloud Identification Host Invalid",
+                message: "Could not build an Identification API URL from the configured host.",
+                recoverySuggestion: "Use a host such as identify-ap-southeast-1.acrcloud.com."
+            )
+        }
+
+        return url
+    }
+
+    private static func multipartBody(
+        fields: [(String, String)],
+        sample: Data,
+        fileName: String,
+        mimeType: String,
+        boundary: String
+    ) -> Data {
+        var body = Data()
+
+        for (name, value) in fields {
+            body.append("--\(boundary)\r\n")
+            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
+            body.append("\(value)\r\n")
+        }
+
+        body.append("--\(boundary)\r\n")
+        body.append("Content-Disposition: form-data; name=\"sample\"; filename=\"\(fileName)\"\r\n")
+        body.append("Content-Type: \(mimeType)\r\n\r\n")
+        body.append(sample)
+        body.append("\r\n--\(boundary)--\r\n")
+        return body
+    }
+}
+
 public struct ACRCloudFileScanClient: Sendable {
     public init() {}
 
@@ -431,6 +686,44 @@ public struct ACRCloudFileScanClient: Sendable {
         }
 
         return "\(trimmed.prefix(2_000))..."
+    }
+}
+
+public enum ACRCloudIdentificationNormalizer {
+    public static func result(from data: Data) throws -> ACRCloudIdentificationResult {
+        let response = try JSONDecoder().decode(ACRCloudIdentificationResponse.self, from: data)
+        return ACRCloudIdentificationResult(
+            statusCode: response.status.code,
+            statusMessage: response.status.message,
+            music: response.metadata?.music?.first.flatMap(musicMatch(from:))
+        )
+    }
+
+    private static func musicMatch(from match: ACRCloudIdentificationMusicDTO) -> ACRCloudMusicMatch? {
+        guard let acrid = match.acrid?.trimmedNilIfEmpty,
+              let title = match.title?.trimmedNilIfEmpty
+        else {
+            return nil
+        }
+
+        let artists = match.artists?
+            .compactMap { $0.name?.trimmedNilIfEmpty }
+            .filter { !$0.isEmpty } ?? []
+
+        return ACRCloudMusicMatch(
+            acrid: acrid,
+            title: title,
+            artists: artists,
+            album: match.album?.name?.trimmedNilIfEmpty,
+            durationMS: match.durationMS,
+            isrc: match.externalIDs?.isrc?.trimmedNilIfEmpty,
+            score: match.score,
+            releaseDate: match.releaseDate?.trimmedNilIfEmpty,
+            offsetSeconds: match.playOffsetMS.map { TimeInterval($0) / 1_000 },
+            playedDurationSeconds: nil,
+            matchType: nil,
+            audioID: nil
+        )
     }
 }
 
@@ -562,6 +855,62 @@ public enum ACRCloudFileScanNormalizer {
 
 private struct ACRCloudFileScanResponse: Decodable {
     let data: OneOrMany<ACRCloudFileScanFileDTO>?
+}
+
+private struct ACRCloudIdentificationResponse: Decodable {
+    let status: ACRCloudIdentificationStatusDTO
+    let metadata: ACRCloudIdentificationMetadataDTO?
+}
+
+private struct ACRCloudIdentificationStatusDTO: Decodable {
+    let code: Int
+    let message: String
+
+    enum CodingKeys: String, CodingKey {
+        case code
+        case message = "msg"
+    }
+}
+
+private struct ACRCloudIdentificationMetadataDTO: Decodable {
+    let music: [ACRCloudIdentificationMusicDTO]?
+}
+
+private struct ACRCloudIdentificationMusicDTO: Decodable {
+    let acrid: String?
+    let title: String?
+    let artists: [ACRCloudNamedDTO]?
+    let album: ACRCloudNamedDTO?
+    let durationMS: Int?
+    let externalIDs: ACRCloudExternalIDsDTO?
+    let score: Int?
+    let releaseDate: String?
+    let playOffsetMS: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case acrid
+        case title
+        case artists
+        case album
+        case durationMS = "duration_ms"
+        case externalIDs = "external_ids"
+        case score
+        case releaseDate = "release_date"
+        case playOffsetMS = "play_offset_ms"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        acrid = try? container.decode(String.self, forKey: .acrid)
+        title = try? container.decode(String.self, forKey: .title)
+        artists = try? container.decode([ACRCloudNamedDTO].self, forKey: .artists)
+        album = try? container.decode(ACRCloudNamedDTO.self, forKey: .album)
+        durationMS = try container.decodeFlexibleIntIfPresent(forKey: .durationMS)
+        externalIDs = try? container.decode(ACRCloudExternalIDsDTO.self, forKey: .externalIDs)
+        score = try container.decodeFlexibleIntIfPresent(forKey: .score)
+        releaseDate = try? container.decode(String.self, forKey: .releaseDate)
+        playOffsetMS = try container.decodeFlexibleIntIfPresent(forKey: .playOffsetMS)
+    }
 }
 
 private enum OneOrMany<Element: Decodable>: Decodable {
@@ -704,6 +1053,12 @@ private struct ACRCloudNamedDTO: Decodable {
 
 private struct ACRCloudExternalIDsDTO: Decodable {
     let isrc: String?
+}
+
+private extension Data {
+    mutating func append(_ string: String) {
+        append(contentsOf: string.utf8)
+    }
 }
 
 private extension KeyedDecodingContainer {
