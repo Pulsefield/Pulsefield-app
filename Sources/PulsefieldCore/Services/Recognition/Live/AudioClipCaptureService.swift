@@ -26,10 +26,24 @@ public final class AudioClipCaptureService: RecognitionAudioCapturing, @unchecke
         let startedAt: Date
         let audioURL: URL
         let audioFile: AVAudioFile
+        let audioFormat: AVAudioFormat
+        let outputSettings: [String: Any]
         let sampleRate: Double
         let channelCount: Int
         var frameCount: AVAudioFramePosition
+        var cachedBuffers: [AVAudioPCMBuffer]
         var writeError: Error?
+    }
+
+    private struct CaptureSnapshot {
+        let clipID: UUID
+        let startedAt: Date
+        let audioFormat: AVAudioFormat
+        let outputSettings: [String: Any]
+        let sampleRate: Double
+        let frameCount: AVAudioFramePosition
+        let cachedBuffers: [AVAudioPCMBuffer]
+        let writeError: Error?
     }
 
     public let configuration: Configuration
@@ -78,6 +92,37 @@ public final class AudioClipCaptureService: RecognitionAudioCapturing, @unchecke
             stopDiscardingClip()
             return .failure(RecognitionFailure(
                 title: "Clip Capture Failed",
+                message: error.localizedDescription
+            ))
+        }
+    }
+
+    public func startCachedClipCapture() -> Result<Void, RecognitionFailure> {
+        do {
+            try startCapture()
+            return .success(())
+        } catch {
+            stopDiscardingClip()
+            return .failure(RecognitionFailure(
+                title: "Clip Capture Failed",
+                message: error.localizedDescription
+            ))
+        }
+    }
+
+    public func cachedClip(duration: TimeInterval) -> Result<RecognitionAudioClip, RecognitionFailure> {
+        guard duration > 0 else {
+            return .failure(RecognitionFailure(
+                title: "Invalid Clip Duration",
+                message: "Recognition clip duration must be greater than zero seconds."
+            ))
+        }
+
+        do {
+            return .success(try writeCachedClip(duration: duration))
+        } catch {
+            return .failure(RecognitionFailure(
+                title: "Clip Cache Failed",
                 message: error.localizedDescription
             ))
         }
@@ -153,9 +198,12 @@ public final class AudioClipCaptureService: RecognitionAudioCapturing, @unchecke
             startedAt: startedAt,
             audioURL: audioURL,
             audioFile: audioFile,
+            audioFormat: inputFormat,
+            outputSettings: outputSettings,
             sampleRate: inputFormat.sampleRate,
             channelCount: Int(inputFormat.channelCount),
             frameCount: 0,
+            cachedBuffers: [],
             writeError: nil
         ))
 
@@ -202,6 +250,58 @@ public final class AudioClipCaptureService: RecognitionAudioCapturing, @unchecke
         )
     }
 
+    private func writeCachedClip(duration: TimeInterval) throws -> RecognitionAudioClip {
+        let snapshot = try captureSnapshot()
+        let requestedFrameCount = AVAudioFramePosition((duration * snapshot.sampleRate).rounded())
+        let availableFrameCount = min(requestedFrameCount, snapshot.frameCount)
+        guard availableFrameCount > 0 else {
+            throw AudioClipCaptureError.cacheNotReady
+        }
+
+        let audioURL = configuration.outputDirectoryURL
+            .appendingPathComponent(Self.temporalFileStem(
+                timestamp: snapshot.startedAt,
+                clipID: snapshot.clipID,
+                duration: duration
+            ))
+            .appendingPathExtension(configuration.fileExtension)
+
+        let audioFile: AVAudioFile
+        do {
+            audioFile = try AVAudioFile(
+                forWriting: audioURL,
+                settings: snapshot.outputSettings,
+                commonFormat: snapshot.audioFormat.commonFormat,
+                interleaved: snapshot.audioFormat.isInterleaved
+            )
+        } catch {
+            throw AudioClipCaptureError.writeFailed(error.localizedDescription)
+        }
+
+        var remainingFrameCount = availableFrameCount
+        for buffer in snapshot.cachedBuffers where remainingFrameCount > 0 {
+            let frameLength = min(AVAudioFramePosition(buffer.frameLength), remainingFrameCount)
+            guard let cachedBuffer = Self.copyBuffer(buffer, frameLength: AVAudioFrameCount(frameLength)) else {
+                throw AudioClipCaptureError.writeFailed("Could not copy cached microphone audio.")
+            }
+
+            try audioFile.write(from: cachedBuffer)
+            remainingFrameCount -= frameLength
+        }
+
+        let writtenFrameCount = availableFrameCount - remainingFrameCount
+        guard writtenFrameCount > 0 else {
+            throw AudioClipCaptureError.cacheNotReady
+        }
+
+        return RecognitionAudioClip(
+            fileURL: audioURL,
+            mimeType: "audio/wav",
+            duration: Double(writtenFrameCount) / snapshot.sampleRate,
+            recordedAt: snapshot.startedAt
+        )
+    }
+
     private func append(_ buffer: AVAudioPCMBuffer) {
         activeCaptureLock.lock()
         defer {
@@ -215,6 +315,9 @@ public final class AudioClipCaptureService: RecognitionAudioCapturing, @unchecke
         do {
             try capture.audioFile.write(from: buffer)
             capture.frameCount += AVAudioFramePosition(buffer.frameLength)
+            if let cachedBuffer = Self.copyBuffer(buffer, frameLength: buffer.frameLength) {
+                capture.cachedBuffers.append(cachedBuffer)
+            }
         } catch {
             capture.writeError = error
         }
@@ -261,6 +364,32 @@ public final class AudioClipCaptureService: RecognitionAudioCapturing, @unchecke
         activeCapture = capture
     }
 
+    private func captureSnapshot() throws -> CaptureSnapshot {
+        activeCaptureLock.lock()
+        defer {
+            activeCaptureLock.unlock()
+        }
+
+        guard let capture = activeCapture else {
+            throw AudioClipCaptureError.notCapturing
+        }
+
+        if let writeError = capture.writeError {
+            throw AudioClipCaptureError.writeFailed(writeError.localizedDescription)
+        }
+
+        return CaptureSnapshot(
+            clipID: capture.clipID,
+            startedAt: capture.startedAt,
+            audioFormat: capture.audioFormat,
+            outputSettings: capture.outputSettings,
+            sampleRate: capture.sampleRate,
+            frameCount: capture.frameCount,
+            cachedBuffers: capture.cachedBuffers,
+            writeError: capture.writeError
+        )
+    }
+
     private static func fileStem(timestamp: Date, clipID: UUID) -> String {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
@@ -270,11 +399,56 @@ public final class AudioClipCaptureService: RecognitionAudioCapturing, @unchecke
 
         return "acrcloud-debug-\(formatter.string(from: timestamp))-\(clipID.uuidString.prefix(8).lowercased())"
     }
+
+    private static func temporalFileStem(timestamp: Date, clipID: UUID, duration: TimeInterval) -> String {
+        let durationLabel = String(format: "%.2fs", duration)
+            .replacingOccurrences(of: ".", with: "_")
+        return "\(fileStem(timestamp: timestamp, clipID: clipID))-\(durationLabel)"
+    }
+
+    private static func copyBuffer(
+        _ buffer: AVAudioPCMBuffer,
+        frameLength: AVAudioFrameCount
+    ) -> AVAudioPCMBuffer? {
+        let framesToCopy = min(frameLength, buffer.frameLength)
+        guard let copiedBuffer = AVAudioPCMBuffer(
+            pcmFormat: buffer.format,
+            frameCapacity: framesToCopy
+        ) else {
+            return nil
+        }
+
+        copiedBuffer.frameLength = framesToCopy
+        guard framesToCopy > 0 else {
+            return copiedBuffer
+        }
+
+        let sourceBuffers = UnsafeMutableAudioBufferListPointer(buffer.mutableAudioBufferList)
+        let destinationBuffers = UnsafeMutableAudioBufferListPointer(copiedBuffer.mutableAudioBufferList)
+        let sourceFrameCount = max(Int(buffer.frameLength), 1)
+        let destinationFrameCount = Int(framesToCopy)
+
+        for index in sourceBuffers.indices {
+            guard let sourceData = sourceBuffers[index].mData,
+                  let destinationData = destinationBuffers[index].mData
+            else {
+                continue
+            }
+
+            let bytesPerFrame = Int(sourceBuffers[index].mDataByteSize) / sourceFrameCount
+            let bytesToCopy = bytesPerFrame * destinationFrameCount
+            memcpy(destinationData, sourceData, bytesToCopy)
+            destinationBuffers[index].mDataByteSize = UInt32(bytesToCopy)
+        }
+
+        return copiedBuffer
+    }
 }
 
 private enum AudioClipCaptureError: LocalizedError {
     case alreadyCapturing
     case notCapturing
+    case cacheNotReady
     case unsupportedInputFormat
     case writeFailed(String)
 
@@ -284,6 +458,8 @@ private enum AudioClipCaptureError: LocalizedError {
             return "A recognition clip capture is already running."
         case .notCapturing:
             return "No recognition clip capture is running."
+        case .cacheNotReady:
+            return "The recognition clip cache does not contain enough microphone audio yet."
         case .unsupportedInputFormat:
             return "The microphone input format is not supported."
         case .writeFailed(let message):

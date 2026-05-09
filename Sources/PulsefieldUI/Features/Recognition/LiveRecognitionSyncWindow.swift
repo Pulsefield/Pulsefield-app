@@ -23,7 +23,9 @@ public final class LiveRecognitionSyncModel {
     public private(set) var ambientUpdateCount = 0
     public private(set) var latestFrameBatchCount = 0
 
-    public var clipDurationText = "10"
+    public var firstRequestAtText = "2"
+    public var requestCadenceText = "1"
+    public var maxRequestWindowText = "10"
     public var accessToken = ""
     public var acrcloudExecutablePath = "acrcloud"
     public var region = "eu-west-1"
@@ -32,7 +34,7 @@ public final class LiveRecognitionSyncModel {
     public var engineText = "1"
     public var audioType = "recorded"
     public var scanTimeoutText = "600"
-    public var pollIntervalText = "5"
+    public var pollIntervalText = "1"
     public var resolveTitle = ""
     public var resolveArtist = ""
     public var resolveAlbum = ""
@@ -197,10 +199,10 @@ public final class LiveRecognitionSyncModel {
             return
         }
 
-        let clipDuration: TimeInterval
+        let clipRetryConfiguration: LiveRecognitionClipRetryConfiguration
         let fileScanConfiguration: ACRCloudFileScanConfiguration
         do {
-            clipDuration = try parsePositiveTimeInterval(clipDurationText, fieldName: "Clip duration")
+            clipRetryConfiguration = try makeClipRetryConfiguration()
             fileScanConfiguration = try makeFileScanConfiguration()
         } catch {
             fail(error.localizedDescription)
@@ -208,32 +210,10 @@ public final class LiveRecognitionSyncModel {
             return
         }
 
-        phase = .recordingClip
-        statusMessage = "Recording \(clipDuration.secondsLabel)"
-        let captureResult = await captureService.captureClip(duration: clipDuration)
-
-        guard !Task.isCancelled else {
-            flowTask = nil
-            return
-        }
-
-        let clip: RecognitionAudioClip
-        switch captureResult {
-        case .success(let capturedClip):
-            clip = capturedClip
-            latestClip = capturedClip
-            statusMessage = "Saved \(capturedClip.fileURL.lastPathComponent)"
-
-        case .failure(let failure):
-            fail("\(failure.title): \(failure.message)")
-            flowTask = nil
-            return
-        }
-
-        phase = .scanningACRCloud
-        statusMessage = "Scanning with ACRCloud"
-        let provider = DebugACRCloudRecognitionProvider(configuration: fileScanConfiguration)
-        let scanResult = await provider.scan(clip: clip)
+        let scanResult = await scanACRCloudWithGrowingClips(
+            clipRetryConfiguration: clipRetryConfiguration,
+            fileScanConfiguration: fileScanConfiguration
+        )
 
         guard !Task.isCancelled else {
             flowTask = nil
@@ -241,9 +221,9 @@ public final class LiveRecognitionSyncModel {
         }
 
         switch scanResult {
-        case .success(let execution):
-            latestExecution = execution
-            guard let music = execution.result.music else {
+        case .success(let attempt):
+            latestExecution = attempt.execution
+            guard let music = attempt.execution.result.music else {
                 phase = .completed
                 statusMessage = "ACRCloud returned no match"
                 flowTask = nil
@@ -251,7 +231,7 @@ public final class LiveRecognitionSyncModel {
             }
 
             latestMatch = music
-            recognitionSnapshot = ACRCloudFileScanNormalizer.snapshot(from: music, clip: clip)
+            recognitionSnapshot = ACRCloudFileScanNormalizer.snapshot(from: music, clip: attempt.clip)
             fillResolveFields(from: music)
 
         case .failure(let failure):
@@ -437,6 +417,134 @@ public final class LiveRecognitionSyncModel {
         errorMessage = message
         statusMessage = "Failed"
         phase = .failed
+    }
+
+    private func scanACRCloudWithGrowingClips(
+        clipRetryConfiguration: LiveRecognitionClipRetryConfiguration,
+        fileScanConfiguration: ACRCloudFileScanConfiguration
+    ) async -> Result<LiveRecognitionACRCloudScanAttempt, RecognitionFailure> {
+        switch captureService.startCachedClipCapture() {
+        case .success:
+            break
+        case .failure(let failure):
+            return .failure(failure)
+        }
+
+        let startedAt = Date()
+        var submittedScanCount = 0
+        var latestNoMatchAttempt: LiveRecognitionACRCloudScanAttempt?
+
+        return await withTaskGroup(
+            of: Result<LiveRecognitionACRCloudScanAttempt, RecognitionFailure>.self
+        ) { group in
+            for requestWindow in clipRetryConfiguration.durations {
+                phase = .recordingClip
+                statusMessage = "Recording \(requestWindow.secondsLabel) request window"
+
+                let elapsed = Date().timeIntervalSince(startedAt)
+                let remaining = requestWindow - elapsed
+                if remaining > 0 {
+                    do {
+                        try await Task.sleep(nanoseconds: UInt64((remaining * 1_000_000_000).rounded()))
+                    } catch {
+                        group.cancelAll()
+                        await captureService.cancelCapture()
+                        return .failure(RecognitionFailure(
+                            title: "Recognition Sync Cancelled",
+                            message: "Recognition sync stopped before ACRCloud returned a match."
+                        ))
+                    }
+                }
+
+                guard !Task.isCancelled else {
+                    group.cancelAll()
+                    await captureService.cancelCapture()
+                    return .failure(RecognitionFailure(
+                        title: "Recognition Sync Cancelled",
+                        message: "Recognition sync stopped before ACRCloud returned a match."
+                    ))
+                }
+
+                let clip: RecognitionAudioClip
+                switch captureService.cachedClip(duration: requestWindow) {
+                case .success(let cachedClip):
+                    clip = cachedClip
+                    latestClip = cachedClip
+
+                case .failure(let failure):
+                    group.cancelAll()
+                    await captureService.cancelCapture()
+                    return .failure(failure)
+                }
+
+                phase = .scanningACRCloud
+                statusMessage = "Submitted ACRCloud request for \(requestWindow.secondsLabel) window"
+                submittedScanCount += 1
+                group.addTask {
+                    let provider = DebugACRCloudRecognitionProvider(configuration: fileScanConfiguration)
+                    let scanResult = await provider.scan(clip: clip)
+
+                    switch scanResult {
+                    case .success(let execution):
+                        return .success(LiveRecognitionACRCloudScanAttempt(clip: clip, execution: execution))
+                    case .failure(let failure):
+                        return .failure(failure)
+                    }
+                }
+            }
+
+            await captureService.cancelCapture()
+            phase = .scanningACRCloud
+            statusMessage = "Waiting for ACRCloud responses"
+
+            var firstFailure: RecognitionFailure?
+            for _ in 0..<submittedScanCount {
+                guard let scanResult = await group.next() else {
+                    break
+                }
+
+                switch scanResult {
+                case .success(let attempt):
+                    latestExecution = attempt.execution
+                    if attempt.execution.result.music != nil {
+                        // TODO: Demo-usable for now, but refine result arbitration later.
+                        // Completion order can prefer a longer request window over an earlier shorter match.
+                        group.cancelAll()
+                        return .success(attempt)
+                    }
+
+                    latestNoMatchAttempt = attempt
+
+                case .failure(let failure):
+                    firstFailure = firstFailure ?? failure
+                }
+            }
+
+            if let latestNoMatchAttempt {
+                return .success(latestNoMatchAttempt)
+            }
+
+            if let firstFailure {
+                return .failure(firstFailure)
+            }
+
+            return .failure(RecognitionFailure(
+                title: "ACRCloud Recognition Skipped",
+                message: "No recognition request windows were configured."
+            ))
+        }
+    }
+
+    private func makeClipRetryConfiguration() throws -> LiveRecognitionClipRetryConfiguration {
+        let firstRequestAt = try parsePositiveTimeInterval(firstRequestAtText, fieldName: "First request")
+        let requestCadence = try parsePositiveTimeInterval(requestCadenceText, fieldName: "Request cadence")
+        let maxRequestWindow = try parsePositiveTimeInterval(maxRequestWindowText, fieldName: "Max request window")
+
+        return try LiveRecognitionClipRetryConfiguration(
+            firstRequestAt: firstRequestAt,
+            requestCadence: requestCadence,
+            maxRequestWindow: maxRequestWindow
+        )
     }
 
     private func makeFileScanConfiguration() throws -> ACRCloudFileScanConfiguration {
@@ -654,7 +762,9 @@ public struct LiveRecognitionSyncWindow: View {
                 .font(.headline)
 
             Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
-                inputRow("clip", text: $model.clipDurationText, suffix: "seconds", width: 90)
+                inputRow("first request", text: $model.firstRequestAtText, suffix: "seconds", width: 90)
+                inputRow("cadence", text: $model.requestCadenceText, suffix: "seconds", width: 90)
+                inputRow("max window", text: $model.maxRequestWindowText, suffix: "seconds", width: 90)
                 secureInputRow("token", text: $model.accessToken)
                 inputRow("cli", text: $model.acrcloudExecutablePath, width: 300)
 
@@ -936,6 +1046,47 @@ private actor LiveAmbientSyncRuntime {
 private struct LiveAmbientSyncUpdate: Sendable {
     let snapshot: AmbientSyncSnapshot
     let frameBatchCount: Int
+}
+
+private struct LiveRecognitionACRCloudScanAttempt: Sendable {
+    let clip: RecognitionAudioClip
+    let execution: ACRCloudFileScanExecution
+}
+
+private struct LiveRecognitionClipRetryConfiguration: Equatable, Sendable {
+    let firstRequestAt: TimeInterval
+    let requestCadence: TimeInterval
+    let maxRequestWindow: TimeInterval
+
+    init(
+        firstRequestAt: TimeInterval,
+        requestCadence: TimeInterval,
+        maxRequestWindow: TimeInterval
+    ) throws {
+        guard firstRequestAt <= maxRequestWindow else {
+            throw LiveRecognitionSyncError.invalidConfiguration("First request must be less than or equal to max request window.")
+        }
+
+        self.firstRequestAt = firstRequestAt
+        self.requestCadence = requestCadence
+        self.maxRequestWindow = maxRequestWindow
+    }
+
+    var durations: [TimeInterval] {
+        var values: [TimeInterval] = []
+        var duration = firstRequestAt
+
+        while duration < maxRequestWindow {
+            values.append(duration)
+            duration += requestCadence
+        }
+
+        if values.last != maxRequestWindow {
+            values.append(maxRequestWindow)
+        }
+
+        return values
+    }
 }
 
 private struct LiveRecognitionSyncEnvironment {

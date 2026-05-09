@@ -22,7 +22,7 @@ public struct ACRCloudFileScanConfiguration: Equatable, Sendable {
         engine: Int = 1,
         audioType: String = "recorded",
         timeoutSeconds: Int = 600,
-        pollIntervalSeconds: Int = 5,
+        pollIntervalSeconds: Int = 1,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) {
         self.accessToken = accessToken
