@@ -333,6 +333,7 @@ public final class LiveRecognitionSyncModel {
             referenceSummary = AmbientReferenceSummary(
                 assetFileName: asset.fileName,
                 sourceDisplayPath: referenceIndex.sourceDisplayPath,
+                durationMS: asset.durationMS,
                 frameCount: referenceIndex.frames.count,
                 landmarkCount: referenceIndex.landmarks.count
             )
@@ -394,12 +395,21 @@ public final class LiveRecognitionSyncModel {
                     localReferenceTimeAtQueryMS: estimate.referenceTimeMS,
                     queryEndpointRecordedTimeMS: estimate.queryEndpointRecordedTimeMS,
                     nowMS: update.latestRecordedTimeMS
-                ),
+                ) + update.queryEndpointToReceiveLatencyMS,
+                durationMS: referenceSummary?.durationMS,
                 anchoredAt: update.receivedAt
             )
         }
         ambientUpdateCount += 1
         latestFrameBatchCount = update.frameBatchCount
+
+        if update.snapshot.state == .locked, update.snapshot.phase == .final {
+            ambientSessionID = nil
+            ambientSession?.stop()
+            ambientSession = nil
+            phase = .completed
+            statusMessage = "Ambient sync locked"
+        }
     }
 
     #if DEBUG
@@ -414,6 +424,7 @@ public final class LiveRecognitionSyncModel {
         ambientReferencePlaybackAnchor = snapshot.estimate.map {
             AmbientReferencePlaybackAnchor(
                 referenceTimeAtAnchorMS: $0.referenceTimeMS,
+                durationMS: referenceSummary.durationMS,
                 anchoredAt: Date()
             )
         }
@@ -741,6 +752,7 @@ public enum LiveRecognitionSyncPhase: String, CaseIterable, Sendable {
 public struct AmbientReferenceSummary: Equatable, Sendable {
     public let assetFileName: String
     public let sourceDisplayPath: String
+    public let durationMS: Int
     public let frameCount: Int
     public let landmarkCount: Int
 }
@@ -932,6 +944,7 @@ public struct LiveRecognitionSyncWindow: View {
             if let referenceSummary = model.referenceSummary {
                 Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
                     metricRow("asset", referenceSummary.assetFileName)
+                    metricRow("duration", referenceSummary.durationMS.durationLabel)
                     metricRow("frames", "\(referenceSummary.frameCount)")
                     metricRow("landmarks", "\(referenceSummary.landmarkCount)")
                     metricRow("path", referenceSummary.sourceDisplayPath)
@@ -1142,16 +1155,30 @@ private actor LiveAmbientSyncRuntime {
             return nil
         }
 
-        let now = Date()
-        let elapsedMS = now.timeIntervalSince(startedAt) * 1_000
+        let processStartedAt = Date()
+        let elapsedMS = processStartedAt.timeIntervalSince(startedAt) * 1_000
         // This full ambient matching pass is CPU-heavy when called for every mic feature batch.
         let snapshot = engine.process(queryWindow: queryWindow, elapsedMS: elapsedMS)
+        let receivedAt = Date()
         return LiveAmbientSyncUpdate(
             snapshot: snapshot,
             latestRecordedTimeMS: queryWindow.endpointRecordedTimeMS,
-            receivedAt: now,
+            queryEndpointToReceiveLatencyMS: Self.queryEndpointToReceiveLatencyMS(
+                endpointHostTimeMS: queryWindow.endpointHostTimeMS
+            ),
+            receivedAt: receivedAt,
             frameBatchCount: frames.count
         )
+    }
+
+    private static func queryEndpointToReceiveLatencyMS(endpointHostTimeMS: Double) -> Double {
+        let receivedHostTimeMS = ProcessInfo.processInfo.systemUptime * 1_000
+        let latencyMS = receivedHostTimeMS - endpointHostTimeMS
+        guard latencyMS.isFinite, latencyMS >= 0, latencyMS <= 30_000 else {
+            return 0
+        }
+
+        return latencyMS
     }
 }
 
@@ -1215,21 +1242,29 @@ private final class LiveAmbientSyncSession: @unchecked Sendable {
 private struct LiveAmbientSyncUpdate: Sendable {
     let snapshot: AmbientSyncSnapshot
     let latestRecordedTimeMS: Double
+    let queryEndpointToReceiveLatencyMS: Double
     let receivedAt: Date
     let frameBatchCount: Int
 }
 
 public struct AmbientReferencePlaybackAnchor: Equatable, Sendable {
     public let referenceTimeAtAnchorMS: Double
+    public let durationMS: Int?
     public let anchoredAt: Date
 
-    public init(referenceTimeAtAnchorMS: Double, anchoredAt: Date) {
+    public init(referenceTimeAtAnchorMS: Double, durationMS: Int? = nil, anchoredAt: Date) {
         self.referenceTimeAtAnchorMS = referenceTimeAtAnchorMS
+        self.durationMS = durationMS
         self.anchoredAt = anchoredAt
     }
 
     public func referenceTimeMS(at date: Date) -> Double {
-        max(0, referenceTimeAtAnchorMS + date.timeIntervalSince(anchoredAt) * 1_000)
+        let projectedTimeMS = max(0, referenceTimeAtAnchorMS + date.timeIntervalSince(anchoredAt) * 1_000)
+        guard let durationMS else {
+            return projectedTimeMS
+        }
+
+        return min(projectedTimeMS, Double(durationMS))
     }
 }
 
