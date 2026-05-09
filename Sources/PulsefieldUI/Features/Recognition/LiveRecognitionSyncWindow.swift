@@ -20,6 +20,7 @@ public final class LiveRecognitionSyncModel {
     public private(set) var resolveResults: [LocalResolveResult] = []
     public private(set) var referenceSummary: AmbientReferenceSummary?
     public private(set) var latestAmbientSnapshot: AmbientSyncSnapshot?
+    public private(set) var ambientReferencePlaybackAnchor: AmbientReferencePlaybackAnchor?
     public private(set) var ambientUpdateCount = 0
     public private(set) var latestFrameBatchCount = 0
 
@@ -64,10 +65,7 @@ public final class LiveRecognitionSyncModel {
     private var flowTask: Task<Void, Never>?
 
     @ObservationIgnored
-    private var ambientStreamService: AmbientMicFeatureStreamService?
-
-    @ObservationIgnored
-    private var ambientRuntime: LiveAmbientSyncRuntime?
+    private var ambientSession: LiveAmbientSyncSession?
 
     @ObservationIgnored
     private var ambientSessionID: UUID?
@@ -88,7 +86,7 @@ public final class LiveRecognitionSyncModel {
     }
 
     deinit {
-        ambientStreamService?.stop()
+        ambientSession?.stop()
         flowTask?.cancel()
     }
 
@@ -358,32 +356,27 @@ public final class LiveRecognitionSyncModel {
             featureWindowSizeSamples: featureConfiguration.featureWindowSizeSamples,
             featureHopSizeSamples: featureConfiguration.featureHopSizeSamples
         )
-        let streamService = AmbientMicFeatureStreamService(configuration: streamConfiguration)
-        let runtime = LiveAmbientSyncRuntime(referenceIndex: referenceIndex)
-        let sessionID = UUID()
-        ambientSessionID = sessionID
+        let session = LiveAmbientSyncSession(
+            referenceIndex: referenceIndex,
+            streamConfiguration: streamConfiguration
+        ) { [weak self] update, sessionID in
+            await MainActor.run {
+                self?.applyAmbientUpdate(update, sessionID: sessionID)
+            }
+        }
+        ambientSessionID = session.id
 
         do {
-            try streamService.start { [weak self, runtime, sessionID] frames in
-                Task {
-                    guard let update = await runtime.append(frames: frames) else {
-                        return
-                    }
-
-                    await MainActor.run {
-                        self?.applyAmbientUpdate(update, sessionID: sessionID)
-                    }
-                }
-            }
+            try session.start()
         } catch {
-            if ambientSessionID == sessionID {
+            if ambientSessionID == session.id {
                 ambientSessionID = nil
             }
+            session.stop()
             throw error
         }
 
-        ambientRuntime = runtime
-        ambientStreamService = streamService
+        ambientSession = session
     }
 
     private func applyAmbientUpdate(_ update: LiveAmbientSyncUpdate, sessionID: UUID) {
@@ -392,6 +385,16 @@ public final class LiveRecognitionSyncModel {
         }
 
         latestAmbientSnapshot = update.snapshot
+        if let estimate = update.snapshot.estimate {
+            ambientReferencePlaybackAnchor = AmbientReferencePlaybackAnchor(
+                referenceTimeAtAnchorMS: AmbientSyncTimeProjection.referenceTimeAtNowMS(
+                    localReferenceTimeAtQueryMS: estimate.referenceTimeMS,
+                    queryEndpointRecordedTimeMS: estimate.queryEndpointRecordedTimeMS,
+                    nowMS: update.latestRecordedTimeMS
+                ),
+                anchoredAt: update.receivedAt
+            )
+        }
         ambientUpdateCount += 1
         latestFrameBatchCount = update.frameBatchCount
     }
@@ -405,6 +408,12 @@ public final class LiveRecognitionSyncModel {
     ) {
         self.referenceSummary = referenceSummary
         latestAmbientSnapshot = snapshot
+        ambientReferencePlaybackAnchor = snapshot.estimate.map {
+            AmbientReferencePlaybackAnchor(
+                referenceTimeAtAnchorMS: $0.referenceTimeMS,
+                anchoredAt: Date()
+            )
+        }
         ambientUpdateCount = updateCount
         latestFrameBatchCount = frameBatchCount
         ambientSessionID = UUID()
@@ -415,6 +424,7 @@ public final class LiveRecognitionSyncModel {
     private func resetAmbientSyncState() {
         referenceSummary = nil
         latestAmbientSnapshot = nil
+        ambientReferencePlaybackAnchor = nil
         ambientUpdateCount = 0
         latestFrameBatchCount = 0
     }
@@ -433,15 +443,16 @@ public final class LiveRecognitionSyncModel {
         resolveDurationMS = ""
         selectedResolveAssetID = nil
         ambientSessionID = nil
+        ambientSession?.stop()
+        ambientSession = nil
         resetAmbientSyncState()
         refreshLocalLibraryStatus()
     }
 
     private func stopAmbientSync(markStopped: Bool) {
         ambientSessionID = nil
-        ambientStreamService?.stop()
-        ambientStreamService = nil
-        ambientRuntime = nil
+        ambientSession?.stop()
+        ambientSession = nil
         resetAmbientSyncState()
 
         if markStopped {
@@ -915,9 +926,13 @@ public struct LiveRecognitionSyncWindow: View {
                     if let reason = snapshot.withholdReason {
                         metricRow("withheld", reason.rawValue)
                     }
-                    if let estimate = snapshot.estimate {
-                        metricRow("offset", (estimate.offsetMS / 1_000).secondsLabel)
-                        metricRow("reference", (estimate.referenceTimeMS / 1_000).secondsLabel)
+                    if let playbackAnchor = model.ambientReferencePlaybackAnchor {
+                        TimelineView(.periodic(from: .now, by: 0.1)) { context in
+                            metricRow(
+                                "reference seconds",
+                                (playbackAnchor.referenceTimeMS(at: context.date) / 1_000).secondsLabel
+                            )
+                        }
                     }
                     metricRow("query", (snapshot.diagnostics.queryDurationMS / 1_000).secondsLabel)
                     metricRow("updates", "\(model.ambientUpdateCount)")
@@ -1069,22 +1084,131 @@ private actor LiveAmbientSyncRuntime {
         )
     }
 
-    func append(frames: [MicFeatureFrame]) -> LiveAmbientSyncUpdate? {
+    func run(
+        frameStream: AsyncStream<[MicFeatureFrame]>,
+        onUpdate: @escaping @Sendable (LiveAmbientSyncUpdate) async -> Void
+    ) async {
+        for await frames in frameStream {
+            guard !Task.isCancelled else {
+                return
+            }
+
+            guard let update = append(frames: frames) else {
+                continue
+            }
+
+            guard !Task.isCancelled else {
+                return
+            }
+
+            await onUpdate(update)
+        }
+    }
+
+    private func append(frames: [MicFeatureFrame]) -> LiveAmbientSyncUpdate? {
+        guard !Task.isCancelled else {
+            return nil
+        }
+
         streamBuffer.append(frames)
 
         guard let queryWindow = streamBuffer.latestWindow(durationMS: queryDurationMS) else {
             return nil
         }
 
-        let elapsedMS = Date().timeIntervalSince(startedAt) * 1_000
+        guard !Task.isCancelled else {
+            return nil
+        }
+
+        let now = Date()
+        let elapsedMS = now.timeIntervalSince(startedAt) * 1_000
+        // This full ambient matching pass is CPU-heavy when called for every mic feature batch.
         let snapshot = engine.process(queryWindow: queryWindow, elapsedMS: elapsedMS)
-        return LiveAmbientSyncUpdate(snapshot: snapshot, frameBatchCount: frames.count)
+        return LiveAmbientSyncUpdate(
+            snapshot: snapshot,
+            latestRecordedTimeMS: queryWindow.endpointRecordedTimeMS,
+            receivedAt: now,
+            frameBatchCount: frames.count
+        )
+    }
+}
+
+private final class LiveAmbientSyncSession: @unchecked Sendable {
+    let id = UUID()
+
+    private let streamService: AmbientMicFeatureStreamService
+    private let runtime: LiveAmbientSyncRuntime
+    private let onUpdate: @Sendable (LiveAmbientSyncUpdate, UUID) async -> Void
+
+    private var frameContinuation: AsyncStream<[MicFeatureFrame]>.Continuation?
+    private var processingTask: Task<Void, Never>?
+
+    init(
+        referenceIndex: AmbientSyncReferenceIndex,
+        streamConfiguration: AmbientMicFeatureStreamService.Configuration,
+        onUpdate: @escaping @Sendable (LiveAmbientSyncUpdate, UUID) async -> Void
+    ) {
+        streamService = AmbientMicFeatureStreamService(configuration: streamConfiguration)
+        runtime = LiveAmbientSyncRuntime(referenceIndex: referenceIndex)
+        self.onUpdate = onUpdate
+    }
+
+    deinit {
+        stop()
+    }
+
+    func start() throws {
+        var continuation: AsyncStream<[MicFeatureFrame]>.Continuation!
+        let frameStream = AsyncStream<[MicFeatureFrame]> { streamContinuation in
+            continuation = streamContinuation
+        }
+        let streamContinuation = continuation!
+        frameContinuation = streamContinuation
+
+        processingTask = Task { [id, runtime, onUpdate] in
+            await runtime.run(frameStream: frameStream) { update in
+                await onUpdate(update, id)
+            }
+        }
+
+        do {
+            try streamService.start { frames in
+                streamContinuation.yield(frames)
+            }
+        } catch {
+            stop()
+            throw error
+        }
+    }
+
+    func stop() {
+        streamService.stop()
+        processingTask?.cancel()
+        processingTask = nil
+        frameContinuation?.finish()
+        frameContinuation = nil
     }
 }
 
 private struct LiveAmbientSyncUpdate: Sendable {
     let snapshot: AmbientSyncSnapshot
+    let latestRecordedTimeMS: Double
+    let receivedAt: Date
     let frameBatchCount: Int
+}
+
+public struct AmbientReferencePlaybackAnchor: Equatable, Sendable {
+    public let referenceTimeAtAnchorMS: Double
+    public let anchoredAt: Date
+
+    public init(referenceTimeAtAnchorMS: Double, anchoredAt: Date) {
+        self.referenceTimeAtAnchorMS = referenceTimeAtAnchorMS
+        self.anchoredAt = anchoredAt
+    }
+
+    public func referenceTimeMS(at date: Date) -> Double {
+        max(0, referenceTimeAtAnchorMS + date.timeIntervalSince(anchoredAt) * 1_000)
+    }
 }
 
 private struct LiveRecognitionACRCloudScanAttempt: Sendable {
