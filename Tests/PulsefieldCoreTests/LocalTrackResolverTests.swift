@@ -365,6 +365,66 @@ final class LocalTrackResolverTests: XCTestCase {
         } == true)
     }
 
+    func testResolveSplitsDelimitedAssetArtistsIntoExactGroups() async throws {
+        let database = try LocalAudioLibraryDatabase.openInMemory()
+        let directoryID = UUID(uuidString: "00000000-0000-0000-0000-000000000118")!
+        let asset = makeAsset(
+            directoryID: directoryID,
+            title: "Shared Signal",
+            artists: ["DJ Okawari / Emily Styler, Akiko"],
+            durationMS: 180_000
+        )
+
+        try await database.upsertDirectory(makeDirectory(id: directoryID))
+        await database.upsertAsset(asset)
+
+        let resolver = LocalTrackResolver(database: database)
+        let results = await resolver.resolve(
+            CanonicalTrack(
+                title: "Shared Signal",
+                artists: ["Emily Styler"],
+                album: nil,
+                durationMS: 180_000,
+                isrc: nil,
+                providerIDs: [.init(provider: .acrCloud, value: "acr:shared-signal")]
+            )
+        )
+
+        XCTAssertEqual(results.first?.asset.id, asset.id)
+        XCTAssertEqual(results.first?.decision, .autoAccepted)
+        XCTAssertTrue(results.first?.evidence.contains(.artistExact) == true)
+    }
+
+    func testResolveSplitsDelimitedQueryArtistsIntoExactGroups() async throws {
+        let database = try LocalAudioLibraryDatabase.openInMemory()
+        let directoryID = UUID(uuidString: "00000000-0000-0000-0000-000000000119")!
+        let asset = makeAsset(
+            directoryID: directoryID,
+            title: "Shared Signal",
+            artists: ["Emily Styler"],
+            durationMS: 180_000
+        )
+
+        try await database.upsertDirectory(makeDirectory(id: directoryID))
+        await database.upsertAsset(asset)
+
+        let resolver = LocalTrackResolver(database: database)
+        let results = await resolver.resolve(
+            CanonicalTrack(
+                title: "Shared Signal",
+                artists: ["DJ Okawari / Emily Styler, Akiko"],
+                album: nil,
+                durationMS: 180_000,
+                isrc: nil,
+                providerIDs: [.init(provider: .acrCloud, value: "acr:shared-signal")]
+            )
+        )
+
+        XCTAssertEqual(results.first?.asset.id, asset.id)
+        XCTAssertEqual(results.first?.decision, .autoAccepted)
+        XCTAssertTrue(results.first?.evidence.contains(.artistExact) == true)
+    }
+
     func testResolveRequiresConfirmationForFilenameAndDurationWhenMetadataIsMissing() async throws {
         let database = try LocalAudioLibraryDatabase.openInMemory()
         let directoryID = UUID(uuidString: "00000000-0000-0000-0000-000000000105")!

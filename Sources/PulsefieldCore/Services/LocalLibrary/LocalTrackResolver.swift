@@ -58,8 +58,8 @@ public actor LocalTrackResolver: LocalTrackResolving {
             }
         }
 
-        let trackArtists = track.artists.map(\.normalizedSearchText).filter { !$0.isEmpty }
-        let assetArtists = asset.artists.map(\.normalizedSearchText).filter { !$0.isEmpty }
+        let trackArtists = artistSearchCandidates(from: track.artists)
+        let assetArtists = artistSearchCandidates(from: asset.artists)
         if !trackArtists.isEmpty, !assetArtists.isEmpty, trackArtists.contains(where: { assetArtists.contains($0) }) {
             confidence += 0.34
             evidence.append(.artistExact)
@@ -200,6 +200,19 @@ public actor LocalTrackResolver: LocalTrackResolving {
         return best
     }
 
+    private func artistSearchCandidates(from artists: [String]) -> [String] {
+        var seen = Set<String>()
+        var candidates: [String] = []
+
+        for artist in artists {
+            for candidate in artist.normalizedArtistSearchCandidates where seen.insert(candidate).inserted {
+                candidates.append(candidate)
+            }
+        }
+
+        return candidates
+    }
+
     private func durationConfidenceTerm(deltaMS: Int) -> Double {
         switch deltaMS {
         case ...250:
@@ -315,6 +328,12 @@ private extension String {
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { !$0.isEmpty }
             .joined(separator: " ")
+    }
+
+    var normalizedArtistSearchCandidates: [String] {
+        components(separatedBy: CharacterSet(charactersIn: "/,"))
+            .map(\.normalizedSearchText)
+            .filter { !$0.isEmpty }
     }
 
     var tokens: [String] {
