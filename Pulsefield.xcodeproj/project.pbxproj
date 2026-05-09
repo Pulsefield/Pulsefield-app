@@ -56,6 +56,7 @@
 		92E245E5EFD540B91AC38971 /* CascadingRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED4A20CA439FE4F3513DB1A2 /* CascadingRecognitionService.swift */; };
 		93DBC35911FB30D2FD45D2A3 /* AmbientSyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95F2ADD1DEF8706D09D7D062 /* AmbientSyncEngine.swift */; };
 		96727F336BF2101E88CF66B9 /* LocalLibraryDashboardModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22D44B66A82BA504E482BC78 /* LocalLibraryDashboardModelTests.swift */; };
+		98A9CC7BE9C640CFB89F0B13 /* LiveRecognitionSyncModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C736284E16814E8A9459D2B1 /* LiveRecognitionSyncModelTests.swift */; };
 		9970F5618E7AF56EB7CF104F /* PulsefieldUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A9C81D865B64C6D256B24F2B /* PulsefieldUI.framework */; };
 		9D8A7FC07558045972D8C6C1 /* MockRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6AE855CD84CDFD620DA302F /* MockRecognitionService.swift */; };
 		9E618892E41288E421193A60 /* PulsefieldCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */; };
@@ -206,6 +207,7 @@
 		1E39D534C5F78E05B1D6A45E /* ambient-sync-current-status-and-goals.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "ambient-sync-current-status-and-goals.md"; sourceTree = "<group>"; };
 		1ED00D85508FC1CAA511109B /* LICENSE */ = {isa = PBXFileReference; path = LICENSE; sourceTree = "<group>"; };
 		22D44B66A82BA504E482BC78 /* LocalLibraryDashboardModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLibraryDashboardModelTests.swift; sourceTree = "<group>"; };
+		C736284E16814E8A9459D2B1 /* LiveRecognitionSyncModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRecognitionSyncModelTests.swift; sourceTree = "<group>"; };
 		279883F0FED22764769D789B /* swiftui-guidelines.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "swiftui-guidelines.md"; sourceTree = "<group>"; };
 		29923F0604586898F5BC337B /* LocalMusicDirectoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalMusicDirectoryStore.swift; sourceTree = "<group>"; };
 		29B6C98909AAEFF35D9B16F1 /* recognition-architecture.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "recognition-architecture.md"; sourceTree = "<group>"; };
@@ -523,6 +525,7 @@
 				A9C0AFD64ABA7C7C86048235 /* CascadingRecognitionServiceTests.swift */,
 				EB648D517F669CA6872F7086 /* DebugACRCloudRecognitionProviderTests.swift */,
 				B2E5A4D715D8CFE3E004CF00 /* LocalAudioLibraryIndexerTests.swift */,
+				C736284E16814E8A9459D2B1 /* LiveRecognitionSyncModelTests.swift */,
 				22D44B66A82BA504E482BC78 /* LocalLibraryDashboardModelTests.swift */,
 				EE665E134535975B24A1E332 /* LocalTrackResolverTests.swift */,
 				81CE9B56AE5FDD881A5C4C60 /* Mania4KNoteRenderLayoutTests.swift */,
@@ -895,6 +898,7 @@
 				2AD790A5ACB1EFFDA192D181 /* CascadingRecognitionServiceTests.swift in Sources */,
 				329BB535F4258BD08E5083C1 /* DebugACRCloudRecognitionProviderTests.swift in Sources */,
 				DDA020C2C77C3D38F434521F /* LocalAudioLibraryIndexerTests.swift in Sources */,
+				98A9CC7BE9C640CFB89F0B13 /* LiveRecognitionSyncModelTests.swift in Sources */,
 				96727F336BF2101E88CF66B9 /* LocalLibraryDashboardModelTests.swift in Sources */,
 				BDDF99E1182F9FACB65B03C9 /* LocalTrackResolverTests.swift in Sources */,
 				CB7D87478FF3F706E7CDF5E4 /* Mania4KNoteRenderLayoutTests.swift in Sources */,

@@ -69,6 +69,9 @@ public final class LiveRecognitionSyncModel {
     @ObservationIgnored
     private var ambientRuntime: LiveAmbientSyncRuntime?
 
+    @ObservationIgnored
+    private var ambientSessionID: UUID?
+
     public init(
         database: LocalAudioLibraryDatabase,
         permissionService: any MicrophonePermissionProviding = MicrophonePermissionService(),
@@ -357,27 +360,63 @@ public final class LiveRecognitionSyncModel {
         )
         let streamService = AmbientMicFeatureStreamService(configuration: streamConfiguration)
         let runtime = LiveAmbientSyncRuntime(referenceIndex: referenceIndex)
+        let sessionID = UUID()
+        ambientSessionID = sessionID
 
-        try streamService.start { [weak self, runtime] frames in
-            Task {
-                guard let update = await runtime.append(frames: frames) else {
-                    return
-                }
+        do {
+            try streamService.start { [weak self, runtime, sessionID] frames in
+                Task {
+                    guard let update = await runtime.append(frames: frames) else {
+                        return
+                    }
 
-                await MainActor.run {
-                    self?.applyAmbientUpdate(update)
+                    await MainActor.run {
+                        self?.applyAmbientUpdate(update, sessionID: sessionID)
+                    }
                 }
             }
+        } catch {
+            if ambientSessionID == sessionID {
+                ambientSessionID = nil
+            }
+            throw error
         }
 
         ambientRuntime = runtime
         ambientStreamService = streamService
     }
 
-    private func applyAmbientUpdate(_ update: LiveAmbientSyncUpdate) {
+    private func applyAmbientUpdate(_ update: LiveAmbientSyncUpdate, sessionID: UUID) {
+        guard ambientSessionID == sessionID else {
+            return
+        }
+
         latestAmbientSnapshot = update.snapshot
         ambientUpdateCount += 1
         latestFrameBatchCount = update.frameBatchCount
+    }
+
+    #if DEBUG
+    func debugInjectAmbientSyncState(
+        referenceSummary: AmbientReferenceSummary,
+        snapshot: AmbientSyncSnapshot,
+        updateCount: Int,
+        frameBatchCount: Int
+    ) {
+        self.referenceSummary = referenceSummary
+        latestAmbientSnapshot = snapshot
+        ambientUpdateCount = updateCount
+        latestFrameBatchCount = frameBatchCount
+        ambientSessionID = UUID()
+        phase = .ambientSyncing
+    }
+    #endif
+
+    private func resetAmbientSyncState() {
+        referenceSummary = nil
+        latestAmbientSnapshot = nil
+        ambientUpdateCount = 0
+        latestFrameBatchCount = 0
     }
 
     private func resetRunState() {
@@ -393,17 +432,17 @@ public final class LiveRecognitionSyncModel {
         resolveISRC = ""
         resolveDurationMS = ""
         selectedResolveAssetID = nil
-        referenceSummary = nil
-        latestAmbientSnapshot = nil
-        ambientUpdateCount = 0
-        latestFrameBatchCount = 0
+        ambientSessionID = nil
+        resetAmbientSyncState()
         refreshLocalLibraryStatus()
     }
 
     private func stopAmbientSync(markStopped: Bool) {
+        ambientSessionID = nil
         ambientStreamService?.stop()
         ambientStreamService = nil
         ambientRuntime = nil
+        resetAmbientSyncState()
 
         if markStopped {
             statusMessage = "Stopped"
