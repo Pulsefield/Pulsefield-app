@@ -81,14 +81,14 @@ public actor LocalTrackResolver: LocalTrackResolving {
             let delta = abs(asset.durationMS - durationMS)
             durationDeltaMS = delta
             if delta <= 2_000 {
-                confidence += 0.20
+                confidence += durationConfidenceTerm(deltaMS: delta)
                 evidence.append(.durationWithinTolerance(deltaMS: delta))
             } else if delta <= 8_000 {
                 hasWeakDurationMatch = true
-                confidence += 0.08
+                confidence += durationConfidenceTerm(deltaMS: delta)
                 evidence.append(.durationWithinTolerance(deltaMS: delta))
             } else {
-                confidence -= 0.20
+                confidence += durationConfidenceTerm(deltaMS: delta)
             }
         }
 
@@ -188,6 +188,24 @@ public actor LocalTrackResolver: LocalTrackResolving {
             }
         }
         return best
+    }
+
+    private func durationConfidenceTerm(deltaMS: Int) -> Double {
+        switch deltaMS {
+        case ...250:
+            return 0.24
+        case ...2_000:
+            let progress = Double(deltaMS - 250) / 1_750
+            return 0.24 - progress * 0.08
+        case ...8_000:
+            let progress = Double(deltaMS - 2_000) / 6_000
+            return 0.16 - progress * 0.14
+        case ...30_000:
+            let progress = Double(deltaMS - 8_000) / 22_000
+            return 0.02 - progress * 0.26
+        default:
+            return -0.24
+        }
     }
 
     private func fileNameScore(trackTitle: String, fileName: String) -> Double {
