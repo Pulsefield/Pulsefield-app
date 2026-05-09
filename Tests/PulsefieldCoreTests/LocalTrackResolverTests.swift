@@ -317,6 +317,54 @@ final class LocalTrackResolverTests: XCTestCase {
         XCTAssertLessThan(results.first?.confidence ?? 1, 0.70)
     }
 
+    func testResolveUsesTokenSubsetForQualifiedMetadata() async throws {
+        let database = try LocalAudioLibraryDatabase.openInMemory()
+        let directoryID = UUID(uuidString: "00000000-0000-0000-0000-000000000117")!
+        let asset = makeAsset(
+            directoryID: directoryID,
+            title: "Night Drive (2019 Remaster)",
+            artists: ["Pulsefield feat. Nova"],
+            durationMS: 180_000,
+            album: "Late Signals (Deluxe Edition)"
+        )
+
+        try await database.upsertDirectory(makeDirectory(id: directoryID))
+        await database.upsertAsset(asset)
+
+        let resolver = LocalTrackResolver(database: database)
+        let results = await resolver.resolve(
+            CanonicalTrack(
+                title: "Night Drive",
+                artists: ["Pulsefield"],
+                album: "Late Signals",
+                durationMS: 180_000,
+                isrc: nil,
+                providerIDs: [.init(provider: .acrCloud, value: "acr:night-drive")]
+            )
+        )
+
+        XCTAssertEqual(results.first?.asset.id, asset.id)
+        XCTAssertEqual(results.first?.decision, .requiresUserConfirmation)
+        XCTAssertTrue(results.first?.evidence.contains { evidence in
+            if case .titleFuzzy(let score) = evidence, score >= 0.90 {
+                return true
+            }
+            return false
+        } == true)
+        XCTAssertTrue(results.first?.evidence.contains { evidence in
+            if case .artistFuzzy(let score) = evidence, score >= 0.90 {
+                return true
+            }
+            return false
+        } == true)
+        XCTAssertTrue(results.first?.evidence.contains { evidence in
+            if case .albumFuzzy(let score) = evidence, score >= 0.90 {
+                return true
+            }
+            return false
+        } == true)
+    }
+
     func testResolveRequiresConfirmationForFilenameAndDurationWhenMetadataIsMissing() async throws {
         let database = try LocalAudioLibraryDatabase.openInMemory()
         let directoryID = UUID(uuidString: "00000000-0000-0000-0000-000000000105")!

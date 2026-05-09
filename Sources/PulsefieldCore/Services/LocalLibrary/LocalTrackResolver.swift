@@ -2,6 +2,7 @@ import Foundation
 
 public actor LocalTrackResolver: LocalTrackResolving {
     private static let autoAcceptAmbiguityMargin = 0.03
+    private static let fuzzyMatchThreshold = 0.82
 
     private let database: LocalAudioLibraryDatabase
 
@@ -51,7 +52,7 @@ public actor LocalTrackResolver: LocalTrackResolving {
             evidence.append(.titleExact)
         } else {
             let titleScore = fuzzyScore(trackTitle, assetTitle)
-            if titleScore >= 0.82 {
+            if titleScore >= Self.fuzzyMatchThreshold {
                 confidence += 0.28 * titleScore
                 evidence.append(.titleFuzzy(score: titleScore))
             }
@@ -62,7 +63,8 @@ public actor LocalTrackResolver: LocalTrackResolving {
         if !trackArtists.isEmpty, !assetArtists.isEmpty, trackArtists.contains(where: { assetArtists.contains($0) }) {
             confidence += 0.34
             evidence.append(.artistExact)
-        } else if let bestArtistScore = bestFuzzyScore(trackArtists, assetArtists), bestArtistScore >= 0.82 {
+        } else if let bestArtistScore = bestFuzzyScore(trackArtists, assetArtists),
+                  bestArtistScore >= Self.fuzzyMatchThreshold {
             confidence += 0.24 * bestArtistScore
             evidence.append(.artistFuzzy(score: bestArtistScore))
         }
@@ -70,9 +72,17 @@ public actor LocalTrackResolver: LocalTrackResolving {
         if let queryAlbum = track.album?.normalizedSearchText,
            let assetAlbum = asset.album?.normalizedSearchText,
            !queryAlbum.isEmpty,
-           queryAlbum == assetAlbum {
-            confidence += 0.12
-            evidence.append(.albumExact)
+           !assetAlbum.isEmpty {
+            if queryAlbum == assetAlbum {
+                confidence += 0.12
+                evidence.append(.albumExact)
+            } else {
+                let albumScore = fuzzyScore(queryAlbum, assetAlbum)
+                if albumScore >= Self.fuzzyMatchThreshold {
+                    confidence += 0.09 * albumScore
+                    evidence.append(.albumFuzzy(score: albumScore))
+                }
+            }
         }
 
         var durationDeltaMS: Int?
@@ -238,14 +248,43 @@ public actor LocalTrackResolver: LocalTrackResolving {
             return 1
         }
 
-        let leftTokens = Set(left.split(separator: " ").map(String.init))
-        let rightTokens = Set(right.split(separator: " ").map(String.init))
-        let intersection = leftTokens.intersection(rightTokens).count
-        let union = leftTokens.union(rightTokens).count
-        let tokenScore = union == 0 ? 0 : Double(intersection) / Double(union)
+        let tokenScore = tokenSimilarity(left.tokens, right.tokens)
         let editScore = 1 - (Double(levenshtein(left, right)) / Double(max(left.count, right.count)))
 
         return max(tokenScore, editScore)
+    }
+
+    private func tokenSimilarity(_ leftTokens: [String], _ rightTokens: [String]) -> Double {
+        guard !leftTokens.isEmpty, !rightTokens.isEmpty else {
+            return 0
+        }
+
+        let leftSet = Set(leftTokens)
+        let rightSet = Set(rightTokens)
+        let intersection = leftSet.intersection(rightSet).count
+        let union = leftSet.union(rightSet).count
+        let jaccardScore = union == 0 ? 0 : Double(intersection) / Double(union)
+        let coverageScore = Double(intersection) / Double(min(leftSet.count, rightSet.count))
+        let orderedSubsetScore = orderedSubsetScore(shorterTokens: leftTokens, longerTokens: rightTokens)
+            ?? orderedSubsetScore(shorterTokens: rightTokens, longerTokens: leftTokens)
+            ?? 0
+
+        return max(jaccardScore, coverageScore * 0.92, orderedSubsetScore)
+    }
+
+    private func orderedSubsetScore(shorterTokens: [String], longerTokens: [String]) -> Double? {
+        guard !shorterTokens.isEmpty, shorterTokens.count < longerTokens.count else {
+            return nil
+        }
+
+        for startIndex in 0...(longerTokens.count - shorterTokens.count) {
+            let longerSlice = longerTokens[startIndex..<(startIndex + shorterTokens.count)]
+            if longerSlice.elementsEqual(shorterTokens) {
+                return shorterTokens.count == 1 ? 0.86 : 0.94
+            }
+        }
+
+        return nil
     }
 
     private func levenshtein(_ left: String, _ right: String) -> Int {
@@ -276,6 +315,10 @@ private extension String {
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { !$0.isEmpty }
             .joined(separator: " ")
+    }
+
+    var tokens: [String] {
+        split(separator: " ").map(String.init)
     }
 
     var normalizedToken: String {
