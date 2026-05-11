@@ -426,7 +426,7 @@ public final class LiveRecognitionSyncModel {
                     nowMS: update.latestRecordedTimeMS
                 ) + update.queryEndpointToReceiveLatencyMS,
                 durationMS: referenceSummary?.durationMS,
-                anchoredAt: update.receivedAt
+                anchorHostTimeMS: update.receivedHostTimeMS
             )
         }
         ambientUpdateCount += 1
@@ -455,7 +455,7 @@ public final class LiveRecognitionSyncModel {
             AmbientReferencePlaybackAnchor(
                 referenceTimeAtAnchorMS: $0.referenceTimeMS,
                 durationMS: referenceSummary.durationMS,
-                anchoredAt: Date()
+                anchorHostTimeMS: PulsefieldHostClock.currentTimeMS()
             )
         }
         ambientUpdateCount = updateCount
@@ -559,7 +559,9 @@ public final class LiveRecognitionSyncModel {
                 nowMS: update.latestRecordedTimeMS
             ) + update.queryEndpointToReceiveLatencyMS
         } else {
-            referenceTimeMS = ambientReferencePlaybackAnchor?.referenceTimeMS(at: update.receivedAt)
+            referenceTimeMS = ambientReferencePlaybackAnchor?.referenceTimeMS(
+                atHostTimeMS: update.receivedHostTimeMS
+            )
         }
 
         guard let referenceTimeMS else {
@@ -581,7 +583,7 @@ public final class LiveRecognitionSyncModel {
                 try await inferenceEndpoint.sendReferenceTime(
                     sessionID: sessionID,
                     refTimeMS: referenceTimeMS,
-                    localComputerTimeSendMS: InferenceEndpointLocalClock.localComputerTimeSendMS()
+                    localHostTimeSendMS: PulsefieldHostClock.currentTimeMS()
                 )
                 inferenceEndpointStatus = "Reference time sent; awaiting tokens"
             } catch {
@@ -1147,10 +1149,13 @@ public struct LiveRecognitionSyncWindow: View {
                         metricRow("withheld", reason.rawValue)
                     }
                     if let playbackAnchor = model.ambientReferencePlaybackAnchor {
-                        TimelineView(.periodic(from: .now, by: 0.1)) { context in
+                        TimelineView(.periodic(from: .now, by: 0.1)) { _ in
+                            let referenceSeconds = playbackAnchor.referenceTimeMS(
+                                atHostTimeMS: PulsefieldHostClock.currentTimeMS()
+                            ) / 1_000
                             metricRow(
                                 "reference seconds",
-                                (playbackAnchor.referenceTimeMS(at: context.date) / 1_000).secondsLabel
+                                referenceSeconds.secondsLabel
                             )
                         }
                     }
@@ -1313,7 +1318,7 @@ private actor LiveAmbientSyncRuntime {
     private var engine: AmbientSyncEngine
     private var streamBuffer: MicFeatureStreamBuffer
     private let queryDurationMS: Double
-    private let startedAt = Date()
+    private let startedHostTimeMS = PulsefieldHostClock.currentTimeMS()
 
     init(referenceIndex: AmbientSyncReferenceIndex) {
         let engine = AmbientSyncEngine(referenceIndex: referenceIndex)
@@ -1362,24 +1367,27 @@ private actor LiveAmbientSyncRuntime {
             return nil
         }
 
-        let processStartedAt = Date()
-        let elapsedMS = processStartedAt.timeIntervalSince(startedAt) * 1_000
+        let processStartedHostTimeMS = PulsefieldHostClock.currentTimeMS()
+        let elapsedMS = processStartedHostTimeMS - startedHostTimeMS
         // This full ambient matching pass is CPU-heavy when called for every mic feature batch.
         let snapshot = engine.process(queryWindow: queryWindow, elapsedMS: elapsedMS)
-        let receivedAt = Date()
+        let receivedHostTimeMS = PulsefieldHostClock.currentTimeMS()
         return LiveAmbientSyncUpdate(
             snapshot: snapshot,
             latestRecordedTimeMS: queryWindow.endpointRecordedTimeMS,
             queryEndpointToReceiveLatencyMS: Self.queryEndpointToReceiveLatencyMS(
-                endpointHostTimeMS: queryWindow.endpointHostTimeMS
+                endpointHostTimeMS: queryWindow.endpointHostTimeMS,
+                receivedHostTimeMS: receivedHostTimeMS
             ),
-            receivedAt: receivedAt,
+            receivedHostTimeMS: receivedHostTimeMS,
             frameBatchCount: frames.count
         )
     }
 
-    private static func queryEndpointToReceiveLatencyMS(endpointHostTimeMS: Double) -> Double {
-        let receivedHostTimeMS = ProcessInfo.processInfo.systemUptime * 1_000
+    private static func queryEndpointToReceiveLatencyMS(
+        endpointHostTimeMS: Double,
+        receivedHostTimeMS: Double = PulsefieldHostClock.currentTimeMS()
+    ) -> Double {
         let latencyMS = receivedHostTimeMS - endpointHostTimeMS
         guard latencyMS.isFinite, latencyMS >= 0, latencyMS <= 30_000 else {
             return 0
@@ -1450,23 +1458,23 @@ private struct LiveAmbientSyncUpdate: Sendable {
     let snapshot: AmbientSyncSnapshot
     let latestRecordedTimeMS: Double
     let queryEndpointToReceiveLatencyMS: Double
-    let receivedAt: Date
+    let receivedHostTimeMS: Double
     let frameBatchCount: Int
 }
 
 public struct AmbientReferencePlaybackAnchor: Equatable, Sendable {
     public let referenceTimeAtAnchorMS: Double
     public let durationMS: Int?
-    public let anchoredAt: Date
+    public let anchorHostTimeMS: Double
 
-    public init(referenceTimeAtAnchorMS: Double, durationMS: Int? = nil, anchoredAt: Date) {
+    public init(referenceTimeAtAnchorMS: Double, durationMS: Int? = nil, anchorHostTimeMS: Double) {
         self.referenceTimeAtAnchorMS = referenceTimeAtAnchorMS
         self.durationMS = durationMS
-        self.anchoredAt = anchoredAt
+        self.anchorHostTimeMS = anchorHostTimeMS
     }
 
-    public func referenceTimeMS(at date: Date) -> Double {
-        let projectedTimeMS = max(0, referenceTimeAtAnchorMS + date.timeIntervalSince(anchoredAt) * 1_000)
+    public func referenceTimeMS(atHostTimeMS hostTimeMS: Double) -> Double {
+        let projectedTimeMS = max(0, referenceTimeAtAnchorMS + hostTimeMS - anchorHostTimeMS)
         guard let durationMS else {
             return projectedTimeMS
         }

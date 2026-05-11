@@ -44,15 +44,15 @@ final class LiveRecognitionSyncModelTests: XCTestCase {
     }
 
     func testAmbientReferencePlaybackAnchorClampsAtTrackDuration() {
-        let anchoredAt = Date(timeIntervalSinceReferenceDate: 1_000)
+        let anchorHostTimeMS = 1_000_000.0
         let anchor = AmbientReferencePlaybackAnchor(
             referenceTimeAtAnchorMS: 179_500,
             durationMS: 180_000,
-            anchoredAt: anchoredAt
+            anchorHostTimeMS: anchorHostTimeMS
         )
 
-        XCTAssertEqual(anchor.referenceTimeMS(at: anchoredAt.addingTimeInterval(0.25)), 179_750)
-        XCTAssertEqual(anchor.referenceTimeMS(at: anchoredAt.addingTimeInterval(2)), 180_000)
+        XCTAssertEqual(anchor.referenceTimeMS(atHostTimeMS: anchorHostTimeMS + 250), 179_750)
+        XCTAssertEqual(anchor.referenceTimeMS(atHostTimeMS: anchorHostTimeMS + 2_000), 180_000)
     }
 }
 #endif

@@ -1,5 +1,11 @@
 import Foundation
 
+public enum PulsefieldHostClock {
+    public static func currentTimeMS() -> Double {
+        ProcessInfo.processInfo.systemUptime * 1_000
+    }
+}
+
 public struct MicAudioChunk: Equatable, Sendable {
     public let monoSamples: [Float]
     public let sampleRate: Double

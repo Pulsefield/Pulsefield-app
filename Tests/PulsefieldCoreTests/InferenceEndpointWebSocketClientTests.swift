@@ -2,7 +2,7 @@ import XCTest
 @testable import PulsefieldCore
 
 final class InferenceEndpointWebSocketClientTests: XCTestCase {
-    func testAudioPathMessageUsesFlatProtocolKeys() throws {
+    func testAudioPathMessageUsesFlatProtocolKeysAndDefaultDifficulty() throws {
         let message = InferenceEndpointOutgoingMessage.audioPath("/Users/ken/audio/song1.wav", sessionID: "session-1")
         let data = try JSONEncoder().encode(message)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
@@ -10,13 +10,26 @@ final class InferenceEndpointWebSocketClientTests: XCTestCase {
         XCTAssertEqual(json["type"] as? String, "audio_path")
         XCTAssertEqual(json["audio_path"] as? String, "/Users/ken/audio/song1.wav")
         XCTAssertEqual(json["session_id"] as? String, "session-1")
+        XCTAssertEqual(json["difficulty"] as? Double, 4.0)
     }
 
-    func testReferenceTimeMessageIncludesLocalSendTime() throws {
+    func testAudioPathMessageUsesConfiguredDifficulty() throws {
+        let message = InferenceEndpointOutgoingMessage.audioPath(
+            "/Users/ken/audio/song1.wav",
+            sessionID: "session-1",
+            configuration: InferenceEndpointConfiguration(difficulty: 5.5)
+        )
+        let data = try JSONEncoder().encode(message)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        XCTAssertEqual(json["difficulty"] as? Double, 5.5)
+    }
+
+    func testReferenceTimeMessageIncludesLocalHostSendTime() throws {
         let message = InferenceEndpointOutgoingMessage.referenceTime(
             sessionID: "session-1",
             refTimeMS: 1_234,
-            localComputerTimeSendMS: 6_789
+            localHostTimeSendMS: 6_789.25
         )
         let data = try JSONEncoder().encode(message)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
@@ -24,7 +37,8 @@ final class InferenceEndpointWebSocketClientTests: XCTestCase {
         XCTAssertEqual(json["type"] as? String, "reference_time")
         XCTAssertEqual(json["session_id"] as? String, "session-1")
         XCTAssertEqual(json["ref_time_ms"] as? Int, 1_234)
-        XCTAssertEqual(json["local_computer_time_send_ms"] as? Int, 6_789)
+        XCTAssertEqual(json["local_host_time_send_ms"] as? Double, 6_789.25)
+        XCTAssertNil(json["difficulty"])
     }
 
     func testHitObjectTokenTupleDecodesAndParsesMapperEventTokenID() throws {
@@ -98,24 +112,5 @@ final class InferenceEndpointWebSocketClientTests: XCTestCase {
         XCTAssertTrue(buffer.append(Mania4KHitObject(lane: .right, timeMs: 2_100, kind: .tap)))
         XCTAssertEqual(buffer.objects.count, 4)
         XCTAssertEqual(buffer.readyWindow, InferenceHitObjectReadyWindow(startTimeMS: 1_000, endTimeMS: 2_100))
-    }
-
-    func testLocalClockUsesMillisecondsSinceLocalMidnight() throws {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 8 * 60 * 60))
-        let date = try XCTUnwrap(calendar.date(from: DateComponents(
-            year: 2026,
-            month: 5,
-            day: 10,
-            hour: 1,
-            minute: 2,
-            second: 3,
-            nanosecond: 400_000_000
-        )))
-
-        XCTAssertEqual(
-            InferenceEndpointLocalClock.localComputerTimeSendMS(now: date, calendar: calendar),
-            3_723_400
-        )
     }
 }

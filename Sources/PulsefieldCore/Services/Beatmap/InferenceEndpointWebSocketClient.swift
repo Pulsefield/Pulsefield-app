@@ -9,12 +9,24 @@ public enum InferenceEndpointMessageType: String, Codable, Sendable {
     case error
 }
 
+public struct InferenceEndpointConfiguration: Equatable, Sendable {
+    public static let defaultDifficulty = 4.0
+    public static let global = InferenceEndpointConfiguration()
+
+    public let difficulty: Double
+
+    public init(difficulty: Double = InferenceEndpointConfiguration.defaultDifficulty) {
+        self.difficulty = difficulty
+    }
+}
+
 public struct InferenceEndpointOutgoingMessage: Encodable, Equatable, Sendable {
     public let type: InferenceEndpointMessageType
     public let audioPath: String?
     public let sessionID: String?
     public let refTimeMS: Int?
-    public let localComputerTimeSendMS: Int?
+    public let localHostTimeSendMS: Double?
+    public let difficulty: Double?
     public let control: String?
 
     enum CodingKeys: String, CodingKey {
@@ -22,7 +34,8 @@ public struct InferenceEndpointOutgoingMessage: Encodable, Equatable, Sendable {
         case audioPath = "audio_path"
         case sessionID = "session_id"
         case refTimeMS = "ref_time_ms"
-        case localComputerTimeSendMS = "local_computer_time_send_ms"
+        case localHostTimeSendMS = "local_host_time_send_ms"
+        case difficulty
         case control
     }
 
@@ -31,14 +44,16 @@ public struct InferenceEndpointOutgoingMessage: Encodable, Equatable, Sendable {
         audioPath: String? = nil,
         sessionID: String? = nil,
         refTimeMS: Int? = nil,
-        localComputerTimeSendMS: Int? = nil,
+        localHostTimeSendMS: Double? = nil,
+        difficulty: Double? = nil,
         control: String? = nil
     ) {
         self.type = type
         self.audioPath = audioPath
         self.sessionID = sessionID
         self.refTimeMS = refTimeMS
-        self.localComputerTimeSendMS = localComputerTimeSendMS
+        self.localHostTimeSendMS = localHostTimeSendMS
+        self.difficulty = difficulty
         self.control = control
     }
 
@@ -46,20 +61,29 @@ public struct InferenceEndpointOutgoingMessage: Encodable, Equatable, Sendable {
         InferenceEndpointOutgoingMessage(type: .ready, control: "ready")
     }
 
-    public static func audioPath(_ audioPath: String, sessionID: String) -> InferenceEndpointOutgoingMessage {
-        InferenceEndpointOutgoingMessage(type: .audioPath, audioPath: audioPath, sessionID: sessionID)
+    public static func audioPath(
+        _ audioPath: String,
+        sessionID: String,
+        configuration: InferenceEndpointConfiguration = .global
+    ) -> InferenceEndpointOutgoingMessage {
+        InferenceEndpointOutgoingMessage(
+            type: .audioPath,
+            audioPath: audioPath,
+            sessionID: sessionID,
+            difficulty: configuration.difficulty
+        )
     }
 
     public static func referenceTime(
         sessionID: String,
         refTimeMS: Double,
-        localComputerTimeSendMS: Int
+        localHostTimeSendMS: Double
     ) -> InferenceEndpointOutgoingMessage {
         InferenceEndpointOutgoingMessage(
             type: .referenceTime,
             sessionID: sessionID,
             refTimeMS: Int(refTimeMS.rounded()),
-            localComputerTimeSendMS: localComputerTimeSendMS
+            localHostTimeSendMS: localHostTimeSendMS
         )
     }
 
@@ -292,22 +316,10 @@ public struct InferenceHitObjectTokenBuffer: Equatable, Sendable {
     }
 }
 
-public enum InferenceEndpointLocalClock {
-    public static func localComputerTimeSendMS(now: Date = Date(), calendar: Calendar = .current) -> Int {
-        // Demo protocol: local wall-clock milliseconds since midnight; cross-day sessions are intentionally out of scope.
-        let components = calendar.dateComponents([.hour, .minute, .second, .nanosecond], from: now)
-        let hourMS = (components.hour ?? 0) * 60 * 60 * 1_000
-        let minuteMS = (components.minute ?? 0) * 60 * 1_000
-        let secondMS = (components.second ?? 0) * 1_000
-        let millisecond = Int((Double(components.nanosecond ?? 0) / 1_000_000).rounded())
-        return hourMS + minuteMS + secondMS + millisecond
-    }
-}
-
 public protocol InferenceEndpointClient: Sendable {
     func prepare() async throws
     func sendAudioPath(_ audioPath: String, sessionID: String) async throws
-    func sendReferenceTime(sessionID: String, refTimeMS: Double, localComputerTimeSendMS: Int) async throws
+    func sendReferenceTime(sessionID: String, refTimeMS: Double, localHostTimeSendMS: Double) async throws
     func stop(sessionID: String) async throws
     func nextEvent() async throws -> InferenceEndpointEvent
 }
@@ -317,12 +329,18 @@ public actor InferenceEndpointWebSocketClient: InferenceEndpointClient {
 
     private let endpointURL: URL
     private let urlSession: URLSession
+    private let configuration: InferenceEndpointConfiguration
     private var task: URLSessionWebSocketTask?
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    public init(endpointURL: URL = InferenceEndpointWebSocketClient.defaultEndpointURL, urlSession: URLSession = .shared) {
+    public init(
+        endpointURL: URL = InferenceEndpointWebSocketClient.defaultEndpointURL,
+        configuration: InferenceEndpointConfiguration = .global,
+        urlSession: URLSession = .shared
+    ) {
         self.endpointURL = endpointURL
+        self.configuration = configuration
         self.urlSession = urlSession
     }
 
@@ -331,18 +349,18 @@ public actor InferenceEndpointWebSocketClient: InferenceEndpointClient {
     }
 
     public func sendAudioPath(_ audioPath: String, sessionID: String) async throws {
-        try await send(.audioPath(audioPath, sessionID: sessionID))
+        try await send(.audioPath(audioPath, sessionID: sessionID, configuration: configuration))
     }
 
     public func sendReferenceTime(
         sessionID: String,
         refTimeMS: Double,
-        localComputerTimeSendMS: Int
+        localHostTimeSendMS: Double
     ) async throws {
         try await send(.referenceTime(
             sessionID: sessionID,
             refTimeMS: refTimeMS,
-            localComputerTimeSendMS: localComputerTimeSendMS
+            localHostTimeSendMS: localHostTimeSendMS
         ))
     }
 
