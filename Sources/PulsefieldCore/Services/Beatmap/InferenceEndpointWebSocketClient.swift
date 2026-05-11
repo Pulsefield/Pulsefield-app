@@ -227,14 +227,64 @@ public struct InferenceHitObjectReadyWindow: Equatable, Sendable {
     }
 }
 
+public struct InferenceHitObjectRenderReadiness: Equatable, Sendable {
+    public let referenceTimeMS: Double
+    public let firstObjectLeadTimeMS: Double
+    public let minimumBufferedDurationMS: Double
+    public let readyWindow: InferenceHitObjectReadyWindow?
+
+    public var requiredFirstObjectTimeMS: Double {
+        referenceTimeMS + firstObjectLeadTimeMS
+    }
+
+    public var bufferedDurationAfterFirstObjectMS: Double {
+        readyWindow?.lengthMS ?? 0
+    }
+
+    public var isReady: Bool {
+        bufferedDurationAfterFirstObjectMS >= minimumBufferedDurationMS
+    }
+}
+
 public struct InferenceHitObjectTokenBuffer: Equatable, Sendable {
     public private(set) var objects: [Mania4KHitObject]
     public private(set) var readyWindow: InferenceHitObjectReadyWindow?
+    public private(set) var minimumAcceptedTimeMS: Double?
+    public private(set) var maximumAcceptedTimeMS: Double?
 
-    public init(objects: [Mania4KHitObject] = []) {
+    public init(
+        objects: [Mania4KHitObject] = [],
+        minimumAcceptedTimeMS: Double? = nil,
+        maximumAcceptedTimeMS: Double? = nil
+    ) {
         self.objects = []
         self.readyWindow = nil
+        self.minimumAcceptedTimeMS = minimumAcceptedTimeMS
+        self.maximumAcceptedTimeMS = maximumAcceptedTimeMS
         append(contentsOf: objects)
+    }
+
+    public mutating func setMinimumAcceptedTimeMS(_ timeMS: Double) {
+        minimumAcceptedTimeMS = timeMS
+        pruneRejectedObjects()
+    }
+
+    public mutating func setMaximumAcceptedTimeMS(_ timeMS: Double) {
+        maximumAcceptedTimeMS = timeMS
+        pruneRejectedObjects()
+    }
+
+    private mutating func pruneRejectedObjects() {
+        let minimumAcceptedTimeMS = minimumAcceptedTimeMS
+        let maximumAcceptedTimeMS = maximumAcceptedTimeMS
+        objects.removeAll { object in
+            !Self.accepts(
+                timeMS: object.timeMs,
+                minimumAcceptedTimeMS: minimumAcceptedTimeMS,
+                maximumAcceptedTimeMS: maximumAcceptedTimeMS
+            )
+        }
+        readyWindow = Self.readyWindow(for: objects)
     }
 
     @discardableResult
@@ -244,7 +294,17 @@ public struct InferenceHitObjectTokenBuffer: Equatable, Sendable {
 
     @discardableResult
     public mutating func append(contentsOf newObjects: [Mania4KHitObject]) -> Bool {
+        let minimumAcceptedTimeMS = minimumAcceptedTimeMS
+        let maximumAcceptedTimeMS = maximumAcceptedTimeMS
         let acceptedObjects = newObjects.filter { object in
+            guard Self.accepts(
+                timeMS: object.timeMs,
+                minimumAcceptedTimeMS: minimumAcceptedTimeMS,
+                maximumAcceptedTimeMS: maximumAcceptedTimeMS
+            ) else {
+                return false
+            }
+
             guard let renderedThroughMS = readyWindow?.endTimeMS else {
                 return true
             }
@@ -261,9 +321,52 @@ public struct InferenceHitObjectTokenBuffer: Equatable, Sendable {
         return true
     }
 
+    @discardableResult
+    fileprivate mutating func appendDirectlyToStreamingBuffer(contentsOf newObjects: [Mania4KHitObject]) -> Bool {
+        let minimumAcceptedTimeMS = minimumAcceptedTimeMS
+        let maximumAcceptedTimeMS = maximumAcceptedTimeMS
+        let acceptedObjects = newObjects.filter { object in
+            Self.accepts(
+                timeMS: object.timeMs,
+                minimumAcceptedTimeMS: minimumAcceptedTimeMS,
+                maximumAcceptedTimeMS: maximumAcceptedTimeMS
+            )
+        }
+
+        guard !acceptedObjects.isEmpty else {
+            return false
+        }
+
+        objects.append(contentsOf: acceptedObjects)
+        readyWindow = Self.readyWindow(for: objects)
+        return true
+    }
+
+    private static func accepts(
+        timeMS: Double,
+        minimumAcceptedTimeMS: Double?,
+        maximumAcceptedTimeMS: Double?
+    ) -> Bool {
+        guard timeMS.isFinite, timeMS >= 0 else {
+            return false
+        }
+
+        if let minimumAcceptedTimeMS, timeMS < minimumAcceptedTimeMS {
+            return false
+        }
+
+        if let maximumAcceptedTimeMS, timeMS > maximumAcceptedTimeMS {
+            return false
+        }
+
+        return true
+    }
+
     public mutating func removeAll() {
         objects.removeAll()
         readyWindow = nil
+        minimumAcceptedTimeMS = nil
+        maximumAcceptedTimeMS = nil
     }
 
     public static func readyWindow(for objects: [Mania4KHitObject]) -> InferenceHitObjectReadyWindow? {
@@ -313,6 +416,264 @@ public struct InferenceHitObjectTokenBuffer: Equatable, Sendable {
             startTimeMS: firstObject.timeMs,
             endTimeMS: latestClosedTimeMS
         )
+    }
+
+    public func renderReadiness(
+        referenceTimeMS: Double,
+        minimumBufferedDurationMS: Double = 5_000,
+        firstObjectLeadTimeMS: Double = 1_000
+    ) -> InferenceHitObjectRenderReadiness {
+        InferenceHitObjectRenderReadiness(
+            referenceTimeMS: referenceTimeMS,
+            firstObjectLeadTimeMS: firstObjectLeadTimeMS,
+            minimumBufferedDurationMS: minimumBufferedDurationMS,
+            readyWindow: Self.readyWindow(
+                for: objects,
+                startingAtOrAfterTimeMS: referenceTimeMS + firstObjectLeadTimeMS
+            )
+        )
+    }
+
+    public static func readyWindow(
+        for objects: [Mania4KHitObject],
+        startingAtOrAfterTimeMS minimumStartTimeMS: Double
+    ) -> InferenceHitObjectReadyWindow? {
+        guard minimumStartTimeMS.isFinite, minimumStartTimeMS >= 0 else {
+            return nil
+        }
+
+        let orderedObjects = streamOrderedObjects(objects)
+        guard !orderedObjects.isEmpty else {
+            return nil
+        }
+
+        var openHolds = Set<Mania4KLane>()
+        var startTimeMS: Double?
+        var latestClosedTimeMS: Double?
+        var index = orderedObjects.startIndex
+
+        while index < orderedObjects.endIndex {
+            let currentTimeMS = orderedObjects[index].timeMs
+            let canStartAtCurrentTime = startTimeMS == nil
+                && currentTimeMS >= minimumStartTimeMS
+                && openHolds.isEmpty
+
+            if canStartAtCurrentTime {
+                startTimeMS = currentTimeMS
+            }
+
+            while index < orderedObjects.endIndex,
+                  orderedObjects[index].timeMs == currentTimeMS {
+                switch orderedObjects[index].kind {
+                case .tap:
+                    break
+                case .holdStart:
+                    openHolds.insert(orderedObjects[index].lane)
+                case .holdEnd:
+                    openHolds.remove(orderedObjects[index].lane)
+                }
+
+                index = orderedObjects.index(after: index)
+            }
+
+            if startTimeMS != nil, openHolds.isEmpty {
+                latestClosedTimeMS = currentTimeMS
+            }
+        }
+
+        guard let startTimeMS, let latestClosedTimeMS else {
+            return nil
+        }
+
+        return InferenceHitObjectReadyWindow(
+            startTimeMS: startTimeMS,
+            endTimeMS: latestClosedTimeMS
+        )
+    }
+
+    fileprivate static func streamOrderedObjects(_ objects: [Mania4KHitObject]) -> [Mania4KHitObject] {
+        objects.enumerated().sorted { left, right in
+            if left.element.timeMs != right.element.timeMs {
+                return left.element.timeMs < right.element.timeMs
+            }
+            if left.element.lane != right.element.lane {
+                return left.element.lane < right.element.lane
+            }
+
+            return left.offset < right.offset
+        }
+        .map(\.element)
+    }
+}
+
+public actor BufferedInferenceMania4KHitObjectStream: Mania4KHitObjectStreaming {
+    public typealias ReferenceTimeProvider = @Sendable () async -> Double?
+
+    private struct EmittedObjectKey: Hashable {
+        let lane: Mania4KLane
+        let timeMS: Double
+        let kind: Int
+
+        init(_ object: Mania4KHitObject) {
+            self.lane = object.lane
+            self.timeMS = object.timeMs
+            switch object.kind {
+            case .tap:
+                self.kind = 0
+            case .holdStart:
+                self.kind = 1
+            case .holdEnd:
+                self.kind = 2
+            }
+        }
+    }
+
+    private let metadata: Mania4KChartMetadata
+    private let minimumBufferedDurationMS: Double
+    private let firstObjectLeadTimeMS: Double
+    private let referenceTimeProvider: ReferenceTimeProvider
+    private var buffer: InferenceHitObjectTokenBuffer
+    private var renderStartWindow: InferenceHitObjectReadyWindow?
+    private var emittedObjectCounts: [EmittedObjectKey: Int] = [:]
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    public init(
+        metadata: Mania4KChartMetadata,
+        minimumAcceptedTimeMS: Double? = nil,
+        maximumAcceptedTimeMS: Double? = nil,
+        minimumBufferedDurationMS: Double = 5_000,
+        firstObjectLeadTimeMS: Double = 1_000,
+        referenceTimeProvider: @escaping ReferenceTimeProvider
+    ) {
+        self.metadata = metadata
+        self.minimumBufferedDurationMS = minimumBufferedDurationMS
+        self.firstObjectLeadTimeMS = firstObjectLeadTimeMS
+        self.referenceTimeProvider = referenceTimeProvider
+        self.buffer = InferenceHitObjectTokenBuffer(
+            minimumAcceptedTimeMS: minimumAcceptedTimeMS,
+            maximumAcceptedTimeMS: maximumAcceptedTimeMS
+        )
+    }
+
+    public func prepare() async throws -> Mania4KChartMetadata {
+        metadata
+    }
+
+    @discardableResult
+    public func append(contentsOf objects: [Mania4KHitObject]) -> Bool {
+        let appended: Bool
+        if renderStartWindow == nil {
+            appended = buffer.append(contentsOf: objects)
+        } else {
+            appended = buffer.appendDirectlyToStreamingBuffer(contentsOf: objects)
+        }
+        if appended {
+            resumeWaiters()
+        }
+        return appended
+    }
+
+    public func setMinimumAcceptedTimeMS(_ timeMS: Double) {
+        buffer.setMinimumAcceptedTimeMS(timeMS)
+        resumeWaiters()
+    }
+
+    public func setMaximumAcceptedTimeMS(_ timeMS: Double) {
+        buffer.setMaximumAcceptedTimeMS(timeMS)
+        resumeWaiters()
+    }
+
+    public func currentRenderReadiness() async -> InferenceHitObjectRenderReadiness? {
+        guard let referenceTimeMS = await referenceTimeProvider() else {
+            return nil
+        }
+
+        return buffer.renderReadiness(
+            referenceTimeMS: referenceTimeMS,
+            minimumBufferedDurationMS: minimumBufferedDurationMS,
+            firstObjectLeadTimeMS: firstObjectLeadTimeMS
+        )
+    }
+
+    public func read(
+        after cursor: Mania4KHitObjectStreamCursor?,
+        throughChartTimeMs: Double,
+        limit: Int
+    ) async throws -> Mania4KHitObjectBatch {
+        try await waitForInitialRenderWindowIfNeeded()
+
+        guard let renderStartWindow else {
+            throw Mania4KPlayFailure.streamFailed("Buffered inference stream has no render start window.")
+        }
+
+        let orderedObjects = InferenceHitObjectTokenBuffer
+            .streamOrderedObjects(buffer.objects)
+            .filter { $0.timeMs >= renderStartWindow.startTimeMS }
+        let safeLimit = max(limit, 1)
+        var skippedObjectCounts: [EmittedObjectKey: Int] = [:]
+        var emitted: [Mania4KHitObject] = []
+
+        for object in orderedObjects {
+            guard object.timeMs <= throughChartTimeMs else {
+                break
+            }
+
+            let key = EmittedObjectKey(object)
+            let alreadyEmittedCount = emittedObjectCounts[key, default: 0]
+            let skippedCount = skippedObjectCounts[key, default: 0]
+            if skippedCount < alreadyEmittedCount {
+                skippedObjectCounts[key] = skippedCount + 1
+                continue
+            }
+
+            emittedObjectCounts[key] = alreadyEmittedCount + 1
+            emitted.append(object)
+
+            if emitted.count >= safeLimit {
+                break
+            }
+        }
+
+        let emittedCount = emittedObjectCounts.values.reduce(0, +)
+        let nextCursor = Mania4KHitObjectStreamCursor(rawValue: String(emittedCount))
+        return Mania4KHitObjectBatch(
+            objects: emitted,
+            nextCursor: nextCursor,
+            completeThroughChartTimeMs: throughChartTimeMs,
+            isEndOfStream: false
+        )
+    }
+
+    private func waitForInitialRenderWindowIfNeeded() async throws {
+        while renderStartWindow == nil {
+            guard let referenceTimeMS = await referenceTimeProvider() else {
+                throw Mania4KPlayFailure.streamFailed("Reference ambient music time is unavailable.")
+            }
+
+            let readiness = buffer.renderReadiness(
+                referenceTimeMS: referenceTimeMS,
+                minimumBufferedDurationMS: minimumBufferedDurationMS,
+                firstObjectLeadTimeMS: firstObjectLeadTimeMS
+            )
+            if readiness.isReady, let readyWindow = readiness.readyWindow {
+                renderStartWindow = readyWindow
+                return
+            }
+
+            await waitForBufferUpdate()
+        }
+    }
+
+    private func waitForBufferUpdate() async {
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    private func resumeWaiters() {
+        let continuations = waiters
+        waiters.removeAll()
+        continuations.forEach { $0.resume() }
     }
 }
 
