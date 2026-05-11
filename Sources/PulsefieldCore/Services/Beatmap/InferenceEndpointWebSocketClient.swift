@@ -347,15 +347,27 @@ public actor InferenceEndpointWebSocketClient: InferenceEndpointClient {
     }
 
     public func stop(sessionID: String) async throws {
+        defer {
+            disconnect()
+        }
         try await send(.stop(sessionID: sessionID))
     }
 
+    public func disconnect() {
+        resetConnection()
+    }
+
     public func nextEvent() async throws -> InferenceEndpointEvent {
-        while true {
-            let message = try await receiveMessage()
-            if let event = try decodeEvent(from: message) {
-                return event
+        do {
+            while true {
+                let message = try await receiveMessage()
+                if let event = try decodeEvent(from: message) {
+                    return event
+                }
             }
+        } catch {
+            resetConnection()
+            throw error
         }
     }
 
@@ -366,12 +378,22 @@ public actor InferenceEndpointWebSocketClient: InferenceEndpointClient {
             throw InferenceEndpointProtocolError.invalidTextFrame
         }
 
-        try await task.send(.string(string))
+        do {
+            try await task.send(.string(string))
+        } catch {
+            resetConnection()
+            throw error
+        }
     }
 
     private func receiveMessage() async throws -> URLSessionWebSocketTask.Message {
         let task = ensureConnected()
-        return try await task.receive()
+        do {
+            return try await task.receive()
+        } catch {
+            resetConnection()
+            throw error
+        }
     }
 
     private func ensureConnected() -> URLSessionWebSocketTask {
@@ -383,6 +405,11 @@ public actor InferenceEndpointWebSocketClient: InferenceEndpointClient {
         task.resume()
         self.task = task
         return task
+    }
+
+    private func resetConnection() {
+        task?.cancel(with: .goingAway, reason: nil)
+        task = nil
     }
 
     private func decodeEvent(from message: URLSessionWebSocketTask.Message) throws -> InferenceEndpointEvent? {
