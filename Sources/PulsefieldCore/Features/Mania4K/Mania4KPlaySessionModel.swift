@@ -43,7 +43,7 @@ public final class Mania4KPlaySessionModel {
         beatmapFileURL: URL? = nil,
         audioFileURL: URL? = nil,
         starDifficulty: Double = 4.0,
-        scrollSpeed: Double = 8.0,
+        scrollSpeed: Double = 16.0,
         globalAudioOffsetMilliseconds: Double = 0,
         judgeDifficulty: Mania4KJudgeDifficulty = .c,
         keyBindings: Mania4KKeyBindingSet = .default,
@@ -192,21 +192,17 @@ public final class Mania4KPlaySessionModel {
             keyboardRouter.reset()
             resetLiveInputLaneStates()
 
-            try await readStream(throughChartTimeMs: max(0, globalAudioOffsetMilliseconds) + scrollTimeMs + 250)
+            let initialChartTimeMs = try await prepareInitialStreamCoverage(expectedGeneration: startGeneration)
             if await abandonStaleStartIfNeeded(startGeneration) {
-                return false
-            }
-            guard streamEnded || streamCompleteThroughChartTimeMs >= max(0, globalAudioOffsetMilliseconds) else {
-                await fail(.streamFailed("The chart stream is not safe through the initial chart time."))
                 return false
             }
 
             if let currentEngine = engine {
                 preparedEngine = currentEngine
             }
-            _ = preparedEngine.advance(to: globalAudioOffsetMilliseconds)
+            _ = preparedEngine.advance(to: initialChartTimeMs)
             engine = preparedEngine
-            publishFrame(chartTimeMs: globalAudioOffsetMilliseconds)
+            publishFrame(chartTimeMs: initialChartTimeMs)
 
             try await audioClock.play()
             if await abandonStaleStartIfNeeded(startGeneration) {
@@ -234,6 +230,32 @@ public final class Mania4KPlaySessionModel {
             await fail(.streamFailed(error.localizedDescription))
             return false
         }
+    }
+
+    private func prepareInitialStreamCoverage(expectedGeneration: UInt64) async throws -> Double {
+        var chartTimeMs = await currentChartTimeMs()
+        try validatePlayStateGeneration(expectedGeneration)
+        try await readStream(
+            throughChartTimeMs: chartTimeMs + scrollTimeMs + 250,
+            expectedGeneration: expectedGeneration
+        )
+        try validatePlayStateGeneration(expectedGeneration)
+
+        let checkedChartTimeMs = await currentChartTimeMs()
+        if checkedChartTimeMs > chartTimeMs {
+            chartTimeMs = checkedChartTimeMs
+            try await readStream(
+                throughChartTimeMs: chartTimeMs + scrollTimeMs + 250,
+                expectedGeneration: expectedGeneration
+            )
+            try validatePlayStateGeneration(expectedGeneration)
+        }
+
+        guard streamEnded || chartTimeMs <= streamCompleteThroughChartTimeMs else {
+            throw Mania4KPlayFailure.streamFailed("The chart stream is not safe through the initial chart time.")
+        }
+
+        return chartTimeMs
     }
 
     public func pause() async {

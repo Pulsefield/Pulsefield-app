@@ -7,7 +7,7 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         let model = Mania4KPlaySessionModel()
 
         XCTAssertEqual(model.starDifficulty, 4.0)
-        XCTAssertEqual(model.scrollSpeed, 8.0)
+        XCTAssertEqual(model.scrollSpeed, 16.0)
         XCTAssertEqual(model.globalAudioOffsetMilliseconds, 0)
         XCTAssertEqual(model.judgeDifficulty, .c)
         XCTAssertEqual(model.keyBindings, .default)
@@ -16,6 +16,31 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         XCTAssertFalse(model.isReadyToStart)
         XCTAssertNil(model.activeConfiguration)
         XCTAssertNil(model.playFrame)
+    }
+
+    func testHostTimeAnchoredClockProjectsFromHostTimeAndClampsAtDuration() async throws {
+        let projectedClock = HostTimeAnchoredMania4KAudioClock(
+            referenceTimeAtAnchorMS: 179_500,
+            durationMS: 180_000,
+            anchorHostTimeMS: 10_000,
+            hostTimeProvider: { 10_250 }
+        )
+
+        let metadata = try await projectedClock.prepare(audioFileURL: URL(fileURLWithPath: "/tmp/audio.mp3"))
+        let projectedTimeMS = await projectedClock.currentAudioTimeMs()
+
+        XCTAssertEqual(metadata.durationMs, 180_000)
+        XCTAssertEqual(projectedTimeMS, 179_750)
+
+        let clampedClock = HostTimeAnchoredMania4KAudioClock(
+            referenceTimeAtAnchorMS: 179_500,
+            durationMS: 180_000,
+            anchorHostTimeMS: 10_000,
+            hostTimeProvider: { 12_000 }
+        )
+        let clampedTimeMS = await clampedClock.currentAudioTimeMs()
+
+        XCTAssertEqual(clampedTimeMS, 180_000)
     }
 
     func testKeyBindingSetNormalizesKeysAndRejectsInvalidUpdates() {
@@ -383,6 +408,23 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         XCTAssertEqual(result.score.perfectCount, 1)
     }
 
+    func testSessionUsesPreparedClockTimeForInitialFrame() async throws {
+        let clock = PreparedTimeMania4KAudioClock(audioTimeMs: 72_000)
+        let stream = try InMemoryMania4KHitObjectStream(objects: [tap(.left, 72_500)])
+        let model = Mania4KPlaySessionModel(
+            audioClock: clock,
+            streamFactory: { _ in stream }
+        )
+        model.selectBeatmapFile(URL(fileURLWithPath: "/tmp/chart.osu"))
+        model.selectAudioFile(URL(fileURLWithPath: "/tmp/audio.mp3"))
+
+        let started = await model.startPlay()
+
+        XCTAssertTrue(started)
+        XCTAssertEqual(model.playFrame?.chartTimeMs, 72_000)
+        XCTAssertEqual(model.playFrame?.visibleObjects.first?.startTimeMs, 72_500)
+    }
+
     func testSessionRejectsInputBeyondStreamWatermark() async throws {
         let clock = FakeMania4KAudioClock()
         let stream = LaggingMania4KHitObjectStream(completeThroughChartTimeMs: 0)
@@ -506,7 +548,7 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         let started = await model.startPlay()
         XCTAssertTrue(started)
 
-        await clock.setAudioTimeMs(1_000)
+        await clock.setAudioTimeMs(2_000)
         let ticked = await model.tick()
 
         XCTAssertFalse(ticked)
@@ -661,7 +703,7 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
     private func modelWithInMemoryChart(
         objects: [Mania4KHitObject],
         clock: FakeMania4KAudioClock = FakeMania4KAudioClock(),
-        scrollSpeed: Double = 8,
+        scrollSpeed: Double = 16,
         globalOffset: Double = 0
     ) throws -> Mania4KPlaySessionModel {
         let stream = try InMemoryMania4KHitObjectStream(objects: objects)
@@ -823,6 +865,39 @@ private actor DelayedFirstCurrentTimeMania4KAudioClock: Mania4KAudioClock {
             try? await Task.sleep(nanoseconds: 60_000_000)
         }
         return 0
+    }
+
+    func isRunning() async -> Bool {
+        running
+    }
+}
+
+private actor PreparedTimeMania4KAudioClock: Mania4KAudioClock {
+    private let audioTimeMs: Double
+    private var running = false
+
+    init(audioTimeMs: Double) {
+        self.audioTimeMs = audioTimeMs
+    }
+
+    func prepare(audioFileURL: URL) async throws -> Mania4KAudioMetadata {
+        Mania4KAudioMetadata(durationMs: nil, title: "Prepared clock")
+    }
+
+    func play() async throws {
+        running = true
+    }
+
+    func pause() async {
+        running = false
+    }
+
+    func stop() async {
+        running = false
+    }
+
+    func currentAudioTimeMs() async -> Double {
+        audioTimeMs
     }
 
     func isRunning() async -> Bool {

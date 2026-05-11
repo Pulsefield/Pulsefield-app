@@ -1,5 +1,5 @@
 ---
-commit: d15db863e9d00e3fd09a550b3b060ceed1e4dd7b
+commit: 4cf1aa81c0b93c6d0b916f360554a15acc89b83c
 title: Streaming Mania 4K Play Experience Spec
 osu_lazer_commit: a0be214d034c48b0b603069dc284b27b9dde5c17
 ---
@@ -37,7 +37,7 @@ osu_lazer_commit: a0be214d034c48b0b603069dc284b27b9dde5c17
 
 - `scroll speed`
 - 范围 `1.0 - 40.0`
-- 默认 `8.0`
+- 默认 `16.0`
 - 精度 `0.1`
 - 内部公式 `scrollTime = 11485 / scrollSpeed`
 - 只影响阅读，不改判定窗
