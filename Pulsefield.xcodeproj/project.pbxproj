@@ -13,6 +13,7 @@
 		06DDCFD6D8C1A39B8B77B06E /* LocalAudioLibraryDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75A5FB5A3BCAE43E8E2A529C /* LocalAudioLibraryDatabase.swift */; };
 		07A450E8EE9DEE0B31550226 /* AmbientSyncDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1174D86E91ECA19D27A820BC /* AmbientSyncDomain.swift */; };
 		0DEE6E284563F3714E560EC2 /* LocalAudioLibraryIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5991A36DCA3E62B56FC958F7 /* LocalAudioLibraryIndexer.swift */; };
+		0FF20CAC48AE2FCF00D82677 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 56EB7BD2459DEAB60737DD1E /* AVFoundation.framework */; };
 		0FF3A89698A64FC665C1EA12 /* RecognitionArchitecture.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEA92F2BB55484B411AD9D77 /* RecognitionArchitecture.swift */; };
 		1215EE4BC8872342795210D3 /* AmbientSyncEngineReadiness.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CCE59D93C716816898ECA27 /* AmbientSyncEngineReadiness.swift */; };
 		1787F44AD3393A1EA967905E /* Mania4KPlaySessionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65931740476AF6B6432DB7FF /* Mania4KPlaySessionModel.swift */; };
@@ -28,6 +29,7 @@
 		30C064BBD9B8963AABD53194 /* RecognitionDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CA7A26E40728ECEA439A0AA /* RecognitionDashboardView.swift */; };
 		31A6BBF55F843FFFBB687B71 /* AmbientMicCaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A2D35858AAF7B1D943363EE /* AmbientMicCaptureTests.swift */; };
 		325788A361B9162DEDC0F928 /* AmbientSyncFixtureRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37A31C8F9E6937A8CA29FAA3 /* AmbientSyncFixtureRecorder.swift */; };
+		329BB535F4258BD08E5083C1 /* DebugACRCloudRecognitionProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB648D517F669CA6872F7086 /* DebugACRCloudRecognitionProviderTests.swift */; };
 		35E05459BA1758B1B7E8477A /* MicFeaturePayloadExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0A2F8B94DABCCF88315C57 /* MicFeaturePayloadExtractor.swift */; };
 		3DFE6B740D0A897B64D2A42C /* LocalTrackResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D16F8F551D7CDA0B98C48AB /* LocalTrackResolver.swift */; };
 		458CB10F9A8F527DE5A4C8F5 /* LocalAudioDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFC2DA5593A0EF4FCF73F870 /* LocalAudioDomain.swift */; };
@@ -39,11 +41,14 @@
 		4B59F19EC0E3380CE1A99D4E /* UnavailableLiveRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C01A60D735C381292553A5F8 /* UnavailableLiveRecognitionService.swift */; };
 		4F7E59C7A3F4EAA4DFCA7F58 /* AmbientSyncReferenceIndexBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C7010027830EEB3B5B09BC4 /* AmbientSyncReferenceIndexBuilder.swift */; };
 		5C3FAFADD702D6CFFE48A72B /* Mania4KPlaySessionModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BAF8E8D435CA620D624CE54 /* Mania4KPlaySessionModelTests.swift */; };
+		5DD258EC07B4CCFF39A77D95 /* LiveRecognitionSyncWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB3AB8BC1BBB70660A5FB599 /* LiveRecognitionSyncWindow.swift */; };
 		6429F19A1E91047DA472D6B7 /* PulsefieldCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		64860B379E78038EE6CF9426 /* PulsefieldCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		64D4C026BA6CA9BC4223E654 /* AmbientSyncEngineLandmarks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 621549848369AB0874642115 /* AmbientSyncEngineLandmarks.swift */; };
 		6F7132E6F6A45979C43029C4 /* LocalAudioMetadataExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 426CF1CB599BC7B1BB2CEAE8 /* LocalAudioMetadataExtractor.swift */; };
+		6FD2A9A3A03105AE1C5CD6B9 /* AudioClipCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B4C1174D9F3E6865C67129B /* AudioClipCaptureService.swift */; };
 		7752F7EAFF1D57B9A8657190 /* RecognitionServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = E522B477DC378F5CF8AB9C4C /* RecognitionServiceProtocol.swift */; };
+		7992421E5B9DD804C89F3EC8 /* PulsefieldCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */; };
 		79A78B41EC226018D2E55F11 /* RecognitionDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE86054D09DCC083F246CB0C /* RecognitionDomain.swift */; };
 		8C51F3CF07D7D1D3CF174AC7 /* MicFeatureStreamBuffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D234442CBC0035196DB3E68C /* MicFeatureStreamBuffer.swift */; };
 		8D87C1D8530DAC119BF60B00 /* AmbientSyncReferenceIndexBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B9C3F3A44ABB51B7D053A8E /* AmbientSyncReferenceIndexBuilderTests.swift */; };
@@ -51,12 +56,14 @@
 		92E245E5EFD540B91AC38971 /* CascadingRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED4A20CA439FE4F3513DB1A2 /* CascadingRecognitionService.swift */; };
 		93DBC35911FB30D2FD45D2A3 /* AmbientSyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95F2ADD1DEF8706D09D7D062 /* AmbientSyncEngine.swift */; };
 		96727F336BF2101E88CF66B9 /* LocalLibraryDashboardModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22D44B66A82BA504E482BC78 /* LocalLibraryDashboardModelTests.swift */; };
+		98A9CC7BE9C640CFB89F0B13 /* LiveRecognitionSyncModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C736284E16814E8A9459D2B1 /* LiveRecognitionSyncModelTests.swift */; };
 		9970F5618E7AF56EB7CF104F /* PulsefieldUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A9C81D865B64C6D256B24F2B /* PulsefieldUI.framework */; };
 		9D8A7FC07558045972D8C6C1 /* MockRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6AE855CD84CDFD620DA302F /* MockRecognitionService.swift */; };
 		9E618892E41288E421193A60 /* PulsefieldCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */; };
 		A1F9D5AADD6F155A28523195 /* AmbientSyncFixtureReplayRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 584518F96762CDD860705275 /* AmbientSyncFixtureReplayRunner.swift */; };
 		A41F9D98E726F466BAE56A03 /* AmbientSyncEngineConfidence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DCF0F7D301319FE2CEB99F3 /* AmbientSyncEngineConfidence.swift */; };
 		A4C0C039BABC46277245ABBF /* PulsefieldiOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEFC56F5F1D0A58C6ED5BD3A /* PulsefieldiOSApp.swift */; };
+		A605FACD749F17FE6650A34B /* DebugACRCloudRecognitionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5149F3075F1D7BEC3BED6F9D /* DebugACRCloudRecognitionProvider.swift */; };
 		AADF3FC7C3908A46B10E1605 /* AmbientSyncReferenceIndexBinaryCacheCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95016FBD95CC37729305B4B1 /* AmbientSyncReferenceIndexBinaryCacheCodec.swift */; };
 		B52D37B2057B4ACE3D7D0F31 /* MicFeatureStreamBufferTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15115A0AE08C960A360BA635 /* MicFeatureStreamBufferTests.swift */; };
 		B63661A777E0A09EB4173E29 /* MicFeaturePayloadExtractorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 958D0935A473AE291732561D /* MicFeaturePayloadExtractorTests.swift */; };
@@ -65,6 +72,7 @@
 		BD468746F52CA58E04FF9274 /* LocalLibraryDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99AB30263F01EF9180745EB6 /* LocalLibraryDashboardView.swift */; };
 		BDDF99E1182F9FACB65B03C9 /* LocalTrackResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE665E134535975B24A1E332 /* LocalTrackResolverTests.swift */; };
 		C2DC4CA9490680BF832B1AA0 /* PulsefieldUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A9C81D865B64C6D256B24F2B /* PulsefieldUI.framework */; };
+		C45C58B04CB3C3A882270F98 /* ACRCloudDebugCLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5C6A5077F9EC9C94C8D6C15 /* ACRCloudDebugCLI.swift */; };
 		C7242914A9F7E1B45C77B347 /* AmbientSyncEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38420A49669BF125346BB2B5 /* AmbientSyncEngineTests.swift */; };
 		CB7D87478FF3F706E7CDF5E4 /* Mania4KNoteRenderLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81CE9B56AE5FDD881A5C4C60 /* Mania4KNoteRenderLayoutTests.swift */; };
 		CF0CF9B20DF566614EDED287 /* PulsefieldUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A9C81D865B64C6D256B24F2B /* PulsefieldUI.framework */; };
@@ -102,6 +110,13 @@
 			remoteInfo = PulsefieldUI;
 		};
 		4A03822B90A54EA2184732F4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F9B722C391474AD55EB39B2E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = ED46F20630734EA83BA6607D;
+			remoteInfo = PulsefieldCore;
+		};
+		58F4227889385C1FDD9FB658 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = F9B722C391474AD55EB39B2E /* Project object */;
 			proxyType = 1;
@@ -192,10 +207,12 @@
 		1E39D534C5F78E05B1D6A45E /* ambient-sync-current-status-and-goals.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "ambient-sync-current-status-and-goals.md"; sourceTree = "<group>"; };
 		1ED00D85508FC1CAA511109B /* LICENSE */ = {isa = PBXFileReference; path = LICENSE; sourceTree = "<group>"; };
 		22D44B66A82BA504E482BC78 /* LocalLibraryDashboardModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLibraryDashboardModelTests.swift; sourceTree = "<group>"; };
+		C736284E16814E8A9459D2B1 /* LiveRecognitionSyncModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRecognitionSyncModelTests.swift; sourceTree = "<group>"; };
 		279883F0FED22764769D789B /* swiftui-guidelines.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "swiftui-guidelines.md"; sourceTree = "<group>"; };
 		29923F0604586898F5BC337B /* LocalMusicDirectoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalMusicDirectoryStore.swift; sourceTree = "<group>"; };
 		29B6C98909AAEFF35D9B16F1 /* recognition-architecture.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "recognition-architecture.md"; sourceTree = "<group>"; };
 		2B9C3F3A44ABB51B7D053A8E /* AmbientSyncReferenceIndexBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncReferenceIndexBuilderTests.swift; sourceTree = "<group>"; };
+		3173DDC419C0938E1D24C676 /* PulsefieldACRCloudDebugCLI */ = {isa = PBXFileReference; includeInIndex = 0; path = PulsefieldACRCloudDebugCLI; sourceTree = BUILT_PRODUCTS_DIR; };
 		32340577D99A930BA703401F /* AmbientSyncEngineGates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncEngineGates.swift; sourceTree = "<group>"; };
 		323DAE9135C600CD9EF24DE1 /* AmbientSyncOffsetTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncOffsetTracker.swift; sourceTree = "<group>"; };
 		333E4D546E88B031812D5CE9 /* mania-4k-ui-scene-research-plan.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "mania-4k-ui-scene-research-plan.md"; sourceTree = "<group>"; };
@@ -208,6 +225,7 @@
 		45ECE8CA145AF5FCACE46022 /* Mania4KDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mania4KDomain.swift; sourceTree = "<group>"; };
 		474F20DF577B176F3D906B6E /* LocalResolveDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalResolveDebugView.swift; sourceTree = "<group>"; };
 		4A37495C7C03786C6C70AF14 /* RecognitionAppModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionAppModelTests.swift; sourceTree = "<group>"; };
+		5149F3075F1D7BEC3BED6F9D /* DebugACRCloudRecognitionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugACRCloudRecognitionProvider.swift; sourceTree = "<group>"; };
 		520996930B6E85E2375D8CC4 /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
 		56EB7BD2459DEAB60737DD1E /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		571E459554DDE450E8EE1726 /* PulsefieldMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PulsefieldMacApp.swift; sourceTree = "<group>"; };
@@ -233,6 +251,7 @@
 		95F2ADD1DEF8706D09D7D062 /* AmbientSyncEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncEngine.swift; sourceTree = "<group>"; };
 		99AB30263F01EF9180745EB6 /* LocalLibraryDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLibraryDashboardView.swift; sourceTree = "<group>"; };
 		9AD875058E105B569F3F3F40 /* UnavailableRecognitionProviderClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnavailableRecognitionProviderClient.swift; sourceTree = "<group>"; };
+		9B4C1174D9F3E6865C67129B /* AudioClipCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioClipCaptureService.swift; sourceTree = "<group>"; };
 		9BAF8E8D435CA620D624CE54 /* Mania4KPlaySessionModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mania4KPlaySessionModelTests.swift; sourceTree = "<group>"; };
 		A387EEA1983387E2E36565AD /* PulsefieldCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = PulsefieldCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		A965E3EAFC5B81B62C56142A /* byo-music-recognition-ambient-matching-spec.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "byo-music-recognition-ambient-matching-spec.md"; sourceTree = "<group>"; };
@@ -241,7 +260,9 @@
 		ABB4A7B3D34FA7A4C3FF6455 /* mania-4k-core-gameplay-contracts.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "mania-4k-core-gameplay-contracts.md"; sourceTree = "<group>"; };
 		AE86054D09DCC083F246CB0C /* RecognitionDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionDomain.swift; sourceTree = "<group>"; };
 		B2E5A4D715D8CFE3E004CF00 /* LocalAudioLibraryIndexerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalAudioLibraryIndexerTests.swift; sourceTree = "<group>"; };
+		B5C6A5077F9EC9C94C8D6C15 /* ACRCloudDebugCLI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACRCloudDebugCLI.swift; sourceTree = "<group>"; };
 		B81A87963031612ECD437EB9 /* mania-4k-judgement-engine-spec.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "mania-4k-judgement-engine-spec.md"; sourceTree = "<group>"; };
+		B9566A07B9B06F55AF2ABF97 /* ambient-sync-cold-index-and-live-lock-status.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "ambient-sync-cold-index-and-live-lock-status.md"; sourceTree = "<group>"; };
 		BC7F35314F8729D151EB7084 /* AmbientMicFeatureStreamService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientMicFeatureStreamService.swift; sourceTree = "<group>"; };
 		BEFC56F5F1D0A58C6ED5BD3A /* PulsefieldiOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PulsefieldiOSApp.swift; sourceTree = "<group>"; };
 		C01A60D735C381292553A5F8 /* UnavailableLiveRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnavailableLiveRecognitionService.swift; sourceTree = "<group>"; };
@@ -251,14 +272,17 @@
 		D2D67BC7541E757C08F1424A /* AmbientSyncFixtureRecorderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncFixtureRecorderView.swift; sourceTree = "<group>"; };
 		D500FFA522E2376979CED6AA /* CanonicalTrackDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanonicalTrackDomain.swift; sourceTree = "<group>"; };
 		D6AE855CD84CDFD620DA302F /* MockRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockRecognitionService.swift; sourceTree = "<group>"; };
+		DB3AB8BC1BBB70660A5FB599 /* LiveRecognitionSyncWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRecognitionSyncWindow.swift; sourceTree = "<group>"; };
 		DF50496D18C3AAD786776BE0 /* AmbientSyncEngineReference.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncEngineReference.swift; sourceTree = "<group>"; };
 		E508A37754B1BA46F8326CE3 /* AmbientSyncOffsetHistogram.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncOffsetHistogram.swift; sourceTree = "<group>"; };
 		E522B477DC378F5CF8AB9C4C /* RecognitionServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionServiceProtocol.swift; sourceTree = "<group>"; };
 		E8F918C570A525B811ACF4FC /* AmbientSyncEngineDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncEngineDiagnostics.swift; sourceTree = "<group>"; };
+		EB648D517F669CA6872F7086 /* DebugACRCloudRecognitionProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugACRCloudRecognitionProviderTests.swift; sourceTree = "<group>"; };
 		EB7AFC1792774B07CAF50615 /* PulsefieldMac.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PulsefieldMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		ED4A20CA439FE4F3513DB1A2 /* CascadingRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CascadingRecognitionService.swift; sourceTree = "<group>"; };
 		EE665E134535975B24A1E332 /* LocalTrackResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalTrackResolverTests.swift; sourceTree = "<group>"; };
 		F45F8208B52EF6BC2629EBDD /* MicrophonePermissionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophonePermissionService.swift; sourceTree = "<group>"; };
+		F9DD7295C58E266CD8B5F1EC /* real-path-recognition-ambient-sync-scene-design.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "real-path-recognition-ambient-sync-scene-design.md"; sourceTree = "<group>"; };
 		FD389549C6F4C934EA3E5197 /* AmbientSyncOffsetHistogramTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncOffsetHistogramTests.swift; sourceTree = "<group>"; };
 		FDEDA6AC9C11275546BCEC3D /* AmbientSyncFixtureReplayRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncFixtureReplayRunnerTests.swift; sourceTree = "<group>"; };
 		FE2945ECBC93B59DE91AC331 /* ambient-sync-fixture-audit-report.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "ambient-sync-fixture-audit-report.md"; sourceTree = "<group>"; };
@@ -310,6 +334,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E3DB934FC93E0632270D617C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7992421E5B9DD804C89F3EC8 /* PulsefieldCore.framework in Frameworks */,
+				0FF20CAC48AE2FCF00D82677 /* AVFoundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -346,6 +379,7 @@
 				E522B477DC378F5CF8AB9C4C /* RecognitionServiceProtocol.swift */,
 				C01A60D735C381292553A5F8 /* UnavailableLiveRecognitionService.swift */,
 				9AD875058E105B569F3F3F40 /* UnavailableRecognitionProviderClient.swift */,
+				D56B1C6B4D1A4A8C4ED41312 /* Live */,
 			);
 			path = Recognition;
 			sourceTree = "<group>";
@@ -365,6 +399,14 @@
 				A477F690D1B4A5D6A1D2554B /* PulsefieldMac */,
 			);
 			path = Apps;
+			sourceTree = "<group>";
+		};
+		370FCB315435AD674B60CFF2 /* ACRCloudDebugCLI */ = {
+			isa = PBXGroup;
+			children = (
+				B5C6A5077F9EC9C94C8D6C15 /* ACRCloudDebugCLI.swift */,
+			);
+			path = ACRCloudDebugCLI;
 			sourceTree = "<group>";
 		};
 		3BEF728EC9AF14CF503B65AD /* PulsefieldUI */ = {
@@ -426,6 +468,7 @@
 				0836D9C79BB52C1F5F0AD1BA /* docs */,
 				8531547808AB3132D551D011 /* Sources */,
 				FDD1267957FCCE37D053068C /* Tests */,
+				8FB32A6A5E7D01FB98D281B6 /* Tools */,
 				5A7DF3A0D35EC3422DBA0737 /* Frameworks */,
 				996234DD38B53E20B19FD62A /* Products */,
 			);
@@ -443,6 +486,7 @@
 		66C8330F5D9315B7523A49AF /* design */ = {
 			isa = PBXGroup;
 			children = (
+				B9566A07B9B06F55AF2ABF97 /* ambient-sync-cold-index-and-live-lock-status.md */,
 				1E39D534C5F78E05B1D6A45E /* ambient-sync-current-status-and-goals.md */,
 				134D91BEAB23321AE335188F /* ambient-sync-engine-design-spec.md */,
 				FE2945ECBC93B59DE91AC331 /* ambient-sync-fixture-audit-report.md */,
@@ -452,6 +496,7 @@
 				ABB4A7B3D34FA7A4C3FF6455 /* mania-4k-core-gameplay-contracts.md */,
 				B81A87963031612ECD437EB9 /* mania-4k-judgement-engine-spec.md */,
 				1566D4A2453B11FD004842DC /* mania-4k-play-experience-design.md */,
+				F9DD7295C58E266CD8B5F1EC /* real-path-recognition-ambient-sync-scene-design.md */,
 				29B6C98909AAEFF35D9B16F1 /* recognition-architecture.md */,
 				279883F0FED22764769D789B /* swiftui-guidelines.md */,
 			);
@@ -478,7 +523,9 @@
 				FD389549C6F4C934EA3E5197 /* AmbientSyncOffsetHistogramTests.swift */,
 				2B9C3F3A44ABB51B7D053A8E /* AmbientSyncReferenceIndexBuilderTests.swift */,
 				A9C0AFD64ABA7C7C86048235 /* CascadingRecognitionServiceTests.swift */,
+				EB648D517F669CA6872F7086 /* DebugACRCloudRecognitionProviderTests.swift */,
 				B2E5A4D715D8CFE3E004CF00 /* LocalAudioLibraryIndexerTests.swift */,
+				C736284E16814E8A9459D2B1 /* LiveRecognitionSyncModelTests.swift */,
 				22D44B66A82BA504E482BC78 /* LocalLibraryDashboardModelTests.swift */,
 				EE665E134535975B24A1E332 /* LocalTrackResolverTests.swift */,
 				81CE9B56AE5FDD881A5C4C60 /* Mania4KNoteRenderLayoutTests.swift */,
@@ -528,6 +575,14 @@
 			path = Sources;
 			sourceTree = "<group>";
 		};
+		8FB32A6A5E7D01FB98D281B6 /* Tools */ = {
+			isa = PBXGroup;
+			children = (
+				370FCB315435AD674B60CFF2 /* ACRCloudDebugCLI */,
+			);
+			path = Tools;
+			sourceTree = "<group>";
+		};
 		90B5ECB7826DB43DCCBB5377 /* Features */ = {
 			isa = PBXGroup;
 			children = (
@@ -548,6 +603,7 @@
 		9856F28F595C97EEE192D7EF /* Recognition */ = {
 			isa = PBXGroup;
 			children = (
+				DB3AB8BC1BBB70660A5FB599 /* LiveRecognitionSyncWindow.swift */,
 				6CA7A26E40728ECEA439A0AA /* RecognitionDashboardView.swift */,
 			);
 			path = Recognition;
@@ -556,6 +612,7 @@
 		996234DD38B53E20B19FD62A /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				3173DDC419C0938E1D24C676 /* PulsefieldACRCloudDebugCLI */,
 				A387EEA1983387E2E36565AD /* PulsefieldCore.framework */,
 				17DCB31FB4118757EAD79704 /* PulsefieldCoreTests.xctest */,
 				6A5DC9D386B2ECD255849946 /* PulsefieldiOS.app */,
@@ -593,6 +650,15 @@
 				1D472204F12C62EEB1A0E71D /* Recognition */,
 			);
 			path = Services;
+			sourceTree = "<group>";
+		};
+		D56B1C6B4D1A4A8C4ED41312 /* Live */ = {
+			isa = PBXGroup;
+			children = (
+				9B4C1174D9F3E6865C67129B /* AudioClipCaptureService.swift */,
+				5149F3075F1D7BEC3BED6F9D /* DebugACRCloudRecognitionProvider.swift */,
+			);
+			path = Live;
 			sourceTree = "<group>";
 		};
 		E883E0B129D3970E0690A2FE /* PulsefieldCore */ = {
@@ -731,6 +797,25 @@
 			productReference = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */;
 			productType = "com.apple.product-type.framework";
 		};
+		F73F61822C07B4C6D3023F63 /* PulsefieldACRCloudDebugCLI */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AADB55DA3DA92927BF86ED07 /* Build configuration list for PBXNativeTarget "PulsefieldACRCloudDebugCLI" */;
+			buildPhases = (
+				43E7D78B5384B9D039291AAE /* Sources */,
+				E3DB934FC93E0632270D617C /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2A233E731432D96EA7DAAD61 /* PBXTargetDependency */,
+			);
+			name = PulsefieldACRCloudDebugCLI;
+			packageProductDependencies = (
+			);
+			productName = PulsefieldACRCloudDebugCLI;
+			productReference = 3173DDC419C0938E1D24C676 /* PulsefieldACRCloudDebugCLI */;
+			productType = "com.apple.product-type.tool";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -755,6 +840,9 @@
 					ED46F20630734EA83BA6607D = {
 						ProvisioningStyle = Automatic;
 					};
+					F73F61822C07B4C6D3023F63 = {
+						ProvisioningStyle = Automatic;
+					};
 				};
 			};
 			buildConfigurationList = BACD41B0B560D9A848CF294E /* Build configuration list for PBXProject "Pulsefield" */;
@@ -771,6 +859,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				F73F61822C07B4C6D3023F63 /* PulsefieldACRCloudDebugCLI */,
 				ED46F20630734EA83BA6607D /* PulsefieldCore */,
 				0CC12B3E30EBEFF66D15DD49 /* PulsefieldCoreTests */,
 				80A6CE1E8D536A3AF42AFE00 /* PulsefieldMac */,
@@ -781,6 +870,14 @@
 /* End PBXProject section */
 
 /* Begin PBXSourcesBuildPhase section */
+		43E7D78B5384B9D039291AAE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C45C58B04CB3C3A882270F98 /* ACRCloudDebugCLI.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5C70F12E66B6EC9CFFAE3817 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -799,7 +896,9 @@
 				2B2DD81F687FAE2980DB05E7 /* AmbientSyncOffsetHistogramTests.swift in Sources */,
 				8D87C1D8530DAC119BF60B00 /* AmbientSyncReferenceIndexBuilderTests.swift in Sources */,
 				2AD790A5ACB1EFFDA192D181 /* CascadingRecognitionServiceTests.swift in Sources */,
+				329BB535F4258BD08E5083C1 /* DebugACRCloudRecognitionProviderTests.swift in Sources */,
 				DDA020C2C77C3D38F434521F /* LocalAudioLibraryIndexerTests.swift in Sources */,
+				98A9CC7BE9C640CFB89F0B13 /* LiveRecognitionSyncModelTests.swift in Sources */,
 				96727F336BF2101E88CF66B9 /* LocalLibraryDashboardModelTests.swift in Sources */,
 				BDDF99E1182F9FACB65B03C9 /* LocalTrackResolverTests.swift in Sources */,
 				CB7D87478FF3F706E7CDF5E4 /* Mania4KNoteRenderLayoutTests.swift in Sources */,
@@ -815,6 +914,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				BC90CBD65B6F79DAED872B3C /* AmbientSyncFixtureRecorderView.swift in Sources */,
+				5DD258EC07B4CCFF39A77D95 /* LiveRecognitionSyncWindow.swift in Sources */,
 				BD468746F52CA58E04FF9274 /* LocalLibraryDashboardView.swift in Sources */,
 				25F021ED2DE8AB9DAEE5A46E /* LocalResolveDebugView.swift in Sources */,
 				FC9C0773A8A231E694B89EB7 /* Mania4KPlayExperienceView.swift in Sources */,
@@ -852,10 +952,12 @@
 				D294F231300A83B5A026CE26 /* AmbientSyncOffsetTracker.swift in Sources */,
 				AADF3FC7C3908A46B10E1605 /* AmbientSyncReferenceIndexBinaryCacheCodec.swift in Sources */,
 				4F7E59C7A3F4EAA4DFCA7F58 /* AmbientSyncReferenceIndexBuilder.swift in Sources */,
+				6FD2A9A3A03105AE1C5CD6B9 /* AudioClipCaptureService.swift in Sources */,
 				E2A8570789AC186771AAE508 /* BeatmapDomain.swift in Sources */,
 				49BD393871163EE821A80748 /* BeatmapGenerationService.swift in Sources */,
 				000CDEB89D978210FC127069 /* CanonicalTrackDomain.swift in Sources */,
 				92E245E5EFD540B91AC38971 /* CascadingRecognitionService.swift in Sources */,
+				A605FACD749F17FE6650A34B /* DebugACRCloudRecognitionProvider.swift in Sources */,
 				458CB10F9A8F527DE5A4C8F5 /* LocalAudioDomain.swift in Sources */,
 				06DDCFD6D8C1A39B8B77B06E /* LocalAudioLibraryDatabase.swift in Sources */,
 				0DEE6E284563F3714E560EC2 /* LocalAudioLibraryIndexer.swift in Sources */,
@@ -895,6 +997,11 @@
 			isa = PBXTargetDependency;
 			target = 400FC4CCC71B995495E6FB73 /* PulsefieldUI */;
 			targetProxy = 157FBE54CD8A7AE99BF7070E /* PBXContainerItemProxy */;
+		};
+		2A233E731432D96EA7DAAD61 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = ED46F20630734EA83BA6607D /* PulsefieldCore */;
+			targetProxy = 58F4227889385C1FDD9FB658 /* PBXContainerItemProxy */;
 		};
 		408D17582B9149ABA62D6FE2 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -1044,6 +1151,21 @@
 			};
 			name = Debug;
 		};
+		5D5A85C1E506912410A5B7D8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path";
+				PRODUCT_BUNDLE_IDENTIFIER = "io.pulsefield.acrcloud-debug-cli";
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				TARGETED_DEVICE_FAMILY = "";
+			};
+			name = Debug;
+		};
 		6161B386FBCF4281817E5498 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1181,6 +1303,20 @@
 			};
 			name = Debug;
 		};
+		8B5BEABCD998EEB1908B3C62 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path";
+				PRODUCT_BUNDLE_IDENTIFIER = "io.pulsefield.acrcloud-debug-cli";
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				TARGETED_DEVICE_FAMILY = "";
+			};
+			name = Release;
+		};
 		90A4BD3106EDC2D1EEB11917 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1289,6 +1425,15 @@
 			buildConfigurations = (
 				4ADF2DDCAE510114277A5DA2 /* Debug */,
 				C89C1DF8B16C890E30D4F3E9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		AADB55DA3DA92927BF86ED07 /* Build configuration list for PBXNativeTarget "PulsefieldACRCloudDebugCLI" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5D5A85C1E506912410A5B7D8 /* Debug */,
+				8B5BEABCD998EEB1908B3C62 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

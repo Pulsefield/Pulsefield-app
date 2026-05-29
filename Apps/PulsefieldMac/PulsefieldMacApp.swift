@@ -6,6 +6,10 @@ import SwiftUI
 @main
 @MainActor
 struct PulsefieldMacApp: App {
+    #if DEBUG
+    @Environment(\.openWindow) private var openWindow
+    #endif
+
     @State private var model: Mania4KPlaySessionModel
 
     init() {
@@ -16,6 +20,23 @@ struct PulsefieldMacApp: App {
         WindowGroup {
             PulsefieldWorkbenchView(maniaModel: model)
         }
+        #if DEBUG
+        .commands {
+            CommandMenu("Debug") {
+                Button("Open Recognition Sync Flow") {
+                    openWindow(id: LiveRecognitionSyncWindow.windowID)
+                }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+            }
+        }
+        #endif
+
+        #if DEBUG
+        Window(LiveRecognitionSyncWindow.windowTitle, id: LiveRecognitionSyncWindow.windowID) {
+            LiveRecognitionSyncWindow(model: .liveDebug())
+        }
+        .defaultSize(width: 980, height: 760)
+        #endif
     }
 
     private static func makeInitialModel() -> Mania4KPlaySessionModel {

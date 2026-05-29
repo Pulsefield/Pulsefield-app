@@ -2,6 +2,10 @@ import PulsefieldCore
 import SwiftUI
 
 public struct PulsefieldWorkbenchView: View {
+    #if os(macOS) && DEBUG
+    @Environment(\.openWindow) private var openWindow
+    #endif
+
     @State private var selection: WorkbenchTab
     @State private var maniaModel: Mania4KPlaySessionModel
     @State private var localLibraryModel: LocalLibraryDashboardModel
@@ -30,6 +34,18 @@ public struct PulsefieldWorkbenchView: View {
                 }
                 .tag(WorkbenchTab.play)
         }
+        #if os(macOS) && DEBUG
+        .toolbar {
+            ToolbarItem {
+                Button {
+                    openWindow(id: LiveRecognitionSyncWindow.windowID)
+                } label: {
+                    Label("Recognition Flow", systemImage: "waveform.badge.magnifyingglass")
+                }
+                .help("Open Recognition Sync Flow")
+            }
+        }
+        #endif
     }
 }
 

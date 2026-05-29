@@ -103,6 +103,23 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.pulsefield.core.tests
 
+  PulsefieldACRCloudDebugCLI:
+    type: tool
+    supportedDestinations:
+      - macOS
+    sources:
+      - path: Tools/ACRCloudDebugCLI
+    dependencies:
+      - target: PulsefieldCore
+      - sdk: AVFoundation.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.pulsefield.acrcloud-debug-cli
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path"
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+
 schemes:
   PulsefieldiOS:
     build:
@@ -120,3 +137,9 @@ schemes:
     test:
       targets:
         - name: PulsefieldCoreTests
+
+  PulsefieldACRCloudDebugCLI:
+    build:
+      targets:
+        PulsefieldACRCloudDebugCLI: all
+        PulsefieldCore: all
