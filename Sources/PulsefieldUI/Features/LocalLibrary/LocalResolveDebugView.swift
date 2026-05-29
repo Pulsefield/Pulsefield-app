@@ -3,11 +3,9 @@ import SwiftUI
 
 public struct LocalResolveDebugView: View {
     @Bindable public var model: LocalLibraryDashboardModel
-    private let onSelectForAmbient: ((LocalAudioAsset) -> Void)?
 
-    public init(model: LocalLibraryDashboardModel, onSelectForAmbient: ((LocalAudioAsset) -> Void)? = nil) {
+    public init(model: LocalLibraryDashboardModel) {
         self.model = model
-        self.onSelectForAmbient = onSelectForAmbient
     }
 
     public var body: some View {
@@ -51,14 +49,6 @@ public struct LocalResolveDebugView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
 
-                            if let onSelectForAmbient, result.canStartAmbientMatching {
-                                Button {
-                                    onSelectForAmbient(result.asset)
-                                } label: {
-                                    Label("Use For Ambient", systemImage: "waveform.and.mic")
-                                }
-                                .buttonStyle(.bordered)
-                            }
                         }
                         .padding(10)
                         .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
@@ -79,12 +69,6 @@ public struct LocalResolveDebugView: View {
                 .textFieldStyle(.roundedBorder)
                 .frame(maxWidth: 360)
         }
-    }
-}
-
-extension LocalResolveResult {
-    var canStartAmbientMatching: Bool {
-        decision != .rejected
     }
 }
 

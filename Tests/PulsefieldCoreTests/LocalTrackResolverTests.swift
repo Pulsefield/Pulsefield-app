@@ -139,7 +139,39 @@ final class LocalTrackResolverTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(results[1].confidence, 0.90)
     }
 
-    func testResolveRejectsTitleOnlyMatch() async throws {
+    func testManualResolveReservesTitleOnlyMatchForConfirmation() async throws {
+        let database = try LocalAudioLibraryDatabase.openInMemory()
+        let directoryID = UUID(uuidString: "00000000-0000-0000-0000-000000000114")!
+        let asset = makeAsset(
+            directoryID: directoryID,
+            title: "Fool's Day",
+            artists: ["Blur"],
+            durationMS: 210_000,
+            fileName: "Blur - Fool's Day.mp3"
+        )
+
+        try await database.upsertDirectory(makeDirectory(id: directoryID))
+        await database.upsertAsset(asset)
+
+        let resolver = LocalTrackResolver(database: database)
+        let results = await resolver.resolve(
+            CanonicalTrack(
+                title: "Fool's Day",
+                artists: [],
+                album: nil,
+                durationMS: nil,
+                isrc: nil,
+                providerIDs: [.init(provider: .manual, value: "manual:fools-day")]
+            )
+        )
+
+        XCTAssertEqual(results.first?.asset.id, asset.id)
+        XCTAssertEqual(results.first?.decision, .requiresUserConfirmation)
+        XCTAssertLessThan(results.first?.confidence ?? 1, 0.70)
+        XCTAssertTrue(results.first?.evidence.contains(.titleExact) == true)
+    }
+
+    func testResolveRejectsTitleOnlyMatchOutsideManualResolveMode() async throws {
         let database = try LocalAudioLibraryDatabase.openInMemory()
         let directoryID = UUID(uuidString: "00000000-0000-0000-0000-000000000103")!
         let asset = makeAsset(
@@ -160,7 +192,7 @@ final class LocalTrackResolverTests: XCTestCase {
                 album: nil,
                 durationMS: nil,
                 isrc: nil,
-                providerIDs: [.init(provider: .manual, value: "manual:intro")]
+                providerIDs: [.init(provider: .acrCloud, value: "acr:intro")]
             )
         )
 

@@ -10,8 +10,7 @@ public actor LocalTrackResolver: LocalTrackResolving {
     }
 
     public func resolve(_ track: CanonicalTrack) async -> [LocalResolveResult] {
-        let candidates = applyAmbiguityPolicy(
-            to: await database.listAssets()
+        let scoredResults = await database.listAssets()
             .filter { $0.status == .ready || $0.status == .metadataPartial }
             .map { score(asset: $0, against: track) }
             .sorted {
@@ -20,6 +19,10 @@ public actor LocalTrackResolver: LocalTrackResolving {
                 }
                 return $0.confidence > $1.confidence
             }
+
+        let candidates = applyManualResolveReservationIfNeeded(
+            to: applyAmbiguityPolicy(to: scoredResults),
+            for: track
         )
 
         if let best = candidates.first {
@@ -135,6 +138,29 @@ public actor LocalTrackResolver: LocalTrackResolving {
                 decision: .requiresUserConfirmation
             )
         }
+    }
+
+    // Temporary dev path: keep one evidenced manual result selectable without changing provider thresholds.
+    private func applyManualResolveReservationIfNeeded(
+        to results: [LocalResolveResult],
+        for track: CanonicalTrack
+    ) -> [LocalResolveResult] {
+        guard track.providerIDs.contains(where: { $0.provider == .manual }),
+              results.allSatisfy({ $0.decision == .rejected }),
+              let best = results.first,
+              best.confidence > 0
+        else {
+            return results
+        }
+
+        var reservedResults = results
+        reservedResults[0] = LocalResolveResult(
+            asset: best.asset,
+            confidence: best.confidence,
+            evidence: best.evidence,
+            decision: .requiresUserConfirmation
+        )
+        return reservedResults
     }
 
     private func decision(for confidence: Double, hasWeakDurationMatch: Bool) -> LocalResolveDecision {

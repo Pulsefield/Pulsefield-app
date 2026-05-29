@@ -70,6 +70,7 @@ targets:
       - path: Sources/PulsefieldCore
     dependencies:
       - sdk: AVFoundation.framework
+      - sdk: Accelerate.framework
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.pulsefield.core

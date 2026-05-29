@@ -16,6 +16,10 @@ public final class LocalLibraryDashboardModel {
     public var resolveResults: [LocalResolveResult] = []
     public var errorMessage: String?
 
+    #if os(macOS)
+    public var ambientFixtureRecorderModel: AmbientSyncFixtureRecorderModel?
+    #endif
+
     @ObservationIgnored
     private let directoryStore: any LocalMusicDirectoryManaging
 
@@ -50,11 +54,17 @@ public final class LocalLibraryDashboardModel {
     }
 
     private static func livePrototype(database: LocalAudioLibraryDatabase) -> LocalLibraryDashboardModel {
-        return LocalLibraryDashboardModel(
+        let model = LocalLibraryDashboardModel(
             directoryStore: LocalMusicDirectoryStore(database: database),
             indexer: LocalAudioLibraryIndexer(database: database),
             resolver: LocalTrackResolver(database: database)
         )
+        #if os(macOS)
+        model.ambientFixtureRecorderModel = AmbientSyncFixtureRecorderModel {
+            await database.listAssets()
+        }
+        #endif
+        return model
     }
 
     public func refresh() {
@@ -122,11 +132,9 @@ public final class LocalLibraryDashboardModel {
 public struct LocalLibraryDashboardView: View {
     @Bindable public var model: LocalLibraryDashboardModel
     @State private var isImportingDirectory = false
-    private let onSelectForAmbient: ((LocalAudioAsset) -> Void)?
 
-    public init(model: LocalLibraryDashboardModel, onSelectForAmbient: ((LocalAudioAsset) -> Void)? = nil) {
+    public init(model: LocalLibraryDashboardModel) {
         self.model = model
-        self.onSelectForAmbient = onSelectForAmbient
     }
 
     public var body: some View {
@@ -136,7 +144,12 @@ public struct LocalLibraryDashboardView: View {
                 controls
                 statusGrid
                 directoriesList
-                LocalResolveDebugView(model: model, onSelectForAmbient: onSelectForAmbient)
+                LocalResolveDebugView(model: model)
+                #if os(macOS)
+                if let ambientFixtureRecorderModel = model.ambientFixtureRecorderModel {
+                    AmbientSyncFixtureRecorderView(model: ambientFixtureRecorderModel)
+                }
+                #endif
             }
             .padding(24)
             .frame(maxWidth: 980, alignment: .leading)
