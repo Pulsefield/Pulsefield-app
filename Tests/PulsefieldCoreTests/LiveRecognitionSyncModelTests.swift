@@ -10,6 +10,7 @@ final class LiveRecognitionSyncModelTests: XCTestCase {
         let summary = AmbientReferenceSummary(
             assetFileName: "track.wav",
             sourceDisplayPath: "/tmp/track.wav",
+            durationMS: 180_000,
             frameCount: 12,
             landmarkCount: 6
         )
@@ -40,6 +41,18 @@ final class LiveRecognitionSyncModelTests: XCTestCase {
         XCTAssertNil(model.latestAmbientSnapshot)
         XCTAssertEqual(model.ambientUpdateCount, 0)
         XCTAssertEqual(model.latestFrameBatchCount, 0)
+    }
+
+    func testAmbientReferencePlaybackAnchorClampsAtTrackDuration() {
+        let anchorHostTimeMS = 1_000_000.0
+        let anchor = AmbientReferencePlaybackAnchor(
+            referenceTimeAtAnchorMS: 179_500,
+            durationMS: 180_000,
+            anchorHostTimeMS: anchorHostTimeMS
+        )
+
+        XCTAssertEqual(anchor.referenceTimeMS(atHostTimeMS: anchorHostTimeMS + 250), 179_750)
+        XCTAssertEqual(anchor.referenceTimeMS(atHostTimeMS: anchorHostTimeMS + 2_000), 180_000)
     }
 }
 #endif

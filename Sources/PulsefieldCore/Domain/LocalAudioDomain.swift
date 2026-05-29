@@ -200,6 +200,7 @@ public enum MatchEvidence: Equatable, Sendable {
     case durationWithinTolerance(deltaMS: Int)
     case titleFuzzy(score: Double)
     case artistFuzzy(score: Double)
+    case albumFuzzy(score: Double)
     case fileNameFuzzy(score: Double)
 }
 

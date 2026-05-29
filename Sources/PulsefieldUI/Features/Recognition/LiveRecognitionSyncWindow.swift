@@ -23,6 +23,12 @@ public final class LiveRecognitionSyncModel {
     public private(set) var ambientReferencePlaybackAnchor: AmbientReferencePlaybackAnchor?
     public private(set) var ambientUpdateCount = 0
     public private(set) var latestFrameBatchCount = 0
+    public private(set) var inferenceEndpointStatus = "Idle"
+    public private(set) var inferenceSessionID: String?
+    public private(set) var inferenceReceivedTokenCount = 0
+    public private(set) var inferenceReadyWindowMS: Double = 0
+    public private(set) var inferenceStreamingStarted = false
+    public private(set) var inferenceLastTokenDescription: String?
 
     public var firstRequestAtText = "3"
     public var requestCadenceText = "1"
@@ -62,6 +68,9 @@ public final class LiveRecognitionSyncModel {
     private let referenceIndexBuilder: AmbientSyncReferenceIndexBuilder
 
     @ObservationIgnored
+    private let inferenceEndpoint: any InferenceEndpointClient
+
+    @ObservationIgnored
     private var environmentValues = ACRCloudFileScanConfiguration.defaultProcessEnvironment()
 
     @ObservationIgnored
@@ -73,23 +82,41 @@ public final class LiveRecognitionSyncModel {
     @ObservationIgnored
     private var ambientSessionID: UUID?
 
+    @ObservationIgnored
+    private var inferenceSetupTask: Task<Void, Never>?
+
+    @ObservationIgnored
+    private var inferenceReceiveTask: Task<Void, Never>?
+
+    @ObservationIgnored
+    private var inferenceTokenBuffer = InferenceHitObjectTokenBuffer()
+
+    @ObservationIgnored
+    private var inferenceReferenceTimeSent = false
+
+    private let inferenceReadyWindowStartThresholdMS: Double = 2_000
+
     public init(
         database: LocalAudioLibraryDatabase,
         permissionService: any MicrophonePermissionProviding = MicrophonePermissionService(),
         captureService: AudioClipCaptureService = AudioClipCaptureService(),
-        referenceIndexBuilder: AmbientSyncReferenceIndexBuilder = AmbientSyncReferenceIndexBuilder()
+        referenceIndexBuilder: AmbientSyncReferenceIndexBuilder = AmbientSyncReferenceIndexBuilder(),
+        inferenceEndpoint: any InferenceEndpointClient = InferenceEndpointWebSocketClient()
     ) {
         self.database = database
         self.permissionService = permissionService
         self.captureService = captureService
         self.resolver = LocalTrackResolver(database: database)
         self.referenceIndexBuilder = referenceIndexBuilder
+        self.inferenceEndpoint = inferenceEndpoint
 
         loadEnvironmentDefaults()
     }
 
     deinit {
         ambientSession?.stop()
+        inferenceSetupTask?.cancel()
+        inferenceReceiveTask?.cancel()
         flowTask?.cancel()
     }
 
@@ -166,6 +193,7 @@ public final class LiveRecognitionSyncModel {
         }
 
         stopAmbientSync(markStopped: true)
+        stopInferenceSession(markStopped: true)
     }
 
     public func resolveManualTrack() {
@@ -318,6 +346,7 @@ public final class LiveRecognitionSyncModel {
 
     private func startAmbientSync(for asset: LocalAudioAsset) async {
         stopAmbientSync(markStopped: false)
+        startInferenceSession(for: asset)
         phase = .buildingReferenceIndex
         statusMessage = "Building ambient reference index"
 
@@ -333,6 +362,7 @@ public final class LiveRecognitionSyncModel {
             referenceSummary = AmbientReferenceSummary(
                 assetFileName: asset.fileName,
                 sourceDisplayPath: referenceIndex.sourceDisplayPath,
+                durationMS: asset.durationMS,
                 frameCount: referenceIndex.frames.count,
                 landmarkCount: referenceIndex.landmarks.count
             )
@@ -394,12 +424,22 @@ public final class LiveRecognitionSyncModel {
                     localReferenceTimeAtQueryMS: estimate.referenceTimeMS,
                     queryEndpointRecordedTimeMS: estimate.queryEndpointRecordedTimeMS,
                     nowMS: update.latestRecordedTimeMS
-                ),
-                anchoredAt: update.receivedAt
+                ) + update.queryEndpointToReceiveLatencyMS,
+                durationMS: referenceSummary?.durationMS,
+                anchorHostTimeMS: update.receivedHostTimeMS
             )
         }
         ambientUpdateCount += 1
         latestFrameBatchCount = update.frameBatchCount
+
+        if update.snapshot.state == .locked, update.snapshot.phase == .final {
+            sendInferenceReferenceTimeAfterLock(update)
+            ambientSessionID = nil
+            ambientSession?.stop()
+            ambientSession = nil
+            phase = .completed
+            statusMessage = "Ambient sync locked"
+        }
     }
 
     #if DEBUG
@@ -414,7 +454,8 @@ public final class LiveRecognitionSyncModel {
         ambientReferencePlaybackAnchor = snapshot.estimate.map {
             AmbientReferencePlaybackAnchor(
                 referenceTimeAtAnchorMS: $0.referenceTimeMS,
-                anchoredAt: Date()
+                durationMS: referenceSummary.durationMS,
+                anchorHostTimeMS: PulsefieldHostClock.currentTimeMS()
             )
         }
         ambientUpdateCount = updateCount
@@ -449,6 +490,7 @@ public final class LiveRecognitionSyncModel {
         ambientSession?.stop()
         ambientSession = nil
         resetAmbientSyncState()
+        stopInferenceSession(markStopped: false)
         refreshLocalLibraryStatus()
     }
 
@@ -464,6 +506,161 @@ public final class LiveRecognitionSyncModel {
                 phase = .idle
             }
         }
+    }
+
+    private func startInferenceSession(for asset: LocalAudioAsset) {
+        stopInferenceSession(markStopped: false)
+
+        let sessionID = UUID().uuidString
+        inferenceSessionID = sessionID
+        inferenceEndpointStatus = "Connecting to \(InferenceEndpointWebSocketClient.defaultEndpointURL.absoluteString)"
+        inferenceReceivedTokenCount = 0
+        inferenceReadyWindowMS = 0
+        inferenceStreamingStarted = false
+        inferenceLastTokenDescription = nil
+        inferenceTokenBuffer.removeAll()
+        inferenceReferenceTimeSent = false
+
+        inferenceReceiveTask = Task { @MainActor [weak self] in
+            await self?.receiveInferenceEvents(sessionID: sessionID)
+        }
+
+        inferenceSetupTask = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            do {
+                try await inferenceEndpoint.prepare()
+                try await inferenceEndpoint.sendAudioPath(asset.displayPath, sessionID: sessionID)
+                guard inferenceSessionID == sessionID else {
+                    return
+                }
+                inferenceEndpointStatus = "Audio path sent; awaiting ambient reference time"
+            } catch {
+                guard inferenceSessionID == sessionID else {
+                    return
+                }
+                inferenceEndpointStatus = "Inference WS setup failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func sendInferenceReferenceTimeAfterLock(_ update: LiveAmbientSyncUpdate) {
+        guard let sessionID = inferenceSessionID, !inferenceReferenceTimeSent else {
+            return
+        }
+
+        let referenceTimeMS: Double?
+        if let estimate = update.snapshot.estimate {
+            referenceTimeMS = AmbientSyncTimeProjection.referenceTimeAtNowMS(
+                localReferenceTimeAtQueryMS: estimate.referenceTimeMS,
+                queryEndpointRecordedTimeMS: estimate.queryEndpointRecordedTimeMS,
+                nowMS: update.latestRecordedTimeMS
+            ) + update.queryEndpointToReceiveLatencyMS
+        } else {
+            referenceTimeMS = ambientReferencePlaybackAnchor?.referenceTimeMS(
+                atHostTimeMS: update.receivedHostTimeMS
+            )
+        }
+
+        guard let referenceTimeMS else {
+            inferenceEndpointStatus = "Ambient locked without a reference time estimate"
+            return
+        }
+
+        inferenceReferenceTimeSent = true
+        inferenceEndpointStatus = "Sending ambient reference time"
+        let setupTask = inferenceSetupTask
+
+        Task { @MainActor [weak self] in
+            await setupTask?.value
+            guard let self, self.inferenceSessionID == sessionID else {
+                return
+            }
+
+            do {
+                try await inferenceEndpoint.sendReferenceTime(
+                    sessionID: sessionID,
+                    refTimeMS: referenceTimeMS,
+                    localHostTimeSendMS: PulsefieldHostClock.currentTimeMS()
+                )
+                inferenceEndpointStatus = "Reference time sent; awaiting tokens"
+            } catch {
+                guard inferenceSessionID == sessionID else {
+                    return
+                }
+                inferenceEndpointStatus = "Reference time send failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func receiveInferenceEvents(sessionID: String) async {
+        do {
+            while !Task.isCancelled {
+                let event = try await inferenceEndpoint.nextEvent()
+                applyInferenceEvent(event, expectedSessionID: sessionID)
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            guard inferenceSessionID == sessionID else {
+                return
+            }
+            inferenceEndpointStatus = "Inference WS receive failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func applyInferenceEvent(_ event: InferenceEndpointEvent, expectedSessionID: String) {
+        switch event {
+        case .hitObjectToken(let token):
+            guard token.sessionID == expectedSessionID,
+                  token.sessionID == inferenceSessionID
+            else {
+                return
+            }
+
+            guard inferenceTokenBuffer.append(contentsOf: token.objects) else {
+                return
+            }
+
+            inferenceReceivedTokenCount += 1
+            inferenceReadyWindowMS = inferenceTokenBuffer.readyWindow?.lengthMS ?? 0
+            inferenceLastTokenDescription = "token_id \(token.tokenID) -> \(token.objects.count) objects @ \(Int(token.timeMS.rounded())) ms"
+
+            if !inferenceStreamingStarted,
+               inferenceReadyWindowMS >= inferenceReadyWindowStartThresholdMS {
+                inferenceStreamingStarted = true
+                inferenceEndpointStatus = "Ready window reached; streaming render can start"
+            } else if inferenceStreamingStarted {
+                inferenceEndpointStatus = "Streaming tokens"
+            } else {
+                inferenceEndpointStatus = "Buffering tokens"
+            }
+        }
+    }
+
+    private func stopInferenceSession(markStopped: Bool) {
+        let sessionID = inferenceSessionID
+        inferenceSessionID = nil
+        inferenceReferenceTimeSent = false
+        inferenceSetupTask?.cancel()
+        inferenceSetupTask = nil
+        inferenceReceiveTask?.cancel()
+        inferenceReceiveTask = nil
+        inferenceTokenBuffer.removeAll()
+        inferenceReceivedTokenCount = 0
+        inferenceReadyWindowMS = 0
+        inferenceStreamingStarted = false
+        inferenceLastTokenDescription = nil
+
+        if let sessionID {
+            Task {
+                try? await inferenceEndpoint.stop(sessionID: sessionID)
+            }
+        }
+
+        inferenceEndpointStatus = markStopped ? "Stopped" : "Idle"
     }
 
     private func fail(_ message: String) {
@@ -741,6 +938,7 @@ public enum LiveRecognitionSyncPhase: String, CaseIterable, Sendable {
 public struct AmbientReferenceSummary: Equatable, Sendable {
     public let assetFileName: String
     public let sourceDisplayPath: String
+    public let durationMS: Int
     public let frameCount: Int
     public let landmarkCount: Int
 }
@@ -766,6 +964,7 @@ public struct LiveRecognitionSyncWindow: View {
                     recognitionSection
                     localResolveSection
                     ambientSyncSection
+                    inferenceEndpointSection
                 }
                 .padding(20)
                 .frame(maxWidth: 980, alignment: .leading)
@@ -932,6 +1131,7 @@ public struct LiveRecognitionSyncWindow: View {
             if let referenceSummary = model.referenceSummary {
                 Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
                     metricRow("asset", referenceSummary.assetFileName)
+                    metricRow("duration", referenceSummary.durationMS.durationLabel)
                     metricRow("frames", "\(referenceSummary.frameCount)")
                     metricRow("landmarks", "\(referenceSummary.landmarkCount)")
                     metricRow("path", referenceSummary.sourceDisplayPath)
@@ -949,10 +1149,13 @@ public struct LiveRecognitionSyncWindow: View {
                         metricRow("withheld", reason.rawValue)
                     }
                     if let playbackAnchor = model.ambientReferencePlaybackAnchor {
-                        TimelineView(.periodic(from: .now, by: 0.1)) { context in
+                        TimelineView(.periodic(from: .now, by: 0.1)) { _ in
+                            let referenceSeconds = playbackAnchor.referenceTimeMS(
+                                atHostTimeMS: PulsefieldHostClock.currentTimeMS()
+                            ) / 1_000
                             metricRow(
                                 "reference seconds",
-                                (playbackAnchor.referenceTimeMS(at: context.date) / 1_000).secondsLabel
+                                referenceSeconds.secondsLabel
                             )
                         }
                     }
@@ -963,6 +1166,28 @@ public struct LiveRecognitionSyncWindow: View {
             } else {
                 Text("Ambient sync has not emitted a snapshot yet.")
                     .foregroundStyle(.secondary)
+            }
+        }
+        .sectionPanel()
+    }
+
+    private var inferenceEndpointSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Inference Endpoint")
+                .font(.headline)
+
+            Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
+                metricRow("url", InferenceEndpointWebSocketClient.defaultEndpointURL.absoluteString)
+                metricRow("status", model.inferenceEndpointStatus)
+                if let sessionID = model.inferenceSessionID {
+                    metricRow("session", sessionID)
+                }
+                metricRow("tokens", "\(model.inferenceReceivedTokenCount)")
+                metricRow("ready window", (model.inferenceReadyWindowMS / 1_000).secondsLabel)
+                metricRow("render stream", model.inferenceStreamingStarted ? "ready" : "buffering")
+                if let token = model.inferenceLastTokenDescription {
+                    metricRow("last token", token)
+                }
             }
         }
         .sectionPanel()
@@ -1093,7 +1318,7 @@ private actor LiveAmbientSyncRuntime {
     private var engine: AmbientSyncEngine
     private var streamBuffer: MicFeatureStreamBuffer
     private let queryDurationMS: Double
-    private let startedAt = Date()
+    private let startedHostTimeMS = PulsefieldHostClock.currentTimeMS()
 
     init(referenceIndex: AmbientSyncReferenceIndex) {
         let engine = AmbientSyncEngine(referenceIndex: referenceIndex)
@@ -1142,16 +1367,33 @@ private actor LiveAmbientSyncRuntime {
             return nil
         }
 
-        let now = Date()
-        let elapsedMS = now.timeIntervalSince(startedAt) * 1_000
+        let processStartedHostTimeMS = PulsefieldHostClock.currentTimeMS()
+        let elapsedMS = processStartedHostTimeMS - startedHostTimeMS
         // This full ambient matching pass is CPU-heavy when called for every mic feature batch.
         let snapshot = engine.process(queryWindow: queryWindow, elapsedMS: elapsedMS)
+        let receivedHostTimeMS = PulsefieldHostClock.currentTimeMS()
         return LiveAmbientSyncUpdate(
             snapshot: snapshot,
             latestRecordedTimeMS: queryWindow.endpointRecordedTimeMS,
-            receivedAt: now,
+            queryEndpointToReceiveLatencyMS: Self.queryEndpointToReceiveLatencyMS(
+                endpointHostTimeMS: queryWindow.endpointHostTimeMS,
+                receivedHostTimeMS: receivedHostTimeMS
+            ),
+            receivedHostTimeMS: receivedHostTimeMS,
             frameBatchCount: frames.count
         )
+    }
+
+    private static func queryEndpointToReceiveLatencyMS(
+        endpointHostTimeMS: Double,
+        receivedHostTimeMS: Double = PulsefieldHostClock.currentTimeMS()
+    ) -> Double {
+        let latencyMS = receivedHostTimeMS - endpointHostTimeMS
+        guard latencyMS.isFinite, latencyMS >= 0, latencyMS <= 30_000 else {
+            return 0
+        }
+
+        return latencyMS
     }
 }
 
@@ -1215,21 +1457,29 @@ private final class LiveAmbientSyncSession: @unchecked Sendable {
 private struct LiveAmbientSyncUpdate: Sendable {
     let snapshot: AmbientSyncSnapshot
     let latestRecordedTimeMS: Double
-    let receivedAt: Date
+    let queryEndpointToReceiveLatencyMS: Double
+    let receivedHostTimeMS: Double
     let frameBatchCount: Int
 }
 
 public struct AmbientReferencePlaybackAnchor: Equatable, Sendable {
     public let referenceTimeAtAnchorMS: Double
-    public let anchoredAt: Date
+    public let durationMS: Int?
+    public let anchorHostTimeMS: Double
 
-    public init(referenceTimeAtAnchorMS: Double, anchoredAt: Date) {
+    public init(referenceTimeAtAnchorMS: Double, durationMS: Int? = nil, anchorHostTimeMS: Double) {
         self.referenceTimeAtAnchorMS = referenceTimeAtAnchorMS
-        self.anchoredAt = anchoredAt
+        self.durationMS = durationMS
+        self.anchorHostTimeMS = anchorHostTimeMS
     }
 
-    public func referenceTimeMS(at date: Date) -> Double {
-        max(0, referenceTimeAtAnchorMS + date.timeIntervalSince(anchoredAt) * 1_000)
+    public func referenceTimeMS(atHostTimeMS hostTimeMS: Double) -> Double {
+        let projectedTimeMS = max(0, referenceTimeAtAnchorMS + hostTimeMS - anchorHostTimeMS)
+        guard let durationMS else {
+            return projectedTimeMS
+        }
+
+        return min(projectedTimeMS, Double(durationMS))
     }
 }
 

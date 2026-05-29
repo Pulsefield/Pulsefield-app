@@ -1,5 +1,5 @@
 ---
-commit: d15db863e9d00e3fd09a550b3b060ceed1e4dd7b
+commit: 4cf1aa81c0b93c6d0b916f360554a15acc89b83c
 title: Mania 4K UI And Scene Research Plan
 source_spec: docs/design/mania-4k-play-experience-design.md
 ---
@@ -49,7 +49,7 @@ Required fields:
 
 - Music title.
 - `osu!mania star difficulty`.
-- Scroll speed, range `1.0...40.0`, default `8.0`, step `0.1`.
+- Scroll speed, range `1.0...40.0`, default `16.0`, step `0.1`.
 - Global audio offset, range `-500 ms...+500 ms`.
 - Judge difficulty segmented control `A / B / C / D / E`, default `C`.
 

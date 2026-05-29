@@ -696,6 +696,59 @@ public actor FakeMania4KAudioClock: Mania4KAudioClock {
     }
 }
 
+public actor HostTimeAnchoredMania4KAudioClock: Mania4KAudioClock {
+    public typealias HostTimeProvider = @Sendable () -> Double
+
+    private let referenceTimeAtAnchorMS: Double
+    private let anchorHostTimeMS: Double
+    private let hostTimeProvider: HostTimeProvider
+    private let metadata: Mania4KAudioMetadata
+    private var running: Bool
+
+    public init(
+        referenceTimeAtAnchorMS: Double,
+        durationMS: Double? = nil,
+        title: String? = nil,
+        anchorHostTimeMS: Double = PulsefieldHostClock.currentTimeMS(),
+        hostTimeProvider: @escaping HostTimeProvider = PulsefieldHostClock.currentTimeMS
+    ) {
+        self.referenceTimeAtAnchorMS = referenceTimeAtAnchorMS
+        self.anchorHostTimeMS = anchorHostTimeMS
+        self.hostTimeProvider = hostTimeProvider
+        self.metadata = Mania4KAudioMetadata(durationMs: durationMS, title: title)
+        self.running = false
+    }
+
+    public func prepare(audioFileURL: URL) async throws -> Mania4KAudioMetadata {
+        metadata
+    }
+
+    public func play() async throws {
+        running = true
+    }
+
+    public func pause() async {
+        running = false
+    }
+
+    public func stop() async {
+        running = false
+    }
+
+    public func currentAudioTimeMs() async -> Double {
+        let projectedTimeMS = referenceTimeAtAnchorMS + hostTimeProvider() - anchorHostTimeMS
+        guard let durationMs = metadata.durationMs else {
+            return max(0, projectedTimeMS)
+        }
+
+        return min(max(0, projectedTimeMS), durationMs)
+    }
+
+    public func isRunning() async -> Bool {
+        running
+    }
+}
+
 public struct Mania4KKeyboardInputRouter: Sendable {
     private var keyBindings: Mania4KKeyBindingSet
     private var pressedLanes: Set<Mania4KLane>

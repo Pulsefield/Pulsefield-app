@@ -215,6 +215,8 @@ private extension MatchEvidence {
             return "title fuzzy \(score.formatted(.number.precision(.fractionLength(2))))"
         case .artistFuzzy(let score):
             return "artist fuzzy \(score.formatted(.number.precision(.fractionLength(2))))"
+        case .albumFuzzy(let score):
+            return "album fuzzy \(score.formatted(.number.precision(.fractionLength(2))))"
         case .fileNameFuzzy(let score):
             return "filename fuzzy \(score.formatted(.number.precision(.fractionLength(2))))"
         }

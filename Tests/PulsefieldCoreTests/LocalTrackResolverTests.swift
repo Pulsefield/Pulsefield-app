@@ -139,6 +139,122 @@ final class LocalTrackResolverTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(results[1].confidence, 0.90)
     }
 
+    func testAcrCloudDurationConfidenceRanksOtherwiseTiedLocalMatches() async throws {
+        let database = try LocalAudioLibraryDatabase.openInMemory()
+        let directoryID = UUID(uuidString: "00000000-0000-0000-0000-000000000115")!
+        let exactDuration = makeAsset(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000215")!,
+            directoryID: directoryID,
+            title: "Signal",
+            artists: ["Pulsefield"],
+            durationMS: 180_000,
+            fileName: "signal-album-version.mp3"
+        )
+        let looseDuration = makeAsset(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000216")!,
+            directoryID: directoryID,
+            title: "Signal",
+            artists: ["Pulsefield"],
+            durationMS: 181_900,
+            fileName: "signal-radio-edit.mp3"
+        )
+
+        try await database.upsertDirectory(makeDirectory(id: directoryID))
+        await database.upsertAsset(looseDuration)
+        await database.upsertAsset(exactDuration)
+
+        let resolver = LocalTrackResolver(database: database)
+        let results = await resolver.resolve(
+            CanonicalTrack(
+                title: "Signal",
+                artists: ["Pulsefield"],
+                album: nil,
+                durationMS: 180_000,
+                isrc: nil,
+                providerIDs: [.init(provider: .acrCloud, value: "acr:signal")]
+            )
+        )
+
+        XCTAssertEqual(results.first?.asset.id, exactDuration.id)
+        XCTAssertEqual(results.first?.decision, .autoAccepted)
+        XCTAssertEqual(results.first?.evidence, [
+            .titleExact,
+            .artistExact,
+            .durationWithinTolerance(deltaMS: 0),
+            .fileNameFuzzy(score: 1)
+        ])
+        XCTAssertGreaterThan(
+            (results.first?.confidence ?? 0) - (results.dropFirst().first?.confidence ?? 0),
+            0.03
+        )
+    }
+
+    func testDurationConfidenceChangesSmoothlyAcrossToleranceEdges() async throws {
+        let database = try LocalAudioLibraryDatabase.openInMemory()
+        let directoryID = UUID(uuidString: "00000000-0000-0000-0000-000000000116")!
+        let twoSecondEdge = makeAsset(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000217")!,
+            directoryID: directoryID,
+            title: "Signal",
+            artists: ["Pulsefield"],
+            durationMS: 182_000,
+            fileName: "signal-2000.mp3"
+        )
+        let justPastTwoSeconds = makeAsset(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000218")!,
+            directoryID: directoryID,
+            title: "Signal",
+            artists: ["Pulsefield"],
+            durationMS: 182_001,
+            fileName: "signal-2001.mp3"
+        )
+        let eightSecondEdge = makeAsset(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000219")!,
+            directoryID: directoryID,
+            title: "Signal",
+            artists: ["Pulsefield"],
+            durationMS: 188_000,
+            fileName: "signal-8000.mp3"
+        )
+        let justPastEightSeconds = makeAsset(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000220")!,
+            directoryID: directoryID,
+            title: "Signal",
+            artists: ["Pulsefield"],
+            durationMS: 188_001,
+            fileName: "signal-8001.mp3"
+        )
+
+        try await database.upsertDirectory(makeDirectory(id: directoryID))
+        for asset in [twoSecondEdge, justPastTwoSeconds, eightSecondEdge, justPastEightSeconds] {
+            await database.upsertAsset(asset)
+        }
+
+        let resolver = LocalTrackResolver(database: database)
+        let results = await resolver.resolve(
+            CanonicalTrack(
+                title: "Signal",
+                artists: ["Pulsefield"],
+                album: nil,
+                durationMS: 180_000,
+                isrc: nil,
+                providerIDs: [.init(provider: .acrCloud, value: "acr:signal")]
+            )
+        )
+        let confidenceByID = Dictionary(uniqueKeysWithValues: results.map { ($0.asset.id, $0.confidence) })
+
+        XCTAssertEqual(
+            confidenceByID[twoSecondEdge.id] ?? 0,
+            confidenceByID[justPastTwoSeconds.id] ?? 1,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            confidenceByID[eightSecondEdge.id] ?? 0,
+            confidenceByID[justPastEightSeconds.id] ?? 1,
+            accuracy: 0.001
+        )
+    }
+
     func testManualResolveReservesTitleOnlyMatchForConfirmation() async throws {
         let database = try LocalAudioLibraryDatabase.openInMemory()
         let directoryID = UUID(uuidString: "00000000-0000-0000-0000-000000000114")!
@@ -199,6 +315,114 @@ final class LocalTrackResolverTests: XCTestCase {
         XCTAssertEqual(results.first?.asset.id, asset.id)
         XCTAssertEqual(results.first?.decision, .rejected)
         XCTAssertLessThan(results.first?.confidence ?? 1, 0.70)
+    }
+
+    func testResolveUsesTokenSubsetForQualifiedMetadata() async throws {
+        let database = try LocalAudioLibraryDatabase.openInMemory()
+        let directoryID = UUID(uuidString: "00000000-0000-0000-0000-000000000117")!
+        let asset = makeAsset(
+            directoryID: directoryID,
+            title: "Night Drive (2019 Remaster)",
+            artists: ["Pulsefield feat. Nova"],
+            durationMS: 180_000,
+            album: "Late Signals (Deluxe Edition)"
+        )
+
+        try await database.upsertDirectory(makeDirectory(id: directoryID))
+        await database.upsertAsset(asset)
+
+        let resolver = LocalTrackResolver(database: database)
+        let results = await resolver.resolve(
+            CanonicalTrack(
+                title: "Night Drive",
+                artists: ["Pulsefield"],
+                album: "Late Signals",
+                durationMS: 180_000,
+                isrc: nil,
+                providerIDs: [.init(provider: .acrCloud, value: "acr:night-drive")]
+            )
+        )
+
+        XCTAssertEqual(results.first?.asset.id, asset.id)
+        XCTAssertEqual(results.first?.decision, .requiresUserConfirmation)
+        XCTAssertTrue(results.first?.evidence.contains { evidence in
+            if case .titleFuzzy(let score) = evidence, score >= 0.90 {
+                return true
+            }
+            return false
+        } == true)
+        XCTAssertTrue(results.first?.evidence.contains { evidence in
+            if case .artistFuzzy(let score) = evidence, score >= 0.90 {
+                return true
+            }
+            return false
+        } == true)
+        XCTAssertTrue(results.first?.evidence.contains { evidence in
+            if case .albumFuzzy(let score) = evidence, score >= 0.90 {
+                return true
+            }
+            return false
+        } == true)
+    }
+
+    func testResolveSplitsDelimitedAssetArtistsIntoExactGroups() async throws {
+        let database = try LocalAudioLibraryDatabase.openInMemory()
+        let directoryID = UUID(uuidString: "00000000-0000-0000-0000-000000000118")!
+        let asset = makeAsset(
+            directoryID: directoryID,
+            title: "Shared Signal",
+            artists: ["DJ Okawari / Emily Styler, Akiko"],
+            durationMS: 180_000
+        )
+
+        try await database.upsertDirectory(makeDirectory(id: directoryID))
+        await database.upsertAsset(asset)
+
+        let resolver = LocalTrackResolver(database: database)
+        let results = await resolver.resolve(
+            CanonicalTrack(
+                title: "Shared Signal",
+                artists: ["Emily Styler"],
+                album: nil,
+                durationMS: 180_000,
+                isrc: nil,
+                providerIDs: [.init(provider: .acrCloud, value: "acr:shared-signal")]
+            )
+        )
+
+        XCTAssertEqual(results.first?.asset.id, asset.id)
+        XCTAssertEqual(results.first?.decision, .autoAccepted)
+        XCTAssertTrue(results.first?.evidence.contains(.artistExact) == true)
+    }
+
+    func testResolveSplitsDelimitedQueryArtistsIntoExactGroups() async throws {
+        let database = try LocalAudioLibraryDatabase.openInMemory()
+        let directoryID = UUID(uuidString: "00000000-0000-0000-0000-000000000119")!
+        let asset = makeAsset(
+            directoryID: directoryID,
+            title: "Shared Signal",
+            artists: ["Emily Styler"],
+            durationMS: 180_000
+        )
+
+        try await database.upsertDirectory(makeDirectory(id: directoryID))
+        await database.upsertAsset(asset)
+
+        let resolver = LocalTrackResolver(database: database)
+        let results = await resolver.resolve(
+            CanonicalTrack(
+                title: "Shared Signal",
+                artists: ["DJ Okawari / Emily Styler, Akiko"],
+                album: nil,
+                durationMS: 180_000,
+                isrc: nil,
+                providerIDs: [.init(provider: .acrCloud, value: "acr:shared-signal")]
+            )
+        )
+
+        XCTAssertEqual(results.first?.asset.id, asset.id)
+        XCTAssertEqual(results.first?.decision, .autoAccepted)
+        XCTAssertTrue(results.first?.evidence.contains(.artistExact) == true)
     }
 
     func testResolveRequiresConfirmationForFilenameAndDurationWhenMetadataIsMissing() async throws {
