@@ -18,7 +18,10 @@ struct PulsefieldMacApp: App {
 
     var body: some Scene {
         WindowGroup {
-            PulsefieldWorkbenchView(maniaModel: model)
+            PulsefieldWorkbenchView(
+                maniaModel: model,
+                initialSelection: model.isReadyToStart ? .play : .localLibrary
+            )
         }
         #if DEBUG
         .commands {
@@ -42,9 +45,9 @@ struct PulsefieldMacApp: App {
     private static func makeInitialModel() -> Mania4KPlaySessionModel {
         #if DEBUG
         let beatmapURL = URL(
-            fileURLWithPath: "/Users/l/projects/Mapperatorinator/mania-dataset/0/136986/Lia - My Soul, Your Beats! (TV Size) (DJPop) [4K SC].osu"
+            fileURLWithPath: "/Users/l/projects/Pulsefield-model/dataset/0/120289/Dj Mashiro - Prismatic Lollipops (victorica_db) [S.Star's 4K Lv.7].osu"
         )
-        let audioURL = URL(fileURLWithPath: "/Users/l/projects/Mapperatorinator/mania-dataset/0/136986/bgm.mp3")
+        let audioURL = URL(fileURLWithPath: "/Users/l/projects/Pulsefield-model/dataset/0/120289/Prismatic Lollipops.mp3")
 
         if FileManager.default.fileExists(atPath: beatmapURL.path),
            FileManager.default.fileExists(atPath: audioURL.path) {

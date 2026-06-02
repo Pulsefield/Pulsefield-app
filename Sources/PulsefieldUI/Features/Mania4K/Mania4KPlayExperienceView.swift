@@ -556,7 +556,7 @@ private struct Mania4KPlaySceneView: View {
                         .padding(.bottom, 22)
 
                     if let frame = model.playFrame, let latest = frame.latestJudgement {
-                        judgementBurst(latest.judgement.rawValue)
+                        judgementBurst(for: latest)
                             .position(x: proxy.size.width / 2, y: max(proxy.size.height * 0.34, 120))
                     }
 
@@ -746,11 +746,35 @@ private struct Mania4KPlaySceneView: View {
         )
     }
 
-    private func judgementBurst(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 34, weight: .black, design: .rounded))
-            .foregroundStyle(text == "Miss" ? Mania4KStyle.accentRed : Mania4KStyle.textPrimary)
-            .shadow(color: Color.black.opacity(0.45), radius: 12, x: 0, y: 8)
+    private func judgementBurst(for event: Mania4KJudgementEvent) -> some View {
+        ZStack {
+            Text(event.judgement.rawValue)
+                .font(.system(size: 34, weight: .black, design: .rounded))
+                .foregroundStyle(event.judgement == .miss ? Mania4KStyle.accentRed : Mania4KStyle.textPrimary)
+                .shadow(color: Color.black.opacity(0.45), radius: 12, x: 0, y: 8)
+
+            if let hint = timingArrowHint(for: event) {
+                Image(systemName: hint.systemName)
+                    .font(.system(size: 22, weight: .black, design: .rounded))
+                    .foregroundStyle(hint.color)
+                    .shadow(color: Color.black.opacity(0.36), radius: 8, x: 0, y: 4)
+                    .offset(x: 82)
+            }
+        }
+        .frame(width: 210, height: 56)
+    }
+
+    private func timingArrowHint(for event: Mania4KJudgementEvent) -> (systemName: String, color: Color)? {
+        guard event.judgement == .perfect || event.judgement == .good,
+              let hitErrorMs = event.hitErrorMs,
+              hitErrorMs != 0
+        else {
+            return nil
+        }
+
+        return hitErrorMs < 0
+            ? ("arrow.up", Mania4KStyle.accentBlue)
+            : ("arrow.down", Mania4KStyle.accentAmber)
     }
 
     private func playFieldWidth(for availableWidth: CGFloat) -> CGFloat {
