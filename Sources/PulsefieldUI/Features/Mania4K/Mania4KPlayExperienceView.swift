@@ -58,6 +58,7 @@ private struct Mania4KSetupView: View {
                 if let offsetCalibrationModel {
                     Mania4KOffsetCalibrationView(
                         model: offsetCalibrationModel,
+                        scrollTimeMs: model.scrollTimeMs,
                         onStateChanged: { state in
                             persistCalibrationState(state)
                         },
@@ -620,6 +621,7 @@ private enum Mania4KOffsetCalibrationFocusedTextField: Hashable {
 
 private struct Mania4KOffsetCalibrationView: View {
     @Bindable var model: Mania4KOffsetCalibrationModel
+    let scrollTimeMs: Double
     let onStateChanged: (Mania4KOffsetCalibrationStoredState) -> Void
     let onApply: (Mania4KOffsetCalibrationModel) -> Void
     let onCancel: (Mania4KOffsetCalibrationModel) -> Void
@@ -632,7 +634,6 @@ private struct Mania4KOffsetCalibrationView: View {
 
     private let calibrationLane: Mania4KLane = .innerRight
     private let calibrationPrewarmDelayMs = 120
-    private let calibrationScrollTimeMs = 1_200.0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -865,10 +866,10 @@ private struct Mania4KOffsetCalibrationView: View {
     private var calibrationFrame: Mania4KPlayFrame {
         Mania4KPlayFrame(
             chartTimeMs: Double(model.renderedChartTimeMs),
-            scrollTimeMs: calibrationScrollTimeMs,
+            scrollTimeMs: scrollTimeMs,
             metadata: Mania4KChartMetadata(title: "Offset calibration", sourceDescription: "Synthetic"),
             visibleObjects: model.visibleObjects(
-                travelTimeMs: calibrationScrollTimeMs,
+                travelTimeMs: scrollTimeMs,
                 postLineVisibleMs: 280,
                 lookaheadPaddingMs: 120,
                 lane: calibrationLane
@@ -1145,16 +1146,18 @@ private struct Mania4KOffsetCalibrationKeyboardCaptureView: NSViewRepresentable 
     }
 
     func updateNSView(_ nsView: KeyboardView, context: Context) {
+        let wasCaptureEnabled = nsView.isCaptureEnabled
         nsView.calibrationKey = Mania4KKeyBindingSet.normalizedKey(calibrationKey)
         nsView.isCaptureEnabled = isCaptureEnabled
         nsView.onHit = onHit
-        nsView.requestFirstResponderIfNeeded()
+        nsView.requestFirstResponderIfNeeded(allowTextEditingResponder: !wasCaptureEnabled && isCaptureEnabled)
     }
 
     final class KeyboardView: NSView {
         var calibrationKey = Mania4KOffsetCalibrationModel.calibrationKey
         var isCaptureEnabled = true
         var onHit: (() -> Void)?
+        private var didRequestInitialFirstResponder = false
 
         override var acceptsFirstResponder: Bool {
             true
@@ -1162,11 +1165,17 @@ private struct Mania4KOffsetCalibrationKeyboardCaptureView: NSViewRepresentable 
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            requestFirstResponderIfNeeded()
+            guard window != nil, !didRequestInitialFirstResponder else {
+                return
+            }
+
+            didRequestInitialFirstResponder = true
+            requestFirstResponderIfNeeded(allowTextEditingResponder: true)
         }
 
         override func keyDown(with event: NSEvent) {
-            guard !event.isARepeat,
+            guard isCaptureEnabled,
+                  !event.isARepeat,
                   let key = event.charactersIgnoringModifiers,
                   Mania4KKeyBindingSet.normalizedKey(key) == calibrationKey else {
                 super.keyDown(with: event)
@@ -1176,11 +1185,11 @@ private struct Mania4KOffsetCalibrationKeyboardCaptureView: NSViewRepresentable 
             onHit?()
         }
 
-        func requestFirstResponderIfNeeded() {
+        func requestFirstResponderIfNeeded(allowTextEditingResponder: Bool = false) {
             guard isCaptureEnabled,
                   let window,
                   window.firstResponder !== self,
-                  !Self.isTextEditingResponder(window.firstResponder)
+                  allowTextEditingResponder || !Self.isTextEditingResponder(window.firstResponder)
             else {
                 return
             }
@@ -1190,7 +1199,7 @@ private struct Mania4KOffsetCalibrationKeyboardCaptureView: NSViewRepresentable 
                       self.isCaptureEnabled,
                       let window = self.window,
                       window.firstResponder !== self,
-                      !Self.isTextEditingResponder(window.firstResponder)
+                      allowTextEditingResponder || !Self.isTextEditingResponder(window.firstResponder)
                 else {
                     return
                 }
