@@ -1,5 +1,5 @@
 ---
-commit: 547b201a67fddc0de2a95a67662d248e49f8f9aa
+commit: 3a45fbf4419d28b6264c2f83c84df48f3948faaa
 title: Mania 4K Core Gameplay Contracts
 status: proposed
 source_specs:
@@ -25,7 +25,7 @@ The frozen judgement behavior in `docs/design/mania-4k-judgement-engine-spec.md`
 
 ## Design Principles
 
-1. Audio time is the source of truth. The session layer derives `chartTimeMs = audioTimeMs + globalAudioOffsetMilliseconds`.
+1. Audio time is the source of truth. The session layer derives `gameplayChartTimeMs = audioTimeMs + audioOffsetMilliseconds` for judgement and `renderChartTimeMs = gameplayChartTimeMs + visualOffsetMilliseconds` for note display.
 2. Hit objects enter gameplay through one normalized stream contract, whether they come from generated streaming output, fixture data, or a full beatmap adapter.
 3. The judgement engine is pure core logic. It does not parse files, play audio, own SwiftUI state, or compute visual positions.
 4. The renderer is a consumer of snapshots. It must not reimplement note lock, miss timing, long-note lifecycle, combo, or accuracy.
@@ -133,7 +133,7 @@ Stream contract:
 - Batches must preserve the normalized global ordering.
 - `completeThroughChartTimeMs` is a source watermark. It means no later batch will emit an event with `timeMs <= completeThroughChartTimeMs`.
 - `isEndOfStream` means no future objects will be emitted.
-- The session may choose a lookahead such as `chartTimeMs + scrollTimeMs + safetyBufferMs`; the stream contract does not decide render lookahead.
+- The session may choose a lookahead such as `max(gameplayChartTimeMs, renderChartTimeMs) + scrollTimeMs + safetyBufferMs`; the stream contract does not decide render lookahead.
 
 The engine does not call the stream. This keeps async generation, file IO, and parser errors outside judgement logic.
 
@@ -161,7 +161,7 @@ Initial policy: reject invalid or overlapping charts rather than normalizing the
 
 ## Audio Clock
 
-The session reads an audio clock protocol and applies global offset before calling the engine.
+The session reads an audio clock protocol and applies audio offset before calling the engine.
 
 ```swift
 public protocol Mania4KAudioClock: Sendable {
@@ -182,7 +182,8 @@ public struct Mania4KAudioMetadata: Equatable, Sendable {
 Clock rules:
 
 - `currentAudioTimeMs()` is raw audio time, not chart time.
-- Global audio offset is applied only by the session layer.
+- Audio offset is applied only by the session layer.
+- Visual offset is applied only to render timing and never passed into judgement math.
 - The judgement engine never stores the audio URL and never talks to AVFoundation.
 - A fake clock must be able to drive tests without wall-clock time.
 
@@ -207,7 +208,7 @@ Session responsibilities:
 - Validate setup input and prepare chart/audio.
 - Compute scroll time as `11485 / scrollSpeed`.
 - Start and stop audio playback.
-- Poll audio time and compute chart time.
+- Poll audio time and compute gameplay and render chart time.
 - Read hit-object batches using a render/judgement lookahead.
 - Track the latest stream watermark and prevent judgement from advancing into incomplete stream time.
 - Ingest batches into the engine before they become hittable.
@@ -248,7 +249,7 @@ Input rules:
 - The input router emits only lane state transitions. Keyboard repeat must not create repeated press events while a lane is already down.
 - Multiple lanes can be pressed at the same chart time.
 - Same-time events are processed by `sequenceNumber`.
-- Press/release timestamps are sampled from the session's audio-derived chart time at event receipt.
+- Press/release timestamps are sampled from the session's audio-derived gameplay chart time at event receipt.
 - The engine decides whether an event affects a note; ignored events do not create judgement events.
 
 ## Judgement Engine Boundary
@@ -279,7 +280,8 @@ Engine responsibilities:
 Engine non-responsibilities:
 
 - Audio playback.
-- Global offset application.
+- Audio offset application.
+- Visual offset application.
 - Scroll speed.
 - File parsing.
 - Async streaming.
@@ -341,11 +343,11 @@ public struct Mania4KScoreState: Equatable, Sendable {
     public let maxCombo: Int
     public let accuracy: Double
     public let averageHitErrorMs: Double?
-    public let suggestedGlobalOffsetAdjustmentMs: Double?
+    public let suggestedAudioOffsetAdjustmentMs: Double?
 }
 ```
 
-`averageHitErrorMs` is the mean of successful tap hit errors and successful long-note head errors. `suggestedGlobalOffsetAdjustmentMs` is the delta to add to the current global offset, so its value is `-averageHitErrorMs` when enough samples exist.
+`averageHitErrorMs` is the mean of successful tap hit errors and successful long-note head errors. `suggestedAudioOffsetAdjustmentMs` is the delta to add to the current audio offset, so its value is `-averageHitErrorMs` when enough samples exist.
 
 Result generation belongs to the session after the engine reports `isResolved == true` and the stream has ended.
 
@@ -355,7 +357,8 @@ The session should publish a UI-facing frame that combines engine snapshot, char
 
 ```swift
 public struct Mania4KPlayFrame: Equatable, Sendable {
-    public let chartTimeMs: Double
+    public let gameplayChartTimeMs: Double
+    public let renderChartTimeMs: Double
     public let scrollTimeMs: Double
     public let metadata: Mania4KChartMetadata
     public let visibleObjects: [Mania4KVisibleObject]
@@ -367,10 +370,11 @@ public struct Mania4KPlayFrame: Equatable, Sendable {
 
 Renderer rules:
 
-- A note reaches the judgement line when `object.startTimeMs == chartTimeMs`.
-- Future position is derived from `(object.startTimeMs - chartTimeMs) / scrollTimeMs`.
+- A note reaches the rendered judgement line when `object.startTimeMs == renderChartTimeMs`.
+- Future position is derived from `(object.startTimeMs - renderChartTimeMs) / scrollTimeMs`.
 - Hold-note body length is derived from `endTimeMs - startTimeMs`.
 - Scroll speed affects only visual position and lookahead, never judgement windows.
+- Visual offset affects only render position and lookahead, never judgement windows, score, hit error, or finish time.
 - The renderer may animate judgement bursts from `latestJudgement`, but it must not infer misses or hits.
 
 ## Failure Contracts
@@ -404,7 +408,8 @@ The stream adapter and engine should share validation semantics. The adapter sho
 
 - A stream and an in-memory full chart that emit identical lane-ordered events produce identical judgement events and final score.
 - Changing `scrollSpeed` changes render positions and stream lookahead, but not judgement results for the same input timestamps.
-- Changing `globalAudioOffsetMilliseconds` changes chart timestamps passed to the engine, not object times.
+- Changing `audioOffsetMilliseconds` changes chart timestamps passed to the engine, not object times.
+- Changing `visualOffsetMilliseconds` changes rendered positions and stream lookahead, not judgement timestamps, score, hit errors, or finish time.
 - Keyboard repeat does not create duplicate press events.
 - Same-lane overlap is rejected before play.
 - Invalid lane sequences are rejected: `holdEnd` with no open hold, `tap` during an open hold, `holdStart` during an open hold, or end-of-stream with an open hold.

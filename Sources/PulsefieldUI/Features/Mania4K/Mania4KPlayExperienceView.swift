@@ -10,7 +10,7 @@ import AppKit
 public struct Mania4KPlayExperienceView: View {
     @Bindable public var model: Mania4KPlaySessionModel
     @AppStorage("mania4k.offsetCalibrationState") private var storedOffsetCalibrationState = ""
-    @State private var didRestoreStoredGlobalOffset = false
+    @State private var didRestoreStoredOffsets = false
 
     public init(model: Mania4KPlaySessionModel) {
         self.model = model
@@ -24,9 +24,9 @@ public struct Mania4KPlayExperienceView: View {
                 Mania4KSetupView(
                     model: model,
                     storedOffsetCalibrationState: $storedOffsetCalibrationState,
-                    shouldRestoreStoredGlobalOffset: !didRestoreStoredGlobalOffset
+                    shouldRestoreStoredOffsets: !didRestoreStoredOffsets
                 ) {
-                    didRestoreStoredGlobalOffset = true
+                    didRestoreStoredOffsets = true
                 }
             } else {
                 Mania4KPlaySceneView(model: model)
@@ -44,8 +44,8 @@ private struct Mania4KSetupView: View {
     @State private var isChoosingFile = false
     @State private var offsetCalibrationModel: Mania4KOffsetCalibrationModel?
     @Binding var storedOffsetCalibrationState: String
-    let shouldRestoreStoredGlobalOffset: Bool
-    let onStoredGlobalOffsetRestored: () -> Void
+    let shouldRestoreStoredOffsets: Bool
+    let onStoredOffsetsRestored: () -> Void
     #if os(macOS)
     @AppStorage("mania4k.keyBindings") private var storedKeyBindings = Mania4KKeyBindingSet.default.storageValue
     @State private var capturingKeyBindingLane: Mania4KLane?
@@ -87,9 +87,9 @@ private struct Mania4KSetupView: View {
             handleFileImportResult(result)
         }
         .onAppear {
-            if shouldRestoreStoredGlobalOffset {
-                restoreStoredGlobalOffset()
-                onStoredGlobalOffsetRestored()
+            if shouldRestoreStoredOffsets {
+                restoreStoredOffsets()
+                onStoredOffsetsRestored()
             }
             #if os(macOS)
             restoreStoredKeyBindings()
@@ -202,7 +202,7 @@ private struct Mania4KSetupView: View {
                 suffix: "x"
             )
 
-            globalOffsetSetting
+            offsetSettings
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Judge difficulty")
@@ -225,17 +225,48 @@ private struct Mania4KSetupView: View {
         }
     }
 
-    private var globalOffsetSetting: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Global audio offset")
+    private var offsetSettings: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            offsetSetting(
+                title: "Audio offset",
+                description: "Moves song timing and judgement timing. Use when hits sound early or late.",
+                binding: audioOffsetBinding
+            )
+
+            offsetSetting(
+                title: "Visual offset",
+                description: "Moves note display only. Use when notes look early or late while the sound feels correct.",
+                binding: visualOffsetBinding
+            )
+
+            #if os(macOS)
+            Button {
+                openOffsetCalibration()
+            } label: {
+                Label("Calibrate", systemImage: "slider.horizontal.3")
+                    .labelStyle(.titleAndIcon)
+            }
+            .buttonStyle(Mania4KSecondaryButtonStyle(tint: Mania4KStyle.accentGreen))
+            #endif
+        }
+    }
+
+    private func offsetSetting(title: String, description: String, binding: Binding<Double>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Mania4KStyle.textPrimary)
 
+            Text(description)
+                .font(.caption)
+                .foregroundStyle(Mania4KStyle.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
             HStack(spacing: 10) {
-                Stepper(value: globalOffsetBinding, in: -500...500, step: 1) {
+                Stepper(value: binding, in: -500...500, step: 1) {
                     TextField(
-                        "Global audio offset",
-                        value: globalOffsetBinding,
+                        title,
+                        value: binding,
                         format: .number.precision(.fractionLength(0))
                     )
                     .textFieldStyle(.plain)
@@ -254,38 +285,41 @@ private struct Mania4KSetupView: View {
                 Text("ms")
                     .font(.callout.monospaced())
                     .foregroundStyle(Mania4KStyle.textMuted)
-
-                #if os(macOS)
-                Button {
-                    openOffsetCalibration()
-                } label: {
-                    Label("Calibrate", systemImage: "slider.horizontal.3")
-                        .labelStyle(.titleAndIcon)
-                }
-                .buttonStyle(Mania4KSecondaryButtonStyle(tint: Mania4KStyle.accentGreen))
-                #endif
             }
         }
     }
 
-    private var globalOffsetBinding: Binding<Double> {
+    private var audioOffsetBinding: Binding<Double> {
         Binding(
             get: {
-                model.globalAudioOffsetMilliseconds
+                model.audioOffsetMilliseconds
             },
             set: { value in
                 let offsetMilliseconds = clampedOffsetMilliseconds(value)
-                model.globalAudioOffsetMilliseconds = Double(offsetMilliseconds)
+                model.audioOffsetMilliseconds = Double(offsetMilliseconds)
             }
         )
     }
 
-    private func restoreStoredGlobalOffset() {
+    private var visualOffsetBinding: Binding<Double> {
+        Binding(
+            get: {
+                model.visualOffsetMilliseconds
+            },
+            set: { value in
+                let offsetMilliseconds = clampedOffsetMilliseconds(value)
+                model.visualOffsetMilliseconds = Double(offsetMilliseconds)
+            }
+        )
+    }
+
+    private func restoreStoredOffsets() {
         guard let storedState = calibrationStoredState else {
             return
         }
 
-        model.globalAudioOffsetMilliseconds = Double(storedState.appliedGlobalOffsetMilliseconds)
+        model.audioOffsetMilliseconds = Double(storedState.appliedAudioOffsetMilliseconds)
+        model.visualOffsetMilliseconds = Double(storedState.appliedVisualOffsetMilliseconds)
     }
 
     private var calibrationStoredState: Mania4KOffsetCalibrationStoredState? {
@@ -295,7 +329,8 @@ private struct Mania4KSetupView: View {
 
         return Mania4KOffsetCalibrationModel.normalizedStoredState(
             storedState,
-            fallbackAppliedOffsetMilliseconds: 0
+            fallbackAppliedAudioOffsetMilliseconds: 0,
+            fallbackAppliedVisualOffsetMilliseconds: 0
         )
     }
 
@@ -317,7 +352,8 @@ private struct Mania4KSetupView: View {
     #if os(macOS)
     private func openOffsetCalibration() {
         let calibrationModel = Mania4KOffsetCalibrationModel(
-            originalOffsetMilliseconds: clampedOffsetMilliseconds(model.globalAudioOffsetMilliseconds),
+            originalAudioOffsetMilliseconds: clampedOffsetMilliseconds(model.audioOffsetMilliseconds),
+            originalVisualOffsetMilliseconds: clampedOffsetMilliseconds(model.visualOffsetMilliseconds),
             storedState: calibrationStoredState,
             tickPlayer: Mania4KOffsetCalibrationResourceTickPlayer()
         )
@@ -326,14 +362,17 @@ private struct Mania4KSetupView: View {
     }
 
     private func applyOffsetCalibration(_ calibrationModel: Mania4KOffsetCalibrationModel) {
-        let appliedOffset = calibrationModel.apply()
-        model.globalAudioOffsetMilliseconds = Double(appliedOffset)
+        let appliedOffsets = calibrationModel.apply()
+        model.audioOffsetMilliseconds = Double(appliedOffsets.audioOffsetMilliseconds)
+        model.visualOffsetMilliseconds = Double(appliedOffsets.visualOffsetMilliseconds)
         persistCalibrationState(calibrationModel.storedState, createsStateIfNeeded: true)
         offsetCalibrationModel = nil
     }
 
     private func cancelOffsetCalibration(_ calibrationModel: Mania4KOffsetCalibrationModel) {
-        model.globalAudioOffsetMilliseconds = Double(calibrationModel.cancel())
+        let originalOffsets = calibrationModel.cancel()
+        model.audioOffsetMilliseconds = Double(originalOffsets.audioOffsetMilliseconds)
+        model.visualOffsetMilliseconds = Double(originalOffsets.visualOffsetMilliseconds)
         offsetCalibrationModel = nil
     }
 
@@ -615,7 +654,8 @@ private enum Mania4KFileImportTarget {
 
 #if os(macOS)
 private enum Mania4KOffsetCalibrationFocusedTextField: Hashable {
-    case pendingOffset
+    case pendingAudioOffset
+    case pendingVisualOffset
     case presetName
 }
 
@@ -666,9 +706,11 @@ private struct Mania4KOffsetCalibrationView: View {
                     .font(.system(size: 30, weight: .bold, design: .rounded))
                     .foregroundStyle(Mania4KStyle.textPrimary)
 
-                Text("\(model.pendingOffsetMilliseconds) ms pending  \(model.renderedOffsetMilliseconds) ms rendered")
+                Text("A \(model.pendingAudioOffsetMilliseconds) ms pending / \(model.renderedAudioOffsetMilliseconds) ms rendered  V \(model.pendingVisualOffsetMilliseconds) ms pending / \(model.renderedVisualOffsetMilliseconds) ms rendered")
                     .font(.caption.monospaced())
                     .foregroundStyle(Mania4KStyle.textSecondary)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.78)
             }
 
             Spacer()
@@ -745,18 +787,18 @@ private struct Mania4KOffsetCalibrationView: View {
 
     private var controls: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Offset")
+            Text("Audio Offset")
                 .font(.title3.bold())
                 .foregroundStyle(Mania4KStyle.textPrimary)
 
             HStack(spacing: 8) {
-                offsetStepButton(-100)
-                offsetStepButton(-10)
-                offsetStepButton(-1)
+                offsetStepButton(-100) { model.stepPendingAudioOffset(by: $0) }
+                offsetStepButton(-10) { model.stepPendingAudioOffset(by: $0) }
+                offsetStepButton(-1) { model.stepPendingAudioOffset(by: $0) }
             }
 
             HStack(spacing: 10) {
-                TextField("Offset", value: pendingOffsetBinding, format: .number)
+                TextField("Audio Offset", value: pendingAudioOffsetBinding, format: .number)
                     .textFieldStyle(.plain)
                     .multilineTextAlignment(.trailing)
                     .foregroundStyle(Mania4KStyle.textPrimary)
@@ -767,7 +809,7 @@ private struct Mania4KOffsetCalibrationView: View {
                         RoundedRectangle(cornerRadius: 7)
                             .stroke(Mania4KStyle.border, lineWidth: 1)
                     )
-                    .focused($focusedTextField, equals: .pendingOffset)
+                    .focused($focusedTextField, equals: .pendingAudioOffset)
                     .onSubmit {
                         focusedTextField = nil
                     }
@@ -778,14 +820,14 @@ private struct Mania4KOffsetCalibrationView: View {
             }
 
             HStack(spacing: 8) {
-                offsetStepButton(1)
-                offsetStepButton(10)
-                offsetStepButton(100)
+                offsetStepButton(1) { model.stepPendingAudioOffset(by: $0) }
+                offsetStepButton(10) { model.stepPendingAudioOffset(by: $0) }
+                offsetStepButton(100) { model.stepPendingAudioOffset(by: $0) }
             }
 
             Button {
                 focusedTextField = nil
-                if model.useSuggestedOffset() {
+                if model.useSuggestedAudioOffset() {
                     onStateChanged(model.storedState)
                 }
             } label: {
@@ -793,7 +835,48 @@ private struct Mania4KOffsetCalibrationView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(Mania4KSecondaryButtonStyle(tint: Mania4KStyle.accentAmber))
-            .disabled(model.suggestedOffsetMilliseconds == nil)
+            .disabled(model.suggestedAudioOffsetMilliseconds == nil)
+
+            Divider()
+                .overlay(Mania4KStyle.border)
+
+            Text("Visual Offset")
+                .font(.title3.bold())
+                .foregroundStyle(Mania4KStyle.textPrimary)
+
+            HStack(spacing: 8) {
+                offsetStepButton(-100) { model.stepPendingVisualOffset(by: $0) }
+                offsetStepButton(-10) { model.stepPendingVisualOffset(by: $0) }
+                offsetStepButton(-1) { model.stepPendingVisualOffset(by: $0) }
+            }
+
+            HStack(spacing: 10) {
+                TextField("Visual Offset", value: pendingVisualOffsetBinding, format: .number)
+                    .textFieldStyle(.plain)
+                    .multilineTextAlignment(.trailing)
+                    .foregroundStyle(Mania4KStyle.textPrimary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(Mania4KStyle.controlFill, in: RoundedRectangle(cornerRadius: 7))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7)
+                            .stroke(Mania4KStyle.border, lineWidth: 1)
+                    )
+                    .focused($focusedTextField, equals: .pendingVisualOffset)
+                    .onSubmit {
+                        focusedTextField = nil
+                    }
+
+                Text("ms")
+                    .font(.callout.monospaced())
+                    .foregroundStyle(Mania4KStyle.textMuted)
+            }
+
+            HStack(spacing: 8) {
+                offsetStepButton(1) { model.stepPendingVisualOffset(by: $0) }
+                offsetStepButton(10) { model.stepPendingVisualOffset(by: $0) }
+                offsetStepButton(100) { model.stepPendingVisualOffset(by: $0) }
+            }
 
             Divider()
                 .overlay(Mania4KStyle.border)
@@ -809,7 +892,7 @@ private struct Mania4KOffsetCalibrationView: View {
             Picker("Preset", selection: activePresetBinding) {
                 Text("None").tag(Optional<UUID>.none)
                 ForEach(model.presets) { preset in
-                    Text("\(preset.name)  \(preset.presetMs) ms").tag(Optional(preset.id))
+                    Text(presetLabel(for: preset)).tag(Optional(preset.id))
                 }
             }
             .labelsHidden()
@@ -841,7 +924,7 @@ private struct Mania4KOffsetCalibrationView: View {
             Picker("Delete preset", selection: presetDeletionBinding) {
                 Text("None").tag(Optional<UUID>.none)
                 ForEach(model.presets) { preset in
-                    Text("\(preset.name)  \(preset.presetMs) ms").tag(Optional(preset.id))
+                    Text(presetLabel(for: preset)).tag(Optional(preset.id))
                 }
             }
             .labelsHidden()
@@ -865,7 +948,8 @@ private struct Mania4KOffsetCalibrationView: View {
 
     private var calibrationFrame: Mania4KPlayFrame {
         Mania4KPlayFrame(
-            chartTimeMs: Double(model.renderedChartTimeMs),
+            gameplayChartTimeMs: Double(model.gameplayChartTimeMs),
+            renderChartTimeMs: Double(model.renderedChartTimeMs),
             scrollTimeMs: scrollTimeMs,
             metadata: Mania4KChartMetadata(title: "Offset calibration", sourceDescription: "Synthetic"),
             visibleObjects: model.visibleObjects(
@@ -880,13 +964,25 @@ private struct Mania4KOffsetCalibrationView: View {
         )
     }
 
-    private var pendingOffsetBinding: Binding<Int> {
+    private var pendingAudioOffsetBinding: Binding<Int> {
         Binding(
             get: {
-                model.pendingOffsetMilliseconds
+                model.pendingAudioOffsetMilliseconds
             },
             set: { value in
-                model.setPendingOffsetMilliseconds(value)
+                model.setPendingAudioOffsetMilliseconds(value)
+                onStateChanged(model.storedState)
+            }
+        )
+    }
+
+    private var pendingVisualOffsetBinding: Binding<Int> {
+        Binding(
+            get: {
+                model.pendingVisualOffsetMilliseconds
+            },
+            set: { value in
+                model.setPendingVisualOffsetMilliseconds(value)
                 onStateChanged(model.storedState)
             }
         )
@@ -930,7 +1026,7 @@ private struct Mania4KOffsetCalibrationView: View {
     }
 
     private var suggestionText: String {
-        guard let adjustment = model.suggestedAdjustmentMilliseconds else {
+        guard let adjustment = model.suggestedAudioAdjustmentMilliseconds else {
             return "--"
         }
 
@@ -945,10 +1041,10 @@ private struct Mania4KOffsetCalibrationView: View {
         return "\(latest.hitErrorMs >= 0 ? "+" : "")\(Int(latest.hitErrorMs.rounded())) ms"
     }
 
-    private func offsetStepButton(_ delta: Int) -> some View {
+    private func offsetStepButton(_ delta: Int, _ apply: @escaping (Int) -> Void) -> some View {
         Button {
             focusedTextField = nil
-            model.stepPendingOffset(by: delta)
+            apply(delta)
             onStateChanged(model.storedState)
         } label: {
             Text(delta > 0 ? "+\(delta)" : "\(delta)")
@@ -956,6 +1052,14 @@ private struct Mania4KOffsetCalibrationView: View {
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(Mania4KSecondaryButtonStyle())
+    }
+
+    private func presetLabel(for preset: Mania4KOffsetPreset) -> String {
+        "\(preset.name)  A \(signedMilliseconds(preset.audioOffsetMilliseconds))  V \(signedMilliseconds(preset.visualOffsetMilliseconds))"
+    }
+
+    private func signedMilliseconds(_ milliseconds: Int) -> String {
+        "\(milliseconds >= 0 ? "+" : "")\(milliseconds) ms"
     }
 
     private func metricPill(title: String, value: String) -> some View {
@@ -1759,7 +1863,7 @@ struct Mania4KNoteRenderLayout {
 
     static func yPosition(for objectTimeMs: Double, frame: Mania4KPlayFrame, laneHeight: CGFloat, receptorY: CGFloat) -> CGFloat {
         let travelHeight = max(receptorY - 18, 1)
-        let progress = (objectTimeMs - frame.chartTimeMs) / max(frame.scrollTimeMs, 1)
+        let progress = (objectTimeMs - frame.renderChartTimeMs) / max(frame.scrollTimeMs, 1)
         return receptorY - CGFloat(progress) * travelHeight
     }
 

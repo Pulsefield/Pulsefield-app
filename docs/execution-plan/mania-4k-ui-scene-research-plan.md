@@ -1,5 +1,5 @@
 ---
-commit: 4cf1aa81c0b93c6d0b916f360554a15acc89b83c
+commit: 3a45fbf4419d28b6264c2f83c84df48f3948faaa
 title: Mania 4K UI And Scene Research Plan
 source_spec: docs/design/mania-4k-play-experience-design.md
 ---
@@ -50,7 +50,8 @@ Required fields:
 - Music title.
 - `osu!mania star difficulty`.
 - Scroll speed, range `1.0...40.0`, default `16.0`, step `0.1`.
-- Global audio offset, range `-500 ms...+500 ms`.
+- Audio offset, range `-500 ms...+500 ms`.
+- Visual offset, range `-500 ms...+500 ms`.
 - Judge difficulty segmented control `A / B / C / D / E`, default `C`.
 
 Research questions:
@@ -85,7 +86,8 @@ Purpose: allow play-session adjustment without expanding scope into full setting
 Allowed controls:
 
 - Scroll speed.
-- Global audio offset.
+- Audio offset.
+- Visual offset.
 - Judge difficulty.
 - Resume and quit.
 
@@ -98,18 +100,20 @@ Out of scope:
 
 ### 5. Offset Calibration Scene
 
-Purpose: produce the settlement-page global offset hint described in the spec.
+Purpose: expose audio and visual offset controls, with gameplay hit-error samples producing audio-offset suggestions only.
 
 Research questions:
 
 - Should calibration be a dedicated scene, a post-results suggestion, or both?
-- What sample count is enough before suggesting a global offset?
+- What sample count is enough before suggesting an audio offset?
+- How should visual offset changes be previewed without implying a judgement change?
 - Should the UI show average hit error history, a single suggested value, or both?
 
 Expected output:
 
 - Average hit error.
-- Suggested global offset.
+- Suggested audio offset.
+- Current visual offset.
 - Apply or dismiss action.
 
 ### 6. Results Scene
@@ -124,7 +128,7 @@ Required fields:
 - Accuracy.
 - Max combo.
 - Average hit error.
-- Global offset adjustment hint.
+- Audio offset adjustment hint.
 
 Out of scope:
 
@@ -153,7 +157,7 @@ Use open-source projects as behavioral references, not as UI skins or brand asse
 
 - osu!lazer: https://github.com/ppy/osu
   - License: MIT for code/framework; branding and resources have separate restrictions.
-  - Use for: mania scroll timing, hit windows, note lock, long-note behavior, global offset handling, star difficulty reference.
+  - Use for: mania scroll timing, hit windows, note lock, long-note behavior, audio-offset clock handling, star difficulty reference.
   - Pinned baseline from source spec: `a0be214d034c48b0b603069dc284b27b9dde5c17`.
   - Relevant files:
     - `osu.Game.Rulesets.Mania/UI/DrawableManiaRuleset.cs`

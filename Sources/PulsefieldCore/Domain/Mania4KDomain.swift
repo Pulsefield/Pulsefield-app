@@ -18,7 +18,8 @@ public struct Mania4KPlayConfiguration: Equatable, Sendable {
     public let audioFileURL: URL
     public let starDifficulty: Double
     public let scrollSpeed: Double
-    public let globalAudioOffsetMilliseconds: Double
+    public let audioOffsetMilliseconds: Double
+    public let visualOffsetMilliseconds: Double
     public let judgeDifficulty: Mania4KJudgeDifficulty
     public let keyBindings: Mania4KKeyBindingSet
 
@@ -27,7 +28,8 @@ public struct Mania4KPlayConfiguration: Equatable, Sendable {
         audioFileURL: URL,
         starDifficulty: Double,
         scrollSpeed: Double,
-        globalAudioOffsetMilliseconds: Double,
+        audioOffsetMilliseconds: Double,
+        visualOffsetMilliseconds: Double,
         judgeDifficulty: Mania4KJudgeDifficulty,
         keyBindings: Mania4KKeyBindingSet = .default
     ) {
@@ -35,7 +37,8 @@ public struct Mania4KPlayConfiguration: Equatable, Sendable {
         self.audioFileURL = audioFileURL
         self.starDifficulty = starDifficulty
         self.scrollSpeed = scrollSpeed
-        self.globalAudioOffsetMilliseconds = globalAudioOffsetMilliseconds
+        self.audioOffsetMilliseconds = audioOffsetMilliseconds
+        self.visualOffsetMilliseconds = visualOffsetMilliseconds
         self.judgeDifficulty = judgeDifficulty
         self.keyBindings = keyBindings
     }
@@ -342,7 +345,7 @@ public struct Mania4KScoreState: Equatable, Sendable {
     public let maxCombo: Int
     public let accuracy: Double
     public let averageHitErrorMs: Double?
-    public let suggestedGlobalOffsetAdjustmentMs: Double?
+    public let suggestedAudioOffsetAdjustmentMs: Double?
 
     public init(
         perfectCount: Int = 0,
@@ -353,7 +356,7 @@ public struct Mania4KScoreState: Equatable, Sendable {
         maxCombo: Int = 0,
         accuracy: Double = 1,
         averageHitErrorMs: Double? = nil,
-        suggestedGlobalOffsetAdjustmentMs: Double? = nil
+        suggestedAudioOffsetAdjustmentMs: Double? = nil
     ) {
         self.perfectCount = perfectCount
         self.goodCount = goodCount
@@ -363,7 +366,7 @@ public struct Mania4KScoreState: Equatable, Sendable {
         self.maxCombo = maxCombo
         self.accuracy = accuracy
         self.averageHitErrorMs = averageHitErrorMs
-        self.suggestedGlobalOffsetAdjustmentMs = suggestedGlobalOffsetAdjustmentMs
+        self.suggestedAudioOffsetAdjustmentMs = suggestedAudioOffsetAdjustmentMs
     }
 
     public static let zero = Mania4KScoreState()
@@ -485,7 +488,8 @@ public struct Mania4KPlayResult: Equatable, Sendable {
 }
 
 public struct Mania4KPlayFrame: Equatable, Sendable {
-    public let chartTimeMs: Double
+    public let gameplayChartTimeMs: Double
+    public let renderChartTimeMs: Double
     public let scrollTimeMs: Double
     public let metadata: Mania4KChartMetadata
     public let visibleObjects: [Mania4KVisibleObject]
@@ -494,7 +498,8 @@ public struct Mania4KPlayFrame: Equatable, Sendable {
     public let latestJudgement: Mania4KJudgementEvent?
 
     public init(
-        chartTimeMs: Double,
+        gameplayChartTimeMs: Double,
+        renderChartTimeMs: Double,
         scrollTimeMs: Double,
         metadata: Mania4KChartMetadata,
         visibleObjects: [Mania4KVisibleObject],
@@ -502,7 +507,8 @@ public struct Mania4KPlayFrame: Equatable, Sendable {
         laneStates: [Mania4KLaneState],
         latestJudgement: Mania4KJudgementEvent?
     ) {
-        self.chartTimeMs = chartTimeMs
+        self.gameplayChartTimeMs = gameplayChartTimeMs
+        self.renderChartTimeMs = renderChartTimeMs
         self.scrollTimeMs = scrollTimeMs
         self.metadata = metadata
         self.visibleObjects = visibleObjects
@@ -1180,7 +1186,7 @@ public struct Mania4KJudgementEngine: Sendable {
             maxCombo: maxCombo,
             accuracy: accuracy,
             averageHitErrorMs: averageHitError,
-            suggestedGlobalOffsetAdjustmentMs: averageHitError.map { -$0 }
+            suggestedAudioOffsetAdjustmentMs: averageHitError.map { -$0 }
         )
     }
 }

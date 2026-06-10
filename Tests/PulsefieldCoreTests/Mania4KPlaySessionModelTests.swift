@@ -8,7 +8,8 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
 
         XCTAssertEqual(model.starDifficulty, 4.0)
         XCTAssertEqual(model.scrollSpeed, 16.0)
-        XCTAssertEqual(model.globalAudioOffsetMilliseconds, 0)
+        XCTAssertEqual(model.audioOffsetMilliseconds, 0)
+        XCTAssertEqual(model.visualOffsetMilliseconds, 0)
         XCTAssertEqual(model.judgeDifficulty, .c)
         XCTAssertEqual(model.keyBindings, .default)
         XCTAssertEqual(model.liveInputLaneStates.filter(\.isPressed), [])
@@ -286,7 +287,7 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         XCTAssertEqual(update.judgementEvents.first?.judgement, .good)
         XCTAssertEqual(update.score.combo, 2)
         XCTAssertEqual(update.score.averageHitErrorMs ?? .nan, 48, accuracy: 0.001)
-        XCTAssertEqual(update.score.suggestedGlobalOffsetAdjustmentMs ?? .nan, -48, accuracy: 0.001)
+        XCTAssertEqual(update.score.suggestedAudioOffsetAdjustmentMs ?? .nan, -48, accuracy: 0.001)
     }
 
     func testEngineIgnoresTooEarlyPressThenAutoMissesTap() throws {
@@ -376,24 +377,27 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         XCTAssertEqual(update.score.combo, 0)
     }
 
-    func testSessionPublishesFramesWithGlobalOffsetAndFinishes() async throws {
+    func testSessionPublishesFramesWithAudioAndVisualOffsetsAndFinishesOnGameplayTime() async throws {
         let clock = FakeMania4KAudioClock(metadata: Mania4KAudioMetadata(durationMs: 1_000, title: "Fake"))
         let model = try modelWithInMemoryChart(
             objects: [tap(.left, 100)],
             clock: clock,
-            globalOffset: 25
+            audioOffset: 25,
+            visualOffset: -10
         )
         model.selectBeatmapFile(URL(fileURLWithPath: "/tmp/chart.osu"))
         model.selectAudioFile(URL(fileURLWithPath: "/tmp/audio.mp3"))
 
         let started = await model.startPlay()
         XCTAssertTrue(started)
-        XCTAssertEqual(model.playFrame?.chartTimeMs, 25)
+        XCTAssertEqual(model.playFrame?.gameplayChartTimeMs, 25)
+        XCTAssertEqual(model.playFrame?.renderChartTimeMs, 15)
 
         await clock.setAudioTimeMs(100)
         let tickedAtOffset = await model.tick()
         XCTAssertTrue(tickedAtOffset)
-        XCTAssertEqual(model.playFrame?.chartTimeMs, 125)
+        XCTAssertEqual(model.playFrame?.gameplayChartTimeMs, 125)
+        XCTAssertEqual(model.playFrame?.renderChartTimeMs, 115)
 
         let handledInput = await model.handleInput(input(.left, .press, 100, 0))
         XCTAssertTrue(handledInput)
@@ -406,6 +410,7 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
             return XCTFail("Expected finished phase, got \(model.phase)")
         }
         XCTAssertEqual(result.score.perfectCount, 1)
+        XCTAssertEqual(result.finishedChartTimeMs, 1_025)
     }
 
     func testSessionUsesPreparedClockTimeForInitialFrame() async throws {
@@ -421,8 +426,74 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         let started = await model.startPlay()
 
         XCTAssertTrue(started)
-        XCTAssertEqual(model.playFrame?.chartTimeMs, 72_000)
+        XCTAssertEqual(model.playFrame?.gameplayChartTimeMs, 72_000)
+        XCTAssertEqual(model.playFrame?.renderChartTimeMs, 72_000)
         XCTAssertEqual(model.playFrame?.visibleObjects.first?.startTimeMs, 72_500)
+    }
+
+    func testAudioOffsetChangesKeyboardJudgementChartTimeAndHitResult() async throws {
+        let clock = FakeMania4KAudioClock()
+        let model = try modelWithInMemoryChart(
+            objects: [tap(.left, 180)],
+            clock: clock,
+            audioOffset: 80
+        )
+        model.selectBeatmapFile(URL(fileURLWithPath: "/tmp/chart.osu"))
+        model.selectAudioFile(URL(fileURLWithPath: "/tmp/audio.mp3"))
+        let started = await model.startPlay()
+        XCTAssertTrue(started)
+
+        await clock.setAudioTimeMs(100)
+        let handledInput = await model.handleKeyboardInput(key: "d", isPressed: true, isRepeat: false)
+
+        XCTAssertTrue(handledInput)
+        XCTAssertEqual(model.playFrame?.gameplayChartTimeMs, 180)
+        XCTAssertEqual(model.playFrame?.latestJudgement?.judgement, .perfect)
+        XCTAssertEqual(model.playFrame?.latestJudgement?.hitErrorMs ?? .nan, 0, accuracy: 0.001)
+        XCTAssertEqual(model.playFrame?.score.perfectCount, 1)
+    }
+
+    func testKeyboardInputAfterRenderedFrameUsesGameplayTimeNotVisualRenderTime() async throws {
+        let clock = FakeMania4KAudioClock()
+        let model = try modelWithInMemoryChart(
+            objects: [tap(.left, 100)],
+            clock: clock,
+            visualOffset: 300
+        )
+        model.selectBeatmapFile(URL(fileURLWithPath: "/tmp/chart.osu"))
+        model.selectAudioFile(URL(fileURLWithPath: "/tmp/audio.mp3"))
+        let started = await model.startPlay()
+        XCTAssertTrue(started)
+
+        await clock.setAudioTimeMs(100)
+        let ticked = await model.tick()
+        XCTAssertTrue(ticked)
+        XCTAssertEqual(model.playFrame?.gameplayChartTimeMs, 100)
+        XCTAssertEqual(model.playFrame?.renderChartTimeMs, 400)
+
+        let handledInput = await model.handleKeyboardInput(key: "d", isPressed: true, isRepeat: false)
+
+        XCTAssertTrue(handledInput)
+        XCTAssertEqual(model.playFrame?.latestJudgement?.judgement, .perfect)
+        XCTAssertEqual(model.playFrame?.latestJudgement?.hitErrorMs ?? .nan, 0, accuracy: 0.001)
+        XCTAssertEqual(model.playFrame?.score.perfectCount, 1)
+    }
+
+    func testPositiveVisualOffsetReadsFarEnoughAheadToRenderUpcomingNotes() async throws {
+        let objectTimeMs = 1_200.0
+        let model = try modelWithInMemoryChart(
+            objects: [tap(.left, objectTimeMs)],
+            visualOffset: 500
+        )
+        model.selectBeatmapFile(URL(fileURLWithPath: "/tmp/chart.osu"))
+        model.selectAudioFile(URL(fileURLWithPath: "/tmp/audio.mp3"))
+
+        let started = await model.startPlay()
+
+        XCTAssertTrue(started)
+        XCTAssertEqual(model.playFrame?.gameplayChartTimeMs, 0)
+        XCTAssertEqual(model.playFrame?.renderChartTimeMs, 500)
+        XCTAssertEqual(model.playFrame?.visibleObjects.first?.startTimeMs, objectTimeMs)
     }
 
     func testSessionRejectsInputBeyondStreamWatermark() async throws {
@@ -704,12 +775,14 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         objects: [Mania4KHitObject],
         clock: FakeMania4KAudioClock = FakeMania4KAudioClock(),
         scrollSpeed: Double = 16,
-        globalOffset: Double = 0
+        audioOffset: Double = 0,
+        visualOffset: Double = 0
     ) throws -> Mania4KPlaySessionModel {
         let stream = try InMemoryMania4KHitObjectStream(objects: objects)
         return Mania4KPlaySessionModel(
             scrollSpeed: scrollSpeed,
-            globalAudioOffsetMilliseconds: globalOffset,
+            audioOffsetMilliseconds: audioOffset,
+            visualOffsetMilliseconds: visualOffset,
             audioClock: clock,
             streamFactory: { _ in stream }
         )

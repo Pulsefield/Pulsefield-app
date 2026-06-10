@@ -1,29 +1,49 @@
 import Foundation
 import Observation
 
+public struct Mania4KOffsetCalibrationOffsets: Equatable, Sendable {
+    public let audioOffsetMilliseconds: Int
+    public let visualOffsetMilliseconds: Int
+
+    public init(audioOffsetMilliseconds: Int, visualOffsetMilliseconds: Int) {
+        self.audioOffsetMilliseconds = audioOffsetMilliseconds
+        self.visualOffsetMilliseconds = visualOffsetMilliseconds
+    }
+}
+
 public struct Mania4KOffsetPreset: Identifiable, Equatable, Codable, Sendable {
     public let id: UUID
     public var name: String
-    public var presetMs: Int
+    public var audioOffsetMilliseconds: Int
+    public var visualOffsetMilliseconds: Int
 
-    public init(id: UUID = UUID(), name: String, presetMs: Int) {
+    public init(
+        id: UUID = UUID(),
+        name: String,
+        audioOffsetMilliseconds: Int,
+        visualOffsetMilliseconds: Int
+    ) {
         self.id = id
         self.name = name
-        self.presetMs = presetMs
+        self.audioOffsetMilliseconds = audioOffsetMilliseconds
+        self.visualOffsetMilliseconds = visualOffsetMilliseconds
     }
 }
 
 public struct Mania4KOffsetCalibrationStoredState: Equatable, Codable, Sendable {
-    public var appliedGlobalOffsetMilliseconds: Int
+    public var appliedAudioOffsetMilliseconds: Int
+    public var appliedVisualOffsetMilliseconds: Int
     public var presets: [Mania4KOffsetPreset]
     public var activePresetID: UUID?
 
     public init(
-        appliedGlobalOffsetMilliseconds: Int,
+        appliedAudioOffsetMilliseconds: Int,
+        appliedVisualOffsetMilliseconds: Int,
         presets: [Mania4KOffsetPreset] = [],
         activePresetID: UUID? = nil
     ) {
-        self.appliedGlobalOffsetMilliseconds = appliedGlobalOffsetMilliseconds
+        self.appliedAudioOffsetMilliseconds = appliedAudioOffsetMilliseconds
+        self.appliedVisualOffsetMilliseconds = appliedVisualOffsetMilliseconds
         self.presets = presets
         self.activePresetID = activePresetID
     }
@@ -58,24 +78,24 @@ public struct Mania4KOffsetCalibrationHitSample: Identifiable, Equatable, Sendab
     public let beatIndex: Int
     public let rawInputTimeMs: Double
     public let noteTimeMs: Double
-    public let sampleRenderedOffsetMilliseconds: Int
+    public let sampleRenderedAudioOffsetMilliseconds: Int
     public let hitErrorMs: Double
-    public let sampleSuggestedOffsetMilliseconds: Int
+    public let sampleSuggestedAudioOffsetMilliseconds: Int
 
     public init(
         beatIndex: Int,
         rawInputTimeMs: Double,
         noteTimeMs: Double,
-        sampleRenderedOffsetMilliseconds: Int,
+        sampleRenderedAudioOffsetMilliseconds: Int,
         hitErrorMs: Double,
-        sampleSuggestedOffsetMilliseconds: Int
+        sampleSuggestedAudioOffsetMilliseconds: Int
     ) {
         self.beatIndex = beatIndex
         self.rawInputTimeMs = rawInputTimeMs
         self.noteTimeMs = noteTimeMs
-        self.sampleRenderedOffsetMilliseconds = sampleRenderedOffsetMilliseconds
+        self.sampleRenderedAudioOffsetMilliseconds = sampleRenderedAudioOffsetMilliseconds
         self.hitErrorMs = hitErrorMs
-        self.sampleSuggestedOffsetMilliseconds = sampleSuggestedOffsetMilliseconds
+        self.sampleSuggestedAudioOffsetMilliseconds = sampleSuggestedAudioOffsetMilliseconds
     }
 }
 
@@ -102,9 +122,12 @@ public final class Mania4KOffsetCalibrationModel {
     public static let offsetRange = -500...500
     private static let resolvedBeatStateRetentionMs = hitWindowMs + tickIntervalMs
 
-    public let originalOffsetMilliseconds: Int
-    public private(set) var pendingOffsetMilliseconds: Int
-    public private(set) var renderedOffsetMilliseconds: Int
+    public let originalAudioOffsetMilliseconds: Int
+    public let originalVisualOffsetMilliseconds: Int
+    public private(set) var pendingAudioOffsetMilliseconds: Int
+    public private(set) var pendingVisualOffsetMilliseconds: Int
+    public private(set) var renderedAudioOffsetMilliseconds: Int
+    public private(set) var renderedVisualOffsetMilliseconds: Int
     public private(set) var rawClockTimeMs: Int
     public private(set) var hitSamples: [Mania4KOffsetCalibrationHitSample]
     public private(set) var storedState: Mania4KOffsetCalibrationStoredState
@@ -113,7 +136,7 @@ public final class Mania4KOffsetCalibrationModel {
     private let tickPlayer: (any Mania4KOffsetCalibrationTickPlaying)?
 
     @ObservationIgnored
-    private let initialRenderedOffsetMilliseconds: Int
+    private let initialRenderedAudioOffsetMilliseconds: Int
 
     @ObservationIgnored
     private var resolvedBeatIndices: Set<Int>
@@ -125,36 +148,48 @@ public final class Mania4KOffsetCalibrationModel {
     private var lastTickedBeatIndex: Int
 
     public init(
-        originalOffsetMilliseconds: Int,
+        originalAudioOffsetMilliseconds: Int,
+        originalVisualOffsetMilliseconds: Int,
         storedState: Mania4KOffsetCalibrationStoredState? = nil,
-        fallbackAppliedOffsetMilliseconds: Int = 0,
+        fallbackAppliedAudioOffsetMilliseconds: Int = 0,
+        fallbackAppliedVisualOffsetMilliseconds: Int = 0,
         tickPlayer: (any Mania4KOffsetCalibrationTickPlaying)? = nil
     ) {
-        let clampedOriginalOffset = Self.clampedOffset(originalOffsetMilliseconds)
+        let clampedOriginalAudioOffset = Self.clampedOffset(originalAudioOffsetMilliseconds)
+        let clampedOriginalVisualOffset = Self.clampedOffset(originalVisualOffsetMilliseconds)
         let normalizedState = Self.normalizedStoredState(
             storedState,
-            fallbackAppliedOffsetMilliseconds: fallbackAppliedOffsetMilliseconds
+            fallbackAppliedAudioOffsetMilliseconds: fallbackAppliedAudioOffsetMilliseconds,
+            fallbackAppliedVisualOffsetMilliseconds: fallbackAppliedVisualOffsetMilliseconds
         )
         let activePreset = normalizedState.activePresetID.flatMap { activePresetID in
             normalizedState.presets.first { $0.id == activePresetID }
         }
-        let initialOffset = activePreset?.presetMs ?? clampedOriginalOffset
+        let initialAudioOffset = activePreset?.audioOffsetMilliseconds ?? clampedOriginalAudioOffset
+        let initialVisualOffset = activePreset?.visualOffsetMilliseconds ?? clampedOriginalVisualOffset
 
-        self.originalOffsetMilliseconds = clampedOriginalOffset
-        self.pendingOffsetMilliseconds = initialOffset
-        self.renderedOffsetMilliseconds = initialOffset
+        self.originalAudioOffsetMilliseconds = clampedOriginalAudioOffset
+        self.originalVisualOffsetMilliseconds = clampedOriginalVisualOffset
+        self.pendingAudioOffsetMilliseconds = initialAudioOffset
+        self.pendingVisualOffsetMilliseconds = initialVisualOffset
+        self.renderedAudioOffsetMilliseconds = initialAudioOffset
+        self.renderedVisualOffsetMilliseconds = initialVisualOffset
         self.rawClockTimeMs = 0
         self.hitSamples = []
         self.storedState = normalizedState
         self.tickPlayer = tickPlayer
-        self.initialRenderedOffsetMilliseconds = initialOffset
+        self.initialRenderedAudioOffsetMilliseconds = initialAudioOffset
         self.resolvedBeatIndices = []
         self.lastRenderedOffsetPublishRawTimeMs = nil
         self.lastTickedBeatIndex = -1
     }
 
+    public var gameplayChartTimeMs: Int {
+        rawClockTimeMs + renderedAudioOffsetMilliseconds
+    }
+
     public var renderedChartTimeMs: Int {
-        rawClockTimeMs + renderedOffsetMilliseconds
+        gameplayChartTimeMs + renderedVisualOffsetMilliseconds
     }
 
     public var presets: [Mania4KOffsetPreset] {
@@ -173,30 +208,34 @@ public final class Mania4KOffsetCalibrationModel {
         return presets.first { $0.id == activePresetID }
     }
 
-    public var appliedGlobalOffsetMilliseconds: Int {
-        storedState.appliedGlobalOffsetMilliseconds
+    public var appliedAudioOffsetMilliseconds: Int {
+        storedState.appliedAudioOffsetMilliseconds
     }
 
-    public var suggestedOffsetMilliseconds: Int? {
-        Self.medianOffset(hitSamples.map(\.sampleSuggestedOffsetMilliseconds))
+    public var appliedVisualOffsetMilliseconds: Int {
+        storedState.appliedVisualOffsetMilliseconds
     }
 
-    public var suggestedAdjustmentMilliseconds: Int? {
-        guard let suggestedOffsetMilliseconds else {
+    public var suggestedAudioOffsetMilliseconds: Int? {
+        Self.medianOffset(hitSamples.map(\.sampleSuggestedAudioOffsetMilliseconds))
+    }
+
+    public var suggestedAudioAdjustmentMilliseconds: Int? {
+        guard let suggestedAudioOffsetMilliseconds else {
             return nil
         }
 
-        return suggestedOffsetMilliseconds - pendingOffsetMilliseconds
+        return suggestedAudioOffsetMilliseconds - pendingAudioOffsetMilliseconds
     }
 
     public func noteTimeMs(forBeatIndex beatIndex: Int) -> Double {
-        Double(Self.initialLeadInMs + initialRenderedOffsetMilliseconds + beatIndex * Self.tickIntervalMs)
+        Double(Self.initialLeadInMs + initialRenderedAudioOffsetMilliseconds + beatIndex * Self.tickIntervalMs)
     }
 
     public func advanceClock(rawClockTimeMs: Int) {
         self.rawClockTimeMs = rawClockTimeMs
-        publishPendingOffsetIfAllowed()
-        pruneResolvedBeatIndices(referenceChartTimeMs: Double(renderedChartTimeMs))
+        publishPendingOffsetsIfAllowed()
+        pruneResolvedBeatIndices(referenceGameplayChartTimeMs: Double(gameplayChartTimeMs))
         playDueCalibrationTicks()
     }
 
@@ -206,8 +245,10 @@ public final class Mania4KOffsetCalibrationModel {
         lookaheadPaddingMs: Double,
         lane: Mania4KLane = .innerRight
     ) -> [Mania4KVisibleObject] {
-        let lowerBound = Double(renderedChartTimeMs) - max(0, postLineVisibleMs)
-        let upperBound = Double(renderedChartTimeMs) + max(0, travelTimeMs) + max(0, lookaheadPaddingMs)
+        let renderChartTimeMs = Double(renderedChartTimeMs)
+        let gameplayChartTimeMs = Double(gameplayChartTimeMs)
+        let lowerBound = renderChartTimeMs - max(0, postLineVisibleMs)
+        let upperBound = renderChartTimeMs + max(0, travelTimeMs) + max(0, lookaheadPaddingMs)
         let firstNoteTime = noteTimeMs(forBeatIndex: 0)
 
         guard upperBound >= firstNoteTime else {
@@ -229,7 +270,7 @@ public final class Mania4KOffsetCalibrationModel {
             let state: Mania4KVisibleObjectState
             if resolvedBeatIndices.contains(beatIndex) {
                 state = .resolved
-            } else if Double(renderedChartTimeMs) > noteTimeMs + Double(Self.hitWindowMs) {
+            } else if gameplayChartTimeMs > noteTimeMs + Double(Self.hitWindowMs) {
                 state = .missedButVisible
             } else {
                 state = .waiting
@@ -252,10 +293,10 @@ public final class Mania4KOffsetCalibrationModel {
 
     @discardableResult
     public func recordInput(rawInputTimeMs: Double) -> Mania4KOffsetCalibrationHitSample? {
-        let sampleRenderedOffsetMilliseconds = renderedOffsetMilliseconds
-        let chartInputTimeMs = rawInputTimeMs + Double(sampleRenderedOffsetMilliseconds)
+        let sampleRenderedAudioOffsetMilliseconds = renderedAudioOffsetMilliseconds
+        let chartInputTimeMs = rawInputTimeMs + Double(sampleRenderedAudioOffsetMilliseconds)
         pruneResolvedBeatIndices(
-            referenceChartTimeMs: max(Double(renderedChartTimeMs), chartInputTimeMs)
+            referenceGameplayChartTimeMs: max(Double(gameplayChartTimeMs), chartInputTimeMs)
         )
         let candidateBeatIndex = nearestUnresolvedBeatIndex(toChartTimeMs: chartInputTimeMs)
         let noteTimeMs = noteTimeMs(forBeatIndex: candidateBeatIndex)
@@ -269,16 +310,16 @@ public final class Mania4KOffsetCalibrationModel {
             beatIndex: candidateBeatIndex,
             rawInputTimeMs: rawInputTimeMs,
             noteTimeMs: noteTimeMs,
-            sampleRenderedOffsetMilliseconds: sampleRenderedOffsetMilliseconds,
+            sampleRenderedAudioOffsetMilliseconds: sampleRenderedAudioOffsetMilliseconds,
             hitErrorMs: hitErrorMs,
-            sampleSuggestedOffsetMilliseconds: Self.clampedOffset(
-                Int((Double(sampleRenderedOffsetMilliseconds) - hitErrorMs).rounded())
+            sampleSuggestedAudioOffsetMilliseconds: Self.clampedOffset(
+                Int((Double(sampleRenderedAudioOffsetMilliseconds) - hitErrorMs).rounded())
             )
         )
 
         resolvedBeatIndices.insert(candidateBeatIndex)
         pruneResolvedBeatIndices(
-            referenceChartTimeMs: max(Double(renderedChartTimeMs), chartInputTimeMs)
+            referenceGameplayChartTimeMs: max(Double(gameplayChartTimeMs), chartInputTimeMs)
         )
         hitSamples.append(sample)
         if hitSamples.count > Self.acceptedSampleCap {
@@ -288,35 +329,53 @@ public final class Mania4KOffsetCalibrationModel {
         return sample
     }
 
-    public func stepPendingOffset(by deltaMilliseconds: Int) {
-        setPendingOffsetMilliseconds(pendingOffsetMilliseconds + deltaMilliseconds)
+    public func stepPendingAudioOffset(by deltaMilliseconds: Int) {
+        setPendingAudioOffsetMilliseconds(pendingAudioOffsetMilliseconds + deltaMilliseconds)
     }
 
-    public func setPendingOffsetMilliseconds(_ offsetMilliseconds: Int) {
-        updatePendingOffset(Self.clampedOffset(offsetMilliseconds), detachesActivePresetOnDivergence: true)
+    public func stepPendingVisualOffset(by deltaMilliseconds: Int) {
+        setPendingVisualOffsetMilliseconds(pendingVisualOffsetMilliseconds + deltaMilliseconds)
+    }
+
+    public func setPendingAudioOffsetMilliseconds(_ offsetMilliseconds: Int) {
+        updatePendingOffsets(
+            audioOffsetMilliseconds: Self.clampedOffset(offsetMilliseconds),
+            visualOffsetMilliseconds: pendingVisualOffsetMilliseconds,
+            detachesActivePresetOnDivergence: true
+        )
+    }
+
+    public func setPendingVisualOffsetMilliseconds(_ offsetMilliseconds: Int) {
+        updatePendingOffsets(
+            audioOffsetMilliseconds: pendingAudioOffsetMilliseconds,
+            visualOffsetMilliseconds: Self.clampedOffset(offsetMilliseconds),
+            detachesActivePresetOnDivergence: true
+        )
     }
 
     @discardableResult
-    public func useSuggestedOffset() -> Bool {
-        guard let suggestedOffsetMilliseconds else {
+    public func useSuggestedAudioOffset() -> Bool {
+        guard let suggestedAudioOffsetMilliseconds else {
             return false
         }
 
-        setPendingOffsetMilliseconds(suggestedOffsetMilliseconds)
+        setPendingAudioOffsetMilliseconds(suggestedAudioOffsetMilliseconds)
         return true
     }
 
     @discardableResult
     public func addPreset(
         name: String,
-        presetMs: Int? = nil,
+        audioOffsetMilliseconds: Int? = nil,
+        visualOffsetMilliseconds: Int? = nil,
         id: UUID = UUID()
     ) -> Mania4KOffsetPreset {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let preset = Mania4KOffsetPreset(
             id: id,
             name: trimmedName.isEmpty ? nextBlankPresetName() : trimmedName,
-            presetMs: Self.clampedOffset(presetMs ?? pendingOffsetMilliseconds)
+            audioOffsetMilliseconds: Self.clampedOffset(audioOffsetMilliseconds ?? pendingAudioOffsetMilliseconds),
+            visualOffsetMilliseconds: Self.clampedOffset(visualOffsetMilliseconds ?? pendingVisualOffsetMilliseconds)
         )
         storedState.presets.append(preset)
         return preset
@@ -329,7 +388,11 @@ public final class Mania4KOffsetCalibrationModel {
         }
 
         storedState.activePresetID = id
-        updatePendingOffset(preset.presetMs, detachesActivePresetOnDivergence: false)
+        updatePendingOffsets(
+            audioOffsetMilliseconds: preset.audioOffsetMilliseconds,
+            visualOffsetMilliseconds: preset.visualOffsetMilliseconds,
+            detachesActivePresetOnDivergence: false
+        )
         return true
     }
 
@@ -363,40 +426,53 @@ public final class Mania4KOffsetCalibrationModel {
     }
 
     @discardableResult
-    public func apply() -> Int {
+    public func apply() -> Mania4KOffsetCalibrationOffsets {
         stopCalibrationTicks()
-        storedState.appliedGlobalOffsetMilliseconds = pendingOffsetMilliseconds
-        return pendingOffsetMilliseconds
+        storedState.appliedAudioOffsetMilliseconds = pendingAudioOffsetMilliseconds
+        storedState.appliedVisualOffsetMilliseconds = pendingVisualOffsetMilliseconds
+        return Mania4KOffsetCalibrationOffsets(
+            audioOffsetMilliseconds: pendingAudioOffsetMilliseconds,
+            visualOffsetMilliseconds: pendingVisualOffsetMilliseconds
+        )
     }
 
     @discardableResult
-    public func cancel() -> Int {
+    public func cancel() -> Mania4KOffsetCalibrationOffsets {
         stopCalibrationTicks()
-        return originalOffsetMilliseconds
+        return Mania4KOffsetCalibrationOffsets(
+            audioOffsetMilliseconds: originalAudioOffsetMilliseconds,
+            visualOffsetMilliseconds: originalVisualOffsetMilliseconds
+        )
     }
 
-    private func updatePendingOffset(
-        _ offsetMilliseconds: Int,
+    private func updatePendingOffsets(
+        audioOffsetMilliseconds: Int,
+        visualOffsetMilliseconds: Int,
         detachesActivePresetOnDivergence: Bool
     ) {
-        let clampedOffsetMilliseconds = Self.clampedOffset(offsetMilliseconds)
+        let clampedAudioOffsetMilliseconds = Self.clampedOffset(audioOffsetMilliseconds)
+        let clampedVisualOffsetMilliseconds = Self.clampedOffset(visualOffsetMilliseconds)
 
         if detachesActivePresetOnDivergence,
            let activePreset,
-           clampedOffsetMilliseconds != activePreset.presetMs {
+           (clampedAudioOffsetMilliseconds != activePreset.audioOffsetMilliseconds
+               || clampedVisualOffsetMilliseconds != activePreset.visualOffsetMilliseconds) {
             storedState.activePresetID = nil
         }
 
-        guard pendingOffsetMilliseconds != clampedOffsetMilliseconds else {
+        guard pendingAudioOffsetMilliseconds != clampedAudioOffsetMilliseconds
+                || pendingVisualOffsetMilliseconds != clampedVisualOffsetMilliseconds else {
             return
         }
 
-        pendingOffsetMilliseconds = clampedOffsetMilliseconds
-        publishPendingOffsetIfAllowed()
+        pendingAudioOffsetMilliseconds = clampedAudioOffsetMilliseconds
+        pendingVisualOffsetMilliseconds = clampedVisualOffsetMilliseconds
+        publishPendingOffsetsIfAllowed()
     }
 
-    private func publishPendingOffsetIfAllowed() {
-        guard pendingOffsetMilliseconds != renderedOffsetMilliseconds else {
+    private func publishPendingOffsetsIfAllowed() {
+        guard pendingAudioOffsetMilliseconds != renderedAudioOffsetMilliseconds
+                || pendingVisualOffsetMilliseconds != renderedVisualOffsetMilliseconds else {
             return
         }
 
@@ -406,7 +482,8 @@ public final class Mania4KOffsetCalibrationModel {
             }
         }
 
-        renderedOffsetMilliseconds = pendingOffsetMilliseconds
+        renderedAudioOffsetMilliseconds = pendingAudioOffsetMilliseconds
+        renderedVisualOffsetMilliseconds = pendingVisualOffsetMilliseconds
         lastRenderedOffsetPublishRawTimeMs = rawClockTimeMs
     }
 
@@ -420,8 +497,8 @@ public final class Mania4KOffsetCalibrationModel {
         lastTickedBeatIndex = latestBeatIndex
     }
 
-    private func pruneResolvedBeatIndices(referenceChartTimeMs: Double) {
-        let earliestRetainedNoteTimeMs = referenceChartTimeMs - Double(Self.resolvedBeatStateRetentionMs)
+    private func pruneResolvedBeatIndices(referenceGameplayChartTimeMs: Double) {
+        let earliestRetainedNoteTimeMs = referenceGameplayChartTimeMs - Double(Self.resolvedBeatStateRetentionMs)
         resolvedBeatIndices = resolvedBeatIndices.filter { beatIndex in
             noteTimeMs(forBeatIndex: beatIndex) >= earliestRetainedNoteTimeMs
         }
@@ -468,14 +545,22 @@ public final class Mania4KOffsetCalibrationModel {
 
     public static func normalizedStoredState(
         _ storedState: Mania4KOffsetCalibrationStoredState?,
-        fallbackAppliedOffsetMilliseconds: Int
+        fallbackAppliedAudioOffsetMilliseconds: Int,
+        fallbackAppliedVisualOffsetMilliseconds: Int
     ) -> Mania4KOffsetCalibrationStoredState {
         var normalizedState = storedState ?? Mania4KOffsetCalibrationStoredState(
-            appliedGlobalOffsetMilliseconds: clampedOffset(fallbackAppliedOffsetMilliseconds)
+            appliedAudioOffsetMilliseconds: clampedOffset(fallbackAppliedAudioOffsetMilliseconds),
+            appliedVisualOffsetMilliseconds: clampedOffset(fallbackAppliedVisualOffsetMilliseconds)
         )
-        normalizedState.appliedGlobalOffsetMilliseconds = clampedOffset(normalizedState.appliedGlobalOffsetMilliseconds)
+        normalizedState.appliedAudioOffsetMilliseconds = clampedOffset(normalizedState.appliedAudioOffsetMilliseconds)
+        normalizedState.appliedVisualOffsetMilliseconds = clampedOffset(normalizedState.appliedVisualOffsetMilliseconds)
         normalizedState.presets = normalizedState.presets.map { preset in
-            Mania4KOffsetPreset(id: preset.id, name: preset.name, presetMs: clampedOffset(preset.presetMs))
+            Mania4KOffsetPreset(
+                id: preset.id,
+                name: preset.name,
+                audioOffsetMilliseconds: clampedOffset(preset.audioOffsetMilliseconds),
+                visualOffsetMilliseconds: clampedOffset(preset.visualOffsetMilliseconds)
+            )
         }
 
         guard let activePresetID = normalizedState.activePresetID,
