@@ -1,5 +1,5 @@
 ---
-commit: 4cf1aa81c0b93c6d0b916f360554a15acc89b83c
+commit: 3a45fbf4419d28b6264c2f83c84df48f3948faaa
 title: Streaming Mania 4K Play Experience Spec
 osu_lazer_commit: a0be214d034c48b0b603069dc284b27b9dde5c17
 ---
@@ -21,7 +21,7 @@ osu_lazer_commit: a0be214d034c48b0b603069dc284b27b9dde5c17
 - 判定窗: [`ManiaHitWindows.cs`](https://github.com/ppy/osu/blob/a0be214d034c48b0b603069dc284b27b9dde5c17/osu.Game.Rulesets.Mania/Scoring/ManiaHitWindows.cs)
 - note lock: [`OrderedHitPolicy.cs`](https://github.com/ppy/osu/blob/a0be214d034c48b0b603069dc284b27b9dde5c17/osu.Game.Rulesets.Mania/UI/OrderedHitPolicy.cs)
 - LN 语义: [`DrawableHoldNote.cs`](https://github.com/ppy/osu/blob/a0be214d034c48b0b603069dc284b27b9dde5c17/osu.Game.Rulesets.Mania/Objects/Drawables/DrawableHoldNote.cs), [`TailNote.cs`](https://github.com/ppy/osu/blob/a0be214d034c48b0b603069dc284b27b9dde5c17/osu.Game.Rulesets.Mania/Objects/TailNote.cs)
-- 全局音频 offset: [`FramedBeatmapClock.cs`](https://github.com/ppy/osu/blob/a0be214d034c48b0b603069dc284b27b9dde5c17/osu.Game/Beatmaps/FramedBeatmapClock.cs), [`AudioOffsetAdjustControl.cs`](https://github.com/ppy/osu/blob/a0be214d034c48b0b603069dc284b27b9dde5c17/osu.Game/Overlays/Settings/Sections/Audio/AudioOffsetAdjustControl.cs)
+- 音频 offset: [`FramedBeatmapClock.cs`](https://github.com/ppy/osu/blob/a0be214d034c48b0b603069dc284b27b9dde5c17/osu.Game/Beatmaps/FramedBeatmapClock.cs), [`AudioOffsetAdjustControl.cs`](https://github.com/ppy/osu/blob/a0be214d034c48b0b603069dc284b27b9dde5c17/osu.Game/Overlays/Settings/Sections/Audio/AudioOffsetAdjustControl.cs)
 - mania star difficulty 参考: [`ManiaDifficultyCalculator.cs`](https://github.com/ppy/osu/blob/a0be214d034c48b0b603069dc284b27b9dde5c17/osu.Game.Rulesets.Mania/Difficulty/ManiaDifficultyCalculator.cs), [`Strain.cs`](https://github.com/ppy/osu/blob/a0be214d034c48b0b603069dc284b27b9dde5c17/osu.Game.Rulesets.Mania/Difficulty/Skills/Strain.cs)
 
 ## 生成输入
@@ -44,9 +44,13 @@ osu_lazer_commit: a0be214d034c48b0b603069dc284b27b9dde5c17
 
 ### Offset
 
-- 只做 `global audio offset`
+- 做 `audio offset`
+  - 改变歌曲时钟、谱面时间、判定时间、击打误差和结算中的 offset 建议
+- 做 `visual offset`
+  - 只改变 note 显示位置
+  - 不改变判定、分数、击打误差或结算时间
 - 不做 `beatmap local offset`
-- 范围 `-500 ms ~ +500 ms`
+- 两者范围均为 `-500 ms ~ +500 ms`
 
 ### 判定难度
 
@@ -88,7 +92,8 @@ osu_lazer_commit: a0be214d034c48b0b603069dc284b27b9dde5c17
 - `music title`
 - `osu!mania star difficulty`
 - `scroll speed`
-- `global audio offset`
+- `audio offset`
+- `visual offset`
 - `judge difficulty` 档位
 
 ### 局中
@@ -105,7 +110,7 @@ osu_lazer_commit: a0be214d034c48b0b603069dc284b27b9dde5c17
 - `accuracy`
 - `max combo`
 - 平均击打误差
-- 全局 offset 调整提示
+- 音频 offset 调整提示
 
 ## 平台
 
@@ -121,7 +126,8 @@ osu_lazer_commit: a0be214d034c48b0b603069dc284b27b9dde5c17
 
 1. `osu!mania star difficulty` 是生成前输入，不是结果页推导值。
 2. 游玩时显示 `osu!mania star difficulty`，不显示 `difficulty name`。
-3. `offset` 只做 `global audio offset`。
+3. `offset` 拆分为 `audio offset` 和 `visual offset`。
+   `audio offset` 改变歌曲/判定时间；`visual offset` 只改变 note 显示。
 4. 判定只做 `Perfect / Good / Miss`。
 5. 判定窗支持 `A / B / C / D / E` 五档，默认 `C`。
 6. HUD 只显示 `accuracy + combo`。

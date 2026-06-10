@@ -1,5 +1,5 @@
 ---
-commit: 707af6fd659a467b33b06f796e5efb6499a091fa
+commit: 3a45fbf4419d28b6264c2f83c84df48f3948faaa
 title: Mania 4K Judgement Engine Spec
 status: frozen
 osu_lazer_commit: a0be214d034c48b0b603069dc284b27b9dde5c17
@@ -28,7 +28,7 @@ Pulsefield keeps only visible `Perfect`, `Good`, and `Miss` judgements. The engi
 
 ## Core Terms
 
-- `chartTimeMs`: the engine time used for judgement. The session layer derives this from audio time plus global offset before calling the engine.
+- `chartTimeMs`: the engine time used for judgement. The session layer derives this from audio time plus `audioOffsetMilliseconds` before calling the engine.
 - `hitErrorMs`: `inputChartTimeMs - object.startTimeMs` for tap notes and long-note heads.
 - `tailErrorMs`: `releaseChartTimeMs - object.endTimeMs` for long-note tails.
 - `malodyTier`: one of `bigP`, `p1`, `p2`, `p3`, `g`, or `m`.
@@ -142,7 +142,7 @@ The engine tracks only:
 - `accuracy`
 - `latestJudgement`
 - `latestMalodyTier`
-- successful hit errors for offset suggestions
+- successful hit errors for audio-offset suggestions
 
 Combo:
 
@@ -182,7 +182,7 @@ The judgement engine emits:
 - score state
 - unresolved visible/judgement-relevant objects
 
-The engine does not own audio playback, rendering, file parsing, or UI. The session layer owns audio-derived time and global offset application. The renderer reads engine snapshots and must not duplicate judgement rules.
+The engine does not own audio playback, rendering, file parsing, or UI. The session layer owns audio-derived time and audio-offset application. The renderer reads engine snapshots and must not duplicate judgement rules.
 
 ## Frozen Decisions
 

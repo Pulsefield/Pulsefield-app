@@ -83,8 +83,11 @@ targets:
       - macOS
     sources:
       - path: Sources/PulsefieldUI
+    resources:
+      - path: Sources/PulsefieldUI/Resources
     dependencies:
       - target: PulsefieldCore
+      - sdk: AVFoundation.framework
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.pulsefield.ui

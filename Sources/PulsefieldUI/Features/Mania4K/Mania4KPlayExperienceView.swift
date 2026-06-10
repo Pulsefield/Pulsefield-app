@@ -1,3 +1,5 @@
+import Foundation
+import AVFoundation
 import PulsefieldCore
 import SwiftUI
 import UniformTypeIdentifiers
@@ -7,6 +9,8 @@ import AppKit
 
 public struct Mania4KPlayExperienceView: View {
     @Bindable public var model: Mania4KPlaySessionModel
+    @AppStorage("mania4k.offsetCalibrationState") private var storedOffsetCalibrationState = ""
+    @State private var didRestoreStoredOffsets = false
 
     public init(model: Mania4KPlaySessionModel) {
         self.model = model
@@ -17,7 +21,13 @@ public struct Mania4KPlayExperienceView: View {
             Mania4KBackdrop()
 
             if model.phase == .setup {
-                Mania4KSetupView(model: model)
+                Mania4KSetupView(
+                    model: model,
+                    storedOffsetCalibrationState: $storedOffsetCalibrationState,
+                    shouldRestoreStoredOffsets: !didRestoreStoredOffsets
+                ) {
+                    didRestoreStoredOffsets = true
+                }
             } else {
                 Mania4KPlaySceneView(model: model)
             }
@@ -32,6 +42,10 @@ private struct Mania4KSetupView: View {
     @Bindable var model: Mania4KPlaySessionModel
     @State private var fileImportTarget: Mania4KFileImportTarget?
     @State private var isChoosingFile = false
+    @State private var offsetCalibrationModel: Mania4KOffsetCalibrationModel?
+    @Binding var storedOffsetCalibrationState: String
+    let shouldRestoreStoredOffsets: Bool
+    let onStoredOffsetsRestored: () -> Void
     #if os(macOS)
     @AppStorage("mania4k.keyBindings") private var storedKeyBindings = Mania4KKeyBindingSet.default.storageValue
     @State private var capturingKeyBindingLane: Mania4KLane?
@@ -40,9 +54,25 @@ private struct Mania4KSetupView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                #if os(macOS)
+                if let offsetCalibrationModel {
+                    Mania4KOffsetCalibrationView(
+                        model: offsetCalibrationModel,
+                        scrollTimeMs: model.scrollTimeMs,
+                        onStateChanged: { state in
+                            persistCalibrationState(state)
+                        },
+                        onApply: applyOffsetCalibration,
+                        onCancel: cancelOffsetCalibration
+                    )
+                } else {
+                    header
+                    setupContent
+                }
+                #else
                 header
-
                 setupContent
+                #endif
             }
             .padding(24)
             .frame(maxWidth: 1080, alignment: .leading)
@@ -57,6 +87,10 @@ private struct Mania4KSetupView: View {
             handleFileImportResult(result)
         }
         .onAppear {
+            if shouldRestoreStoredOffsets {
+                restoreStoredOffsets()
+                onStoredOffsetsRestored()
+            }
             #if os(macOS)
             restoreStoredKeyBindings()
             #endif
@@ -168,13 +202,7 @@ private struct Mania4KSetupView: View {
                 suffix: "x"
             )
 
-            numericField(
-                title: "Global audio offset",
-                value: $model.globalAudioOffsetMilliseconds,
-                range: -500...500,
-                step: 1,
-                suffix: "ms"
-            )
+            offsetSettings
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Judge difficulty")
@@ -197,7 +225,157 @@ private struct Mania4KSetupView: View {
         }
     }
 
+    private var offsetSettings: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            offsetSetting(
+                title: "Audio offset",
+                description: "Moves song timing and judgement timing. Use when hits sound early or late.",
+                binding: audioOffsetBinding
+            )
+
+            offsetSetting(
+                title: "Visual offset",
+                description: "Moves note display only. Use when notes look early or late while the sound feels correct.",
+                binding: visualOffsetBinding
+            )
+
+            #if os(macOS)
+            Button {
+                openOffsetCalibration()
+            } label: {
+                Label("Calibrate", systemImage: "slider.horizontal.3")
+                    .labelStyle(.titleAndIcon)
+            }
+            .buttonStyle(Mania4KSecondaryButtonStyle(tint: Mania4KStyle.accentGreen))
+            #endif
+        }
+    }
+
+    private func offsetSetting(title: String, description: String, binding: Binding<Double>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Mania4KStyle.textPrimary)
+
+            Text(description)
+                .font(.caption)
+                .foregroundStyle(Mania4KStyle.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 10) {
+                Stepper(value: binding, in: -500...500, step: 1) {
+                    TextField(
+                        title,
+                        value: binding,
+                        format: .number.precision(.fractionLength(0))
+                    )
+                    .textFieldStyle(.plain)
+                    .multilineTextAlignment(.trailing)
+                    .foregroundStyle(Mania4KStyle.textPrimary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(Mania4KStyle.controlFill, in: RoundedRectangle(cornerRadius: 7))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7)
+                            .stroke(Mania4KStyle.border, lineWidth: 1)
+                    )
+                    .frame(minWidth: 82, maxWidth: 120)
+                }
+
+                Text("ms")
+                    .font(.callout.monospaced())
+                    .foregroundStyle(Mania4KStyle.textMuted)
+            }
+        }
+    }
+
+    private var audioOffsetBinding: Binding<Double> {
+        Binding(
+            get: {
+                model.audioOffsetMilliseconds
+            },
+            set: { value in
+                let offsetMilliseconds = clampedOffsetMilliseconds(value)
+                model.audioOffsetMilliseconds = Double(offsetMilliseconds)
+            }
+        )
+    }
+
+    private var visualOffsetBinding: Binding<Double> {
+        Binding(
+            get: {
+                model.visualOffsetMilliseconds
+            },
+            set: { value in
+                let offsetMilliseconds = clampedOffsetMilliseconds(value)
+                model.visualOffsetMilliseconds = Double(offsetMilliseconds)
+            }
+        )
+    }
+
+    private func restoreStoredOffsets() {
+        guard let storedState = calibrationStoredState else {
+            return
+        }
+
+        model.audioOffsetMilliseconds = Double(storedState.appliedAudioOffsetMilliseconds)
+        model.visualOffsetMilliseconds = Double(storedState.appliedVisualOffsetMilliseconds)
+    }
+
+    private var calibrationStoredState: Mania4KOffsetCalibrationStoredState? {
+        guard let storedState = Mania4KOffsetCalibrationStoredState(storageValue: storedOffsetCalibrationState) else {
+            return nil
+        }
+
+        return Mania4KOffsetCalibrationModel.normalizedStoredState(
+            storedState,
+            fallbackAppliedAudioOffsetMilliseconds: 0,
+            fallbackAppliedVisualOffsetMilliseconds: 0
+        )
+    }
+
+    private func persistCalibrationState(
+        _ state: Mania4KOffsetCalibrationStoredState,
+        createsStateIfNeeded: Bool = false
+    ) {
+        guard createsStateIfNeeded || calibrationStoredState != nil || !state.presets.isEmpty || state.activePresetID != nil else {
+            return
+        }
+
+        storedOffsetCalibrationState = state.storageValue
+    }
+
+    private func clampedOffsetMilliseconds(_ value: Double) -> Int {
+        min(max(Int(value.rounded()), -500), 500)
+    }
+
     #if os(macOS)
+    private func openOffsetCalibration() {
+        let calibrationModel = Mania4KOffsetCalibrationModel(
+            originalAudioOffsetMilliseconds: clampedOffsetMilliseconds(model.audioOffsetMilliseconds),
+            originalVisualOffsetMilliseconds: clampedOffsetMilliseconds(model.visualOffsetMilliseconds),
+            storedState: calibrationStoredState,
+            tickPlayer: Mania4KOffsetCalibrationResourceTickPlayer()
+        )
+        calibrationModel.prewarmCalibrationTicks()
+        offsetCalibrationModel = calibrationModel
+    }
+
+    private func applyOffsetCalibration(_ calibrationModel: Mania4KOffsetCalibrationModel) {
+        let appliedOffsets = calibrationModel.apply()
+        model.audioOffsetMilliseconds = Double(appliedOffsets.audioOffsetMilliseconds)
+        model.visualOffsetMilliseconds = Double(appliedOffsets.visualOffsetMilliseconds)
+        persistCalibrationState(calibrationModel.storedState, createsStateIfNeeded: true)
+        offsetCalibrationModel = nil
+    }
+
+    private func cancelOffsetCalibration(_ calibrationModel: Mania4KOffsetCalibrationModel) {
+        let originalOffsets = calibrationModel.cancel()
+        model.audioOffsetMilliseconds = Double(originalOffsets.audioOffsetMilliseconds)
+        model.visualOffsetMilliseconds = Double(originalOffsets.visualOffsetMilliseconds)
+        offsetCalibrationModel = nil
+    }
+
     private var keyBindingSettings: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -473,6 +651,673 @@ private enum Mania4KFileImportTarget {
     case beatmap
     case audio
 }
+
+#if os(macOS)
+private enum Mania4KOffsetCalibrationFocusedTextField: Hashable {
+    case pendingAudioOffset
+    case pendingVisualOffset
+    case presetName
+}
+
+private struct Mania4KOffsetCalibrationView: View {
+    @Bindable var model: Mania4KOffsetCalibrationModel
+    let scrollTimeMs: Double
+    let onStateChanged: (Mania4KOffsetCalibrationStoredState) -> Void
+    let onApply: (Mania4KOffsetCalibrationModel) -> Void
+    let onCancel: (Mania4KOffsetCalibrationModel) -> Void
+
+    @State private var frameLoopTask: Task<Void, Never>?
+    @State private var calibrationStartTimeSeconds: TimeInterval?
+    @State private var presetName = ""
+    @State private var presetIDPendingDeletion: UUID?
+    @FocusState private var focusedTextField: Mania4KOffsetCalibrationFocusedTextField?
+
+    private let calibrationLane: Mania4KLane = .innerRight
+    private let calibrationPrewarmDelayMs = 120
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            header
+
+            HStack(alignment: .top, spacing: 16) {
+                calibrationStage
+                    .frame(maxWidth: .infinity, minHeight: 520)
+
+                controls
+                    .frame(width: 340)
+            }
+        }
+        .background(
+            Mania4KOffsetCalibrationKeyboardCaptureView(
+                calibrationKey: Mania4KOffsetCalibrationModel.calibrationKey,
+                isCaptureEnabled: focusedTextField == nil
+            ) {
+                _ = model.recordInput(rawInputTimeMs: currentRawClockTimeMs())
+            }
+        )
+        .onAppear(perform: startFrameLoop)
+        .onDisappear(perform: stopFrameLoop)
+    }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Offset Calibration")
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .foregroundStyle(Mania4KStyle.textPrimary)
+
+                Text("A \(model.pendingAudioOffsetMilliseconds) ms pending / \(model.renderedAudioOffsetMilliseconds) ms rendered  V \(model.pendingVisualOffsetMilliseconds) ms pending / \(model.renderedVisualOffsetMilliseconds) ms rendered")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(Mania4KStyle.textSecondary)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.78)
+            }
+
+            Spacer()
+
+            Text("Key \(Mania4KOffsetCalibrationModel.calibrationKey.uppercased())")
+                .font(.caption.monospaced().weight(.bold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .foregroundStyle(Mania4KStyle.textPrimary)
+                .background(Mania4KStyle.controlFill, in: RoundedRectangle(cornerRadius: 7))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7)
+                        .stroke(Mania4KStyle.border, lineWidth: 1)
+                )
+
+            Button(role: .cancel) {
+                onCancel(model)
+            } label: {
+                Label("Cancel", systemImage: "xmark")
+            }
+            .buttonStyle(Mania4KSecondaryButtonStyle(tint: Mania4KStyle.accentRed))
+
+            Button {
+                onApply(model)
+            } label: {
+                Label("Apply", systemImage: "checkmark")
+            }
+            .buttonStyle(Mania4KPrimaryButtonStyle())
+        }
+    }
+
+    private var calibrationStage: some View {
+        GeometryReader { proxy in
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Mania4KStyle.stageFill,
+                        Color(red: 0.035, green: 0.040, blue: 0.055)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                Mania4KGridOverlay(spacing: 40, opacity: 0.12)
+
+                Mania4KLiveLaneView(
+                    lane: calibrationLane,
+                    frame: calibrationFrame,
+                    laneState: nil,
+                    noteColor: Mania4KStyle.accentGreen,
+                    keyLabel: Mania4KOffsetCalibrationModel.calibrationKey.uppercased()
+                )
+                .frame(width: min(max(proxy.size.width * 0.22, 112), 150))
+                .padding(.vertical, 22)
+
+                VStack {
+                    Spacer()
+
+                    HStack(spacing: 12) {
+                        metricPill(title: "Raw", value: "\(model.rawClockTimeMs) ms")
+                        metricPill(title: "Suggestion", value: suggestionText)
+                        metricPill(title: "Latest", value: latestHitText)
+                    }
+                    .padding(.bottom, 18)
+                }
+            }
+        }
+        .background(Mania4KStyle.stageFill, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Mania4KStyle.borderStrong, lineWidth: 1)
+        )
+    }
+
+    private var controls: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Audio Offset")
+                .font(.title3.bold())
+                .foregroundStyle(Mania4KStyle.textPrimary)
+
+            HStack(spacing: 8) {
+                offsetStepButton(-100) { model.stepPendingAudioOffset(by: $0) }
+                offsetStepButton(-10) { model.stepPendingAudioOffset(by: $0) }
+                offsetStepButton(-1) { model.stepPendingAudioOffset(by: $0) }
+            }
+
+            HStack(spacing: 10) {
+                TextField("Audio Offset", value: pendingAudioOffsetBinding, format: .number)
+                    .textFieldStyle(.plain)
+                    .multilineTextAlignment(.trailing)
+                    .foregroundStyle(Mania4KStyle.textPrimary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(Mania4KStyle.controlFill, in: RoundedRectangle(cornerRadius: 7))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7)
+                            .stroke(Mania4KStyle.border, lineWidth: 1)
+                    )
+                    .focused($focusedTextField, equals: .pendingAudioOffset)
+                    .onSubmit {
+                        focusedTextField = nil
+                    }
+
+                Text("ms")
+                    .font(.callout.monospaced())
+                    .foregroundStyle(Mania4KStyle.textMuted)
+            }
+
+            HStack(spacing: 8) {
+                offsetStepButton(1) { model.stepPendingAudioOffset(by: $0) }
+                offsetStepButton(10) { model.stepPendingAudioOffset(by: $0) }
+                offsetStepButton(100) { model.stepPendingAudioOffset(by: $0) }
+            }
+
+            Button {
+                focusedTextField = nil
+                if model.useSuggestedAudioOffset() {
+                    onStateChanged(model.storedState)
+                }
+            } label: {
+                Label("Use Suggestion", systemImage: "scope")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(Mania4KSecondaryButtonStyle(tint: Mania4KStyle.accentAmber))
+            .disabled(model.suggestedAudioOffsetMilliseconds == nil)
+
+            Divider()
+                .overlay(Mania4KStyle.border)
+
+            Text("Visual Offset")
+                .font(.title3.bold())
+                .foregroundStyle(Mania4KStyle.textPrimary)
+
+            HStack(spacing: 8) {
+                offsetStepButton(-100) { model.stepPendingVisualOffset(by: $0) }
+                offsetStepButton(-10) { model.stepPendingVisualOffset(by: $0) }
+                offsetStepButton(-1) { model.stepPendingVisualOffset(by: $0) }
+            }
+
+            HStack(spacing: 10) {
+                TextField("Visual Offset", value: pendingVisualOffsetBinding, format: .number)
+                    .textFieldStyle(.plain)
+                    .multilineTextAlignment(.trailing)
+                    .foregroundStyle(Mania4KStyle.textPrimary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(Mania4KStyle.controlFill, in: RoundedRectangle(cornerRadius: 7))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7)
+                            .stroke(Mania4KStyle.border, lineWidth: 1)
+                    )
+                    .focused($focusedTextField, equals: .pendingVisualOffset)
+                    .onSubmit {
+                        focusedTextField = nil
+                    }
+
+                Text("ms")
+                    .font(.callout.monospaced())
+                    .foregroundStyle(Mania4KStyle.textMuted)
+            }
+
+            HStack(spacing: 8) {
+                offsetStepButton(1) { model.stepPendingVisualOffset(by: $0) }
+                offsetStepButton(10) { model.stepPendingVisualOffset(by: $0) }
+                offsetStepButton(100) { model.stepPendingVisualOffset(by: $0) }
+            }
+
+            Divider()
+                .overlay(Mania4KStyle.border)
+
+            Text("Presets")
+                .font(.title3.bold())
+                .foregroundStyle(Mania4KStyle.textPrimary)
+
+            Text("Active preset")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Mania4KStyle.textMuted)
+
+            Picker("Preset", selection: activePresetBinding) {
+                Text("None").tag(Optional<UUID>.none)
+                ForEach(model.presets) { preset in
+                    Text(presetLabel(for: preset)).tag(Optional(preset.id))
+                }
+            }
+            .labelsHidden()
+
+            HStack(spacing: 8) {
+                TextField("Name", text: $presetName)
+                    .textFieldStyle(.plain)
+                    .foregroundStyle(Mania4KStyle.textPrimary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(Mania4KStyle.controlFill, in: RoundedRectangle(cornerRadius: 7))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7)
+                            .stroke(Mania4KStyle.border, lineWidth: 1)
+                    )
+                    .focused($focusedTextField, equals: .presetName)
+                    .onSubmit(addPreset)
+
+                Button(action: addPreset) {
+                    Label("Add", systemImage: "plus")
+                }
+                .buttonStyle(Mania4KSecondaryButtonStyle())
+            }
+
+            Text("Delete preset")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Mania4KStyle.textMuted)
+
+            Picker("Delete preset", selection: presetDeletionBinding) {
+                Text("None").tag(Optional<UUID>.none)
+                ForEach(model.presets) { preset in
+                    Text(presetLabel(for: preset)).tag(Optional(preset.id))
+                }
+            }
+            .labelsHidden()
+
+            Button(role: .destructive) {
+                deleteSelectedPreset()
+            } label: {
+                Label("Delete", systemImage: "trash")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(Mania4KSecondaryButtonStyle(tint: Mania4KStyle.accentRed))
+            .disabled(!canDeleteSelectedPreset)
+        }
+        .panelStyle()
+        .onChange(of: model.presets.map(\.id)) { _, presetIDs in
+            if let presetIDPendingDeletion, !presetIDs.contains(presetIDPendingDeletion) {
+                self.presetIDPendingDeletion = nil
+            }
+        }
+    }
+
+    private var calibrationFrame: Mania4KPlayFrame {
+        Mania4KPlayFrame(
+            gameplayChartTimeMs: Double(model.gameplayChartTimeMs),
+            renderChartTimeMs: Double(model.renderedChartTimeMs),
+            scrollTimeMs: scrollTimeMs,
+            metadata: Mania4KChartMetadata(title: "Offset calibration", sourceDescription: "Synthetic"),
+            visibleObjects: model.visibleObjects(
+                travelTimeMs: scrollTimeMs,
+                postLineVisibleMs: 280,
+                lookaheadPaddingMs: 120,
+                lane: calibrationLane
+            ),
+            score: .zero,
+            laneStates: [],
+            latestJudgement: nil
+        )
+    }
+
+    private var pendingAudioOffsetBinding: Binding<Int> {
+        Binding(
+            get: {
+                model.pendingAudioOffsetMilliseconds
+            },
+            set: { value in
+                model.setPendingAudioOffsetMilliseconds(value)
+                onStateChanged(model.storedState)
+            }
+        )
+    }
+
+    private var pendingVisualOffsetBinding: Binding<Int> {
+        Binding(
+            get: {
+                model.pendingVisualOffsetMilliseconds
+            },
+            set: { value in
+                model.setPendingVisualOffsetMilliseconds(value)
+                onStateChanged(model.storedState)
+            }
+        )
+    }
+
+    private var activePresetBinding: Binding<UUID?> {
+        Binding(
+            get: {
+                model.activePresetID
+            },
+            set: { id in
+                focusedTextField = nil
+                if let id {
+                    _ = model.selectPreset(id: id)
+                } else {
+                    model.clearActivePreset()
+                }
+                onStateChanged(model.storedState)
+            }
+        )
+    }
+
+    private var presetDeletionBinding: Binding<UUID?> {
+        Binding(
+            get: {
+                presetIDPendingDeletion
+            },
+            set: { id in
+                focusedTextField = nil
+                presetIDPendingDeletion = id
+            }
+        )
+    }
+
+    private var canDeleteSelectedPreset: Bool {
+        guard let presetIDPendingDeletion else {
+            return false
+        }
+
+        return model.presets.contains { $0.id == presetIDPendingDeletion }
+    }
+
+    private var suggestionText: String {
+        guard let adjustment = model.suggestedAudioAdjustmentMilliseconds else {
+            return "--"
+        }
+
+        return "\(adjustment >= 0 ? "+" : "")\(adjustment) ms"
+    }
+
+    private var latestHitText: String {
+        guard let latest = model.hitSamples.last else {
+            return "--"
+        }
+
+        return "\(latest.hitErrorMs >= 0 ? "+" : "")\(Int(latest.hitErrorMs.rounded())) ms"
+    }
+
+    private func offsetStepButton(_ delta: Int, _ apply: @escaping (Int) -> Void) -> some View {
+        Button {
+            focusedTextField = nil
+            apply(delta)
+            onStateChanged(model.storedState)
+        } label: {
+            Text(delta > 0 ? "+\(delta)" : "\(delta)")
+                .font(.callout.monospaced().weight(.bold))
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(Mania4KSecondaryButtonStyle())
+    }
+
+    private func presetLabel(for preset: Mania4KOffsetPreset) -> String {
+        "\(preset.name)  A \(signedMilliseconds(preset.audioOffsetMilliseconds))  V \(signedMilliseconds(preset.visualOffsetMilliseconds))"
+    }
+
+    private func signedMilliseconds(_ milliseconds: Int) -> String {
+        "\(milliseconds >= 0 ? "+" : "")\(milliseconds) ms"
+    }
+
+    private func metricPill(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Mania4KStyle.textMuted)
+
+            Text(value)
+                .font(.callout.monospacedDigit().weight(.semibold))
+                .foregroundStyle(Mania4KStyle.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(minWidth: 104, alignment: .leading)
+        .background(Mania4KStyle.panelFill.opacity(0.88), in: RoundedRectangle(cornerRadius: 7))
+        .overlay(
+            RoundedRectangle(cornerRadius: 7)
+                .stroke(Mania4KStyle.border, lineWidth: 1)
+        )
+    }
+
+    private func addPreset() {
+        focusedTextField = nil
+        _ = model.addPreset(name: presetName)
+        presetName = ""
+        onStateChanged(model.storedState)
+    }
+
+    private func deleteSelectedPreset() {
+        focusedTextField = nil
+        guard let presetIDPendingDeletion, model.deletePreset(id: presetIDPendingDeletion) else {
+            return
+        }
+
+        self.presetIDPendingDeletion = nil
+        onStateChanged(model.storedState)
+    }
+
+    private func startFrameLoop() {
+        guard frameLoopTask == nil else {
+            return
+        }
+
+        let startTimeSeconds = ProcessInfo.processInfo.systemUptime
+        calibrationStartTimeSeconds = startTimeSeconds
+        model.advanceClock(rawClockTimeMs: 0)
+        frameLoopTask = Task { @MainActor in
+            var didPrewarmTicks = false
+            while !Task.isCancelled {
+                let rawClockTimeMs = rawClockTimeMs(since: startTimeSeconds)
+                if !didPrewarmTicks, rawClockTimeMs >= calibrationPrewarmDelayMs {
+                    model.prewarmCalibrationTicks()
+                    didPrewarmTicks = true
+                }
+                model.advanceClock(rawClockTimeMs: rawClockTimeMs)
+                do {
+                    try await Task.sleep(nanoseconds: 16_666_667)
+                } catch {
+                    break
+                }
+            }
+        }
+    }
+
+    private func stopFrameLoop() {
+        frameLoopTask?.cancel()
+        frameLoopTask = nil
+        calibrationStartTimeSeconds = nil
+        model.stopCalibrationTicks()
+    }
+
+    private func currentRawClockTimeMs() -> Int {
+        guard let calibrationStartTimeSeconds else {
+            return model.rawClockTimeMs
+        }
+
+        return rawClockTimeMs(since: calibrationStartTimeSeconds)
+    }
+
+    private func rawClockTimeMs(since startTimeSeconds: TimeInterval) -> Int {
+        max(0, Int((ProcessInfo.processInfo.systemUptime - startTimeSeconds) * 1_000))
+    }
+}
+
+private final class Mania4KOffsetCalibrationResourceBundleToken: NSObject {}
+
+@MainActor
+private final class Mania4KOffsetCalibrationResourceTickPlayer: Mania4KOffsetCalibrationTickPlaying {
+    private let player: AVAudioPlayer?
+    private var didPrewarm = false
+    private var prewarmRestoreVolume: Float?
+    private var prewarmTask: Task<Void, Never>?
+
+    init() {
+        let bundle = Bundle(for: Mania4KOffsetCalibrationResourceBundleToken.self)
+        guard let url = bundle.url(forResource: "calibration_tick", withExtension: "wav") else {
+            assertionFailure("Missing bundled calibration_tick.wav resource.")
+            player = nil
+            return
+        }
+
+        do {
+            let player = try AVAudioPlayer(contentsOf: url)
+            player.prepareToPlay()
+            self.player = player
+        } catch {
+            assertionFailure("Could not prepare calibration_tick.wav: \(error.localizedDescription)")
+            player = nil
+        }
+    }
+
+    deinit {
+        prewarmTask?.cancel()
+    }
+
+    func prewarmCalibrationTicks() {
+        guard !didPrewarm, let player else {
+            return
+        }
+
+        didPrewarm = true
+        prewarmRestoreVolume = player.volume
+        player.volume = 0
+        player.currentTime = 0
+        player.play()
+
+        prewarmTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: 60_000_000)
+            } catch {
+                return
+            }
+
+            self?.finishPrewarm()
+        }
+    }
+
+    func playCalibrationTick() {
+        guard let player else {
+            return
+        }
+
+        if prewarmRestoreVolume != nil {
+            finishPrewarm()
+        }
+        player.currentTime = 0
+        player.play()
+    }
+
+    func stopCalibrationTicks() {
+        prewarmTask?.cancel()
+        prewarmTask = nil
+        if let prewarmRestoreVolume {
+            player?.volume = prewarmRestoreVolume
+            self.prewarmRestoreVolume = nil
+        }
+        player?.stop()
+        player?.currentTime = 0
+    }
+
+    private func finishPrewarm() {
+        prewarmTask = nil
+        if player?.isPlaying == true {
+            player?.stop()
+        }
+        player?.currentTime = 0
+        if let prewarmRestoreVolume {
+            player?.volume = prewarmRestoreVolume
+            self.prewarmRestoreVolume = nil
+        }
+    }
+}
+
+private struct Mania4KOffsetCalibrationKeyboardCaptureView: NSViewRepresentable {
+    let calibrationKey: String
+    let isCaptureEnabled: Bool
+    let onHit: () -> Void
+
+    func makeNSView(context: Context) -> KeyboardView {
+        let view = KeyboardView()
+        view.calibrationKey = Mania4KKeyBindingSet.normalizedKey(calibrationKey)
+        view.isCaptureEnabled = isCaptureEnabled
+        view.onHit = onHit
+        return view
+    }
+
+    func updateNSView(_ nsView: KeyboardView, context: Context) {
+        let wasCaptureEnabled = nsView.isCaptureEnabled
+        nsView.calibrationKey = Mania4KKeyBindingSet.normalizedKey(calibrationKey)
+        nsView.isCaptureEnabled = isCaptureEnabled
+        nsView.onHit = onHit
+        nsView.requestFirstResponderIfNeeded(allowTextEditingResponder: !wasCaptureEnabled && isCaptureEnabled)
+    }
+
+    final class KeyboardView: NSView {
+        var calibrationKey = Mania4KOffsetCalibrationModel.calibrationKey
+        var isCaptureEnabled = true
+        var onHit: (() -> Void)?
+        private var didRequestInitialFirstResponder = false
+
+        override var acceptsFirstResponder: Bool {
+            true
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard window != nil, !didRequestInitialFirstResponder else {
+                return
+            }
+
+            didRequestInitialFirstResponder = true
+            requestFirstResponderIfNeeded(allowTextEditingResponder: true)
+        }
+
+        override func keyDown(with event: NSEvent) {
+            guard isCaptureEnabled,
+                  !event.isARepeat,
+                  let key = event.charactersIgnoringModifiers,
+                  Mania4KKeyBindingSet.normalizedKey(key) == calibrationKey else {
+                super.keyDown(with: event)
+                return
+            }
+
+            onHit?()
+        }
+
+        func requestFirstResponderIfNeeded(allowTextEditingResponder: Bool = false) {
+            guard isCaptureEnabled,
+                  let window,
+                  window.firstResponder !== self,
+                  allowTextEditingResponder || !Self.isTextEditingResponder(window.firstResponder)
+            else {
+                return
+            }
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      self.isCaptureEnabled,
+                      let window = self.window,
+                      window.firstResponder !== self,
+                      allowTextEditingResponder || !Self.isTextEditingResponder(window.firstResponder)
+                else {
+                    return
+                }
+
+                window.makeFirstResponder(self)
+            }
+        }
+
+        private static func isTextEditingResponder(_ responder: Any?) -> Bool {
+            responder is NSText || responder is NSTextField || responder is NSTextView
+        }
+    }
+}
+#endif
 
 private struct SetupLanePreview: View {
     var body: some View {
@@ -1018,7 +1863,7 @@ struct Mania4KNoteRenderLayout {
 
     static func yPosition(for objectTimeMs: Double, frame: Mania4KPlayFrame, laneHeight: CGFloat, receptorY: CGFloat) -> CGFloat {
         let travelHeight = max(receptorY - 18, 1)
-        let progress = (objectTimeMs - frame.chartTimeMs) / max(frame.scrollTimeMs, 1)
+        let progress = (objectTimeMs - frame.renderChartTimeMs) / max(frame.scrollTimeMs, 1)
         return receptorY - CGFloat(progress) * travelHeight
     }
 

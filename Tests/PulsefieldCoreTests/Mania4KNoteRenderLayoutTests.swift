@@ -54,9 +54,39 @@ final class Mania4KNoteRenderLayoutTests: XCTestCase {
         XCTAssertEqual(geometry.bodyBottomY, geometry.headY, accuracy: 0.001)
     }
 
+    func testRenderChartTimeChangesPositionWithoutChangingGameplayTime() {
+        let gameplayFrame = playFrame(gameplayChartTimeMs: 1_000, renderChartTimeMs: 1_000, scrollTimeMs: 1_000)
+        let visuallyShiftedFrame = playFrame(gameplayChartTimeMs: 1_000, renderChartTimeMs: 1_100, scrollTimeMs: 1_000)
+
+        let baselineY = Mania4KNoteRenderLayout.yPosition(
+            for: 1_500,
+            frame: gameplayFrame,
+            laneHeight: 640,
+            receptorY: 520
+        )
+        let shiftedY = Mania4KNoteRenderLayout.yPosition(
+            for: 1_500,
+            frame: visuallyShiftedFrame,
+            laneHeight: 640,
+            receptorY: 520
+        )
+
+        XCTAssertEqual(gameplayFrame.gameplayChartTimeMs, visuallyShiftedFrame.gameplayChartTimeMs)
+        XCTAssertGreaterThan(shiftedY, baselineY)
+    }
+
     private func playFrame(chartTimeMs: Double, scrollTimeMs: Double) -> Mania4KPlayFrame {
+        playFrame(gameplayChartTimeMs: chartTimeMs, renderChartTimeMs: chartTimeMs, scrollTimeMs: scrollTimeMs)
+    }
+
+    private func playFrame(
+        gameplayChartTimeMs: Double,
+        renderChartTimeMs: Double,
+        scrollTimeMs: Double
+    ) -> Mania4KPlayFrame {
         Mania4KPlayFrame(
-            chartTimeMs: chartTimeMs,
+            gameplayChartTimeMs: gameplayChartTimeMs,
+            renderChartTimeMs: renderChartTimeMs,
             scrollTimeMs: scrollTimeMs,
             metadata: Mania4KChartMetadata(title: "Test", sourceDescription: "Test"),
             visibleObjects: [],

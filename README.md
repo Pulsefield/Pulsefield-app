@@ -1,5 +1,5 @@
 ---
-commit: be9f9121ccad32726c955b1de61685ab9458db0f
+commit: 3a45fbf4419d28b6264c2f83c84df48f3948faaa
 ---
 
 # Pulsefield
@@ -48,7 +48,7 @@ The local library and manual beatmap loading paths exist to support and verify t
 
 - Render a dark 4-lane mania play scene with live lane input, judgement feedback, combo, accuracy, score, and chart metadata.
 - Support keyboard input on macOS and lane touch input on touch platforms.
-- Configure scroll speed, global audio offset, judge difficulty, and macOS key bindings.
+- Configure scroll speed, audio and visual offsets, judge difficulty, and macOS key bindings.
 - Stream hit objects through the gameplay model rather than treating the chart as static UI state.
 
 ### Support infrastructure

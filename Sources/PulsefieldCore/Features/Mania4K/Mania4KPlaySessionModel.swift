@@ -3,6 +3,15 @@ import Observation
 
 public typealias Mania4KHitObjectStreamFactory = @Sendable (URL) -> any Mania4KHitObjectStreaming
 
+private struct Mania4KFrameTiming {
+    let gameplayChartTimeMs: Double
+    let renderChartTimeMs: Double
+
+    func streamReadThroughChartTimeMs(scrollTimeMs: Double) -> Double {
+        max(gameplayChartTimeMs, renderChartTimeMs) + scrollTimeMs + 250
+    }
+}
+
 @MainActor
 @Observable
 public final class Mania4KPlaySessionModel {
@@ -10,7 +19,8 @@ public final class Mania4KPlaySessionModel {
     public var audioFileURL: URL?
     public var starDifficulty: Double
     public var scrollSpeed: Double
-    public var globalAudioOffsetMilliseconds: Double
+    public var audioOffsetMilliseconds: Double
+    public var visualOffsetMilliseconds: Double
     public var judgeDifficulty: Mania4KJudgeDifficulty
     public var keyBindings: Mania4KKeyBindingSet
 
@@ -44,7 +54,8 @@ public final class Mania4KPlaySessionModel {
         audioFileURL: URL? = nil,
         starDifficulty: Double = 4.0,
         scrollSpeed: Double = 16.0,
-        globalAudioOffsetMilliseconds: Double = 0,
+        audioOffsetMilliseconds: Double = 0,
+        visualOffsetMilliseconds: Double = 0,
         judgeDifficulty: Mania4KJudgeDifficulty = .c,
         keyBindings: Mania4KKeyBindingSet = .default,
         audioClock: any Mania4KAudioClock = AVFoundationMania4KAudioClock(),
@@ -54,7 +65,8 @@ public final class Mania4KPlaySessionModel {
         self.audioFileURL = audioFileURL
         self.starDifficulty = starDifficulty
         self.scrollSpeed = scrollSpeed
-        self.globalAudioOffsetMilliseconds = globalAudioOffsetMilliseconds
+        self.audioOffsetMilliseconds = audioOffsetMilliseconds
+        self.visualOffsetMilliseconds = visualOffsetMilliseconds
         self.judgeDifficulty = judgeDifficulty
         self.keyBindings = keyBindings
         self.audioClock = audioClock
@@ -125,7 +137,8 @@ public final class Mania4KPlaySessionModel {
             audioFileURL: audioFileURL,
             starDifficulty: starDifficulty,
             scrollSpeed: scrollSpeed,
-            globalAudioOffsetMilliseconds: globalAudioOffsetMilliseconds,
+            audioOffsetMilliseconds: audioOffsetMilliseconds,
+            visualOffsetMilliseconds: visualOffsetMilliseconds,
             judgeDifficulty: judgeDifficulty,
             keyBindings: keyBindings
         )
@@ -192,7 +205,7 @@ public final class Mania4KPlaySessionModel {
             keyboardRouter.reset()
             resetLiveInputLaneStates()
 
-            let initialChartTimeMs = try await prepareInitialStreamCoverage(expectedGeneration: startGeneration)
+            let initialTiming = try await prepareInitialStreamCoverage(expectedGeneration: startGeneration)
             if await abandonStaleStartIfNeeded(startGeneration) {
                 return false
             }
@@ -200,9 +213,9 @@ public final class Mania4KPlaySessionModel {
             if let currentEngine = engine {
                 preparedEngine = currentEngine
             }
-            _ = preparedEngine.advance(to: initialChartTimeMs)
+            _ = preparedEngine.advance(to: initialTiming.gameplayChartTimeMs)
             engine = preparedEngine
-            publishFrame(chartTimeMs: initialChartTimeMs)
+            publishFrame(timing: initialTiming)
 
             try await audioClock.play()
             if await abandonStaleStartIfNeeded(startGeneration) {
@@ -232,30 +245,30 @@ public final class Mania4KPlaySessionModel {
         }
     }
 
-    private func prepareInitialStreamCoverage(expectedGeneration: UInt64) async throws -> Double {
-        var chartTimeMs = await currentChartTimeMs()
+    private func prepareInitialStreamCoverage(expectedGeneration: UInt64) async throws -> Mania4KFrameTiming {
+        var timing = await currentFrameTiming()
         try validatePlayStateGeneration(expectedGeneration)
         try await readStream(
-            throughChartTimeMs: chartTimeMs + scrollTimeMs + 250,
+            throughChartTimeMs: timing.streamReadThroughChartTimeMs(scrollTimeMs: scrollTimeMs),
             expectedGeneration: expectedGeneration
         )
         try validatePlayStateGeneration(expectedGeneration)
 
-        let checkedChartTimeMs = await currentChartTimeMs()
-        if checkedChartTimeMs > chartTimeMs {
-            chartTimeMs = checkedChartTimeMs
+        let checkedTiming = await currentFrameTiming()
+        if checkedTiming.streamReadThroughChartTimeMs(scrollTimeMs: scrollTimeMs) > timing.streamReadThroughChartTimeMs(scrollTimeMs: scrollTimeMs) {
+            timing = checkedTiming
             try await readStream(
-                throughChartTimeMs: chartTimeMs + scrollTimeMs + 250,
+                throughChartTimeMs: timing.streamReadThroughChartTimeMs(scrollTimeMs: scrollTimeMs),
                 expectedGeneration: expectedGeneration
             )
             try validatePlayStateGeneration(expectedGeneration)
         }
 
-        guard streamEnded || chartTimeMs <= streamCompleteThroughChartTimeMs else {
+        guard streamEnded || timing.gameplayChartTimeMs <= streamCompleteThroughChartTimeMs else {
             throw Mania4KPlayFailure.streamFailed("The chart stream is not safe through the initial chart time.")
         }
 
-        return chartTimeMs
+        return timing
     }
 
     public func pause() async {
@@ -306,23 +319,23 @@ public final class Mania4KPlaySessionModel {
         }
 
         let audioTimeMs = await audioClock.currentAudioTimeMs()
-        let chartTimeMs = audioTimeMs + globalAudioOffsetMilliseconds
-        let streamReadThrough = chartTimeMs + scrollTimeMs + 250
+        let timing = frameTiming(audioTimeMs: audioTimeMs)
+        let streamReadThrough = timing.streamReadThroughChartTimeMs(scrollTimeMs: scrollTimeMs)
 
         do {
             try await readStream(throughChartTimeMs: streamReadThrough)
-            guard streamEnded || chartTimeMs <= streamCompleteThroughChartTimeMs else {
+            guard streamEnded || timing.gameplayChartTimeMs <= streamCompleteThroughChartTimeMs else {
                 await fail(.streamFailed("The chart stream fell behind the judgement clock."))
                 return false
             }
 
             if var engine {
-                _ = engine.advance(to: chartTimeMs)
+                _ = engine.advance(to: timing.gameplayChartTimeMs)
                 self.engine = engine
             }
 
-            publishFrame(chartTimeMs: chartTimeMs)
-            await finishIfNeeded(chartTimeMs: chartTimeMs)
+            publishFrame(timing: timing)
+            await finishIfNeeded(chartTimeMs: timing.gameplayChartTimeMs)
             return true
         } catch let validationError as Mania4KChartValidationError {
             await fail(.engineRejectedObjects(validationError))
@@ -480,7 +493,7 @@ public final class Mania4KPlaySessionModel {
         }
         _ = engine.handle(input)
         self.engine = engine
-        publishFrame(chartTimeMs: input.chartTimeMs)
+        publishFrame(timing: frameTiming(gameplayChartTimeMs: input.chartTimeMs))
         return true
     }
 
@@ -588,14 +601,17 @@ public final class Mania4KPlaySessionModel {
         }
     }
 
-    private func publishFrame(chartTimeMs: Double) {
+    private func publishFrame(timing: Mania4KFrameTiming) {
         guard let metadata, let engine else {
             return
         }
 
-        let snapshot = engine.snapshot(visibleRange: (chartTimeMs - 700)...(chartTimeMs + scrollTimeMs + 250))
+        let snapshot = engine.snapshot(
+            visibleRange: (timing.renderChartTimeMs - 700)...(timing.renderChartTimeMs + scrollTimeMs + 250)
+        )
         playFrame = Mania4KPlayFrame(
-            chartTimeMs: chartTimeMs,
+            gameplayChartTimeMs: timing.gameplayChartTimeMs,
+            renderChartTimeMs: timing.renderChartTimeMs,
             scrollTimeMs: scrollTimeMs,
             metadata: metadata,
             visibleObjects: snapshot.visibleObjects,
@@ -673,19 +689,32 @@ public final class Mania4KPlaySessionModel {
         phase = .failed(failure)
     }
 
-    private func currentChartTimeMs() async -> Double {
-        await audioClock.currentAudioTimeMs() + globalAudioOffsetMilliseconds
+    private func currentFrameTiming() async -> Mania4KFrameTiming {
+        let audioTimeMs = await audioClock.currentAudioTimeMs()
+        return frameTiming(audioTimeMs: audioTimeMs)
+    }
+
+    private func frameTiming(audioTimeMs: Double) -> Mania4KFrameTiming {
+        let gameplayChartTimeMs = audioTimeMs + audioOffsetMilliseconds
+        return frameTiming(gameplayChartTimeMs: gameplayChartTimeMs)
+    }
+
+    private func frameTiming(gameplayChartTimeMs: Double) -> Mania4KFrameTiming {
+        Mania4KFrameTiming(
+            gameplayChartTimeMs: gameplayChartTimeMs,
+            renderChartTimeMs: gameplayChartTimeMs + visualOffsetMilliseconds
+        )
     }
 
     private func currentRoutedInputChartTimeMs() -> Double {
-        playFrame?.chartTimeMs ?? activeConfiguration?.globalAudioOffsetMilliseconds ?? globalAudioOffsetMilliseconds
+        playFrame?.gameplayChartTimeMs ?? activeConfiguration?.audioOffsetMilliseconds ?? audioOffsetMilliseconds
     }
 
     private func inputWithCurrentChartTime(_ input: Mania4KInputEvent) async -> Mania4KInputEvent {
         Mania4KInputEvent(
             lane: input.lane,
             phase: input.phase,
-            chartTimeMs: await currentChartTimeMs(),
+            chartTimeMs: (await currentFrameTiming()).gameplayChartTimeMs,
             sequenceNumber: input.sequenceNumber,
             source: input.source
         )
