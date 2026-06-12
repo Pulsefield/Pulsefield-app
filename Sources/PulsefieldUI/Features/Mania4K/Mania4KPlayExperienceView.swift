@@ -314,6 +314,10 @@ private struct Mania4KSetupView: View {
     }
 
     private func restoreStoredOffsets() {
+        guard !storedOffsetCalibrationState.isEmpty else {
+            return
+        }
+
         guard let storedState = calibrationStoredState else {
             return
         }
@@ -323,6 +327,10 @@ private struct Mania4KSetupView: View {
     }
 
     private var calibrationStoredState: Mania4KOffsetCalibrationStoredState? {
+        guard !storedOffsetCalibrationState.isEmpty else {
+            return Mania4KOffsetCalibrationStoredState.defaultPlayState
+        }
+
         guard let storedState = Mania4KOffsetCalibrationStoredState(storageValue: storedOffsetCalibrationState) else {
             return nil
         }

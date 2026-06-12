@@ -7,9 +7,9 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         let model = Mania4KPlaySessionModel()
 
         XCTAssertEqual(model.starDifficulty, 4.0)
-        XCTAssertEqual(model.scrollSpeed, 16.0)
-        XCTAssertEqual(model.audioOffsetMilliseconds, 0)
-        XCTAssertEqual(model.visualOffsetMilliseconds, 0)
+        XCTAssertEqual(model.scrollSpeed, 25.0)
+        XCTAssertEqual(model.audioOffsetMilliseconds, -215)
+        XCTAssertEqual(model.visualOffsetMilliseconds, -15)
         XCTAssertEqual(model.judgeDifficulty, .c)
         XCTAssertEqual(model.keyBindings, .default)
         XCTAssertEqual(model.liveInputLaneStates.filter(\.isPressed), [])
@@ -159,6 +159,8 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         let stream = SuspendedPrepareMania4KHitObjectStream()
         let clock = FakeMania4KAudioClock()
         let model = Mania4KPlaySessionModel(
+            audioOffsetMilliseconds: 0,
+            visualOffsetMilliseconds: 0,
             audioClock: clock,
             streamFactory: { _ in stream }
         )
@@ -417,6 +419,8 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         let clock = PreparedTimeMania4KAudioClock(audioTimeMs: 72_000)
         let stream = try InMemoryMania4KHitObjectStream(objects: [tap(.left, 72_500)])
         let model = Mania4KPlaySessionModel(
+            audioOffsetMilliseconds: 0,
+            visualOffsetMilliseconds: 0,
             audioClock: clock,
             streamFactory: { _ in stream }
         )
@@ -500,6 +504,8 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         let clock = FakeMania4KAudioClock()
         let stream = LaggingMania4KHitObjectStream(completeThroughChartTimeMs: 0)
         let model = Mania4KPlaySessionModel(
+            audioOffsetMilliseconds: 0,
+            visualOffsetMilliseconds: 0,
             audioClock: clock,
             streamFactory: { _ in stream }
         )
@@ -522,6 +528,8 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         let clock = FakeMania4KAudioClock()
         let stream = DelayedSafeMania4KHitObjectStream()
         let model = Mania4KPlaySessionModel(
+            audioOffsetMilliseconds: 0,
+            visualOffsetMilliseconds: 0,
             audioClock: clock,
             streamFactory: { _ in stream }
         )
@@ -553,6 +561,8 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         let clock = DelayedFirstCurrentTimeMania4KAudioClock()
         let stream = DelayedSafeMania4KHitObjectStream()
         let model = Mania4KPlaySessionModel(
+            audioOffsetMilliseconds: 0,
+            visualOffsetMilliseconds: 0,
             audioClock: clock,
             streamFactory: { _ in stream }
         )
@@ -577,6 +587,8 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         let clock = DelayedFirstCurrentTimeMania4KAudioClock()
         let stream = DelayedSafeMania4KHitObjectStream()
         let model = Mania4KPlaySessionModel(
+            audioOffsetMilliseconds: 0,
+            visualOffsetMilliseconds: 0,
             audioClock: clock,
             streamFactory: { _ in stream }
         )
@@ -611,6 +623,8 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         let clock = FakeMania4KAudioClock()
         let stream = WatermarkViolatingMania4KHitObjectStream()
         let model = Mania4KPlaySessionModel(
+            audioOffsetMilliseconds: 0,
+            visualOffsetMilliseconds: 0,
             audioClock: clock,
             streamFactory: { _ in stream }
         )
@@ -635,6 +649,8 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         let clock = FakeMania4KAudioClock()
         let stream = DuplicateOnConcurrentCursorReadMania4KHitObjectStream()
         let model = Mania4KPlaySessionModel(
+            audioOffsetMilliseconds: 0,
+            visualOffsetMilliseconds: 0,
             audioClock: clock,
             streamFactory: { _ in stream }
         )

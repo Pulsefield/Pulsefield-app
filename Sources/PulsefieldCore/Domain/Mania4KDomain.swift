@@ -1,6 +1,14 @@
 import AVFoundation
 import Foundation
 
+public enum Mania4KDefaultPlaySettings {
+    public static let scrollSpeed = 25.0
+    public static let audioOffsetMilliseconds = -215
+    public static let visualOffsetMilliseconds = -15
+    public static let offsetPresetID = UUID(uuidString: "D46D55AF-109E-48DC-A9F9-CE83F108EBF5")!
+    public static let offsetPresetName = "wh1000xm4-mbaM5"
+}
+
 public enum Mania4KJudgeDifficulty: String, CaseIterable, Identifiable, Equatable, Sendable {
     case a = "A"
     case b = "B"
