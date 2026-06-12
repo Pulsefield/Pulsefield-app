@@ -6,9 +6,13 @@ public struct PulsefieldWorkbenchView: View {
     @Environment(\.openWindow) private var openWindow
     #endif
 
+    @AppStorage("mania4k.offsetCalibrationState") private var storedOffsetCalibrationState = ""
+    @AppStorage("mania4k.keyBindings") private var storedKeyBindings = Mania4KKeyBindingSet.default.storageValue
     @State private var selection: WorkbenchTab
     @State private var maniaModel: Mania4KPlaySessionModel
     @State private var localLibraryModel: LocalLibraryDashboardModel
+    @State private var isShowingSettings = false
+    @State private var didRestoreStoredManiaSettings = false
 
     public init(
         maniaModel: Mania4KPlaySessionModel = Mania4KPlaySessionModel(),
@@ -34,6 +38,24 @@ public struct PulsefieldWorkbenchView: View {
                 }
                 .tag(WorkbenchTab.play)
         }
+        .onAppear(perform: restoreStoredManiaSettingsIfNeeded)
+        .sheet(isPresented: $isShowingSettings) {
+            Mania4KSettingsPageView(
+                model: maniaModel,
+                storedOffsetCalibrationState: $storedOffsetCalibrationState,
+                storedKeyBindings: $storedKeyBindings
+            )
+        }
+        .toolbar {
+            ToolbarItem {
+                Button {
+                    isShowingSettings = true
+                } label: {
+                    Label("Settings", systemImage: "gearshape")
+                }
+                .help("Open Settings")
+            }
+        }
         #if os(macOS) && DEBUG
         .toolbar {
             ToolbarItem {
@@ -46,6 +68,43 @@ public struct PulsefieldWorkbenchView: View {
             }
         }
         #endif
+    }
+
+    private func restoreStoredManiaSettingsIfNeeded() {
+        guard !didRestoreStoredManiaSettings else {
+            return
+        }
+
+        didRestoreStoredManiaSettings = true
+
+        if let storedState = calibrationStoredState {
+            maniaModel.audioOffsetMilliseconds = Double(storedState.appliedAudioOffsetMilliseconds)
+            maniaModel.visualOffsetMilliseconds = Double(storedState.appliedVisualOffsetMilliseconds)
+        }
+
+        guard let keyBindings = Mania4KKeyBindingSet(storageValue: storedKeyBindings) else {
+            storedKeyBindings = Mania4KKeyBindingSet.default.storageValue
+            maniaModel.applyKeyBindings(.default)
+            return
+        }
+
+        maniaModel.applyKeyBindings(keyBindings)
+    }
+
+    private var calibrationStoredState: Mania4KOffsetCalibrationStoredState? {
+        guard !storedOffsetCalibrationState.isEmpty else {
+            return Mania4KOffsetCalibrationStoredState.defaultPlayState
+        }
+
+        guard let storedState = Mania4KOffsetCalibrationStoredState(storageValue: storedOffsetCalibrationState) else {
+            return nil
+        }
+
+        return Mania4KOffsetCalibrationModel.normalizedStoredState(
+            storedState,
+            fallbackAppliedAudioOffsetMilliseconds: 0,
+            fallbackAppliedVisualOffsetMilliseconds: 0
+        )
     }
 }
 
