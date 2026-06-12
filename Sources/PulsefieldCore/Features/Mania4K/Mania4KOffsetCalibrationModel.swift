@@ -70,6 +70,26 @@ public struct Mania4KOffsetCalibrationStoredState: Equatable, Codable, Sendable 
     }
 }
 
+public extension Mania4KOffsetCalibrationStoredState {
+    static var defaultPlayState: Mania4KOffsetCalibrationStoredState {
+        Mania4KOffsetCalibrationStoredState(
+            appliedAudioOffsetMilliseconds: Mania4KDefaultPlaySettings.audioOffsetMilliseconds,
+            appliedVisualOffsetMilliseconds: Mania4KDefaultPlaySettings.visualOffsetMilliseconds,
+            presets: [defaultPlayPreset],
+            activePresetID: Mania4KDefaultPlaySettings.offsetPresetID
+        )
+    }
+
+    static var defaultPlayPreset: Mania4KOffsetPreset {
+        Mania4KOffsetPreset(
+            id: Mania4KDefaultPlaySettings.offsetPresetID,
+            name: Mania4KDefaultPlaySettings.offsetPresetName,
+            audioOffsetMilliseconds: Mania4KDefaultPlaySettings.audioOffsetMilliseconds,
+            visualOffsetMilliseconds: Mania4KDefaultPlaySettings.visualOffsetMilliseconds
+        )
+    }
+}
+
 public struct Mania4KOffsetCalibrationHitSample: Identifiable, Equatable, Sendable {
     public var id: Int {
         beatIndex
