@@ -237,7 +237,11 @@ public final class Mania4KPlaySessionModel {
             }
 
             backendSessionStatus = "Publishing audio path"
-            try await endpointClient.sendAudioPath(audioFileURL.path, sessionID: sessionID)
+            try await endpointClient.sendAudioPath(
+                audioFileURL.path,
+                sessionID: sessionID,
+                musicSource: .systemAudio
+            )
             guard playStateGeneration == startGeneration, backendSessionID == sessionID else {
                 return false
             }

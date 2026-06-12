@@ -28,6 +28,7 @@ public struct InferenceEndpointConfiguration: Equatable, Sendable {
 public struct InferenceEndpointOutgoingMessage: Encodable, Equatable, Sendable {
     public let type: InferenceEndpointMessageType
     public let audioPath: String?
+    public let musicSource: MusicSource?
     public let sessionID: String?
     public let refTimeMS: Int?
     public let localHostTimeSendMS: Double?
@@ -38,6 +39,7 @@ public struct InferenceEndpointOutgoingMessage: Encodable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case type
         case audioPath = "audio_path"
+        case musicSource = "music_source"
         case sessionID = "session_id"
         case refTimeMS = "ref_time_ms"
         case localHostTimeSendMS = "local_host_time_send_ms"
@@ -49,6 +51,7 @@ public struct InferenceEndpointOutgoingMessage: Encodable, Equatable, Sendable {
     public init(
         type: InferenceEndpointMessageType,
         audioPath: String? = nil,
+        musicSource: MusicSource? = nil,
         sessionID: String? = nil,
         refTimeMS: Int? = nil,
         localHostTimeSendMS: Double? = nil,
@@ -58,6 +61,7 @@ public struct InferenceEndpointOutgoingMessage: Encodable, Equatable, Sendable {
     ) {
         self.type = type
         self.audioPath = audioPath
+        self.musicSource = musicSource
         self.sessionID = sessionID
         self.refTimeMS = refTimeMS
         self.localHostTimeSendMS = localHostTimeSendMS
@@ -73,11 +77,13 @@ public struct InferenceEndpointOutgoingMessage: Encodable, Equatable, Sendable {
     public static func audioPath(
         _ audioPath: String,
         sessionID: String,
+        musicSource: MusicSource = .background,
         configuration: InferenceEndpointConfiguration = .global
     ) -> InferenceEndpointOutgoingMessage {
         InferenceEndpointOutgoingMessage(
             type: .audioPath,
             audioPath: audioPath,
+            musicSource: musicSource,
             sessionID: sessionID,
             difficulty: configuration.difficulty,
             isMock: configuration.isMock
@@ -689,10 +695,16 @@ public actor BufferedInferenceMania4KHitObjectStream: Mania4KHitObjectStreaming 
 
 public protocol InferenceEndpointClient: Sendable {
     func prepare() async throws
-    func sendAudioPath(_ audioPath: String, sessionID: String) async throws
+    func sendAudioPath(_ audioPath: String, sessionID: String, musicSource: MusicSource) async throws
     func sendReferenceTime(sessionID: String, refTimeMS: Double, localHostTimeSendMS: Double) async throws
     func stop(sessionID: String) async throws
     func nextEvent() async throws -> InferenceEndpointEvent
+}
+
+public extension InferenceEndpointClient {
+    func sendAudioPath(_ audioPath: String, sessionID: String) async throws {
+        try await sendAudioPath(audioPath, sessionID: sessionID, musicSource: .background)
+    }
 }
 
 public actor InferenceEndpointWebSocketClient: InferenceEndpointClient {
@@ -719,8 +731,13 @@ public actor InferenceEndpointWebSocketClient: InferenceEndpointClient {
         try await send(.ready())
     }
 
-    public func sendAudioPath(_ audioPath: String, sessionID: String) async throws {
-        try await send(.audioPath(audioPath, sessionID: sessionID, configuration: configuration))
+    public func sendAudioPath(_ audioPath: String, sessionID: String, musicSource: MusicSource) async throws {
+        try await send(.audioPath(
+            audioPath,
+            sessionID: sessionID,
+            musicSource: musicSource,
+            configuration: configuration
+        ))
     }
 
     public func sendReferenceTime(

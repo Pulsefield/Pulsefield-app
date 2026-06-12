@@ -226,6 +226,29 @@ public struct MicFeatureWindow: Equatable, Sendable {
     }
 }
 
+public enum MusicSource: String, Codable, CaseIterable, Identifiable, Sendable {
+    case background
+    case systemAudio = "system_audio"
+
+    public var id: String {
+        rawValue
+    }
+
+    public var input: MusicSourceInput {
+        switch self {
+        case .background:
+            return .microphone
+        case .systemAudio:
+            return .screenCaptureKitAudio
+        }
+    }
+}
+
+public enum MusicSourceInput: String, Codable, Sendable {
+    case microphone
+    case screenCaptureKitAudio = "screen_capture_kit_audio"
+}
+
 public enum AmbientSyncState: String, Codable, Equatable, Sendable {
     case ready
     case listening

@@ -9,6 +9,7 @@ final class InferenceEndpointWebSocketClientTests: XCTestCase {
 
         XCTAssertEqual(json["type"] as? String, "audio_path")
         XCTAssertEqual(json["audio_path"] as? String, "/Users/ken/audio/song1.wav")
+        XCTAssertEqual(json["music_source"] as? String, "background")
         XCTAssertEqual(json["session_id"] as? String, "session-1")
         XCTAssertEqual(json["difficulty"] as? Double, 4.0)
         XCTAssertEqual(json["is_mock"] as? Bool, false)
@@ -18,13 +19,20 @@ final class InferenceEndpointWebSocketClientTests: XCTestCase {
         let message = InferenceEndpointOutgoingMessage.audioPath(
             "/Users/ken/audio/song1.wav",
             sessionID: "session-1",
+            musicSource: .systemAudio,
             configuration: InferenceEndpointConfiguration(difficulty: 5.5, isMock: true)
         )
         let data = try JSONEncoder().encode(message)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
 
+        XCTAssertEqual(json["music_source"] as? String, "system_audio")
         XCTAssertEqual(json["difficulty"] as? Double, 5.5)
         XCTAssertEqual(json["is_mock"] as? Bool, true)
+    }
+
+    func testMusicSourceMapsToInputRoute() {
+        XCTAssertEqual(MusicSource.background.input, .microphone)
+        XCTAssertEqual(MusicSource.systemAudio.input, .screenCaptureKitAudio)
     }
 
     func testReferenceTimeMessageIncludesLocalHostSendTime() throws {

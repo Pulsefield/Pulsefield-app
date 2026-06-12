@@ -51,12 +51,16 @@ public final class LiveRecognitionSyncModel {
     public var resolveISRC = ""
     public var resolveDurationMS = ""
     public var selectedResolveAssetID: UUID?
+    public var musicSource: MusicSource = .background
 
     @ObservationIgnored
     private let permissionService: any MicrophonePermissionProviding
 
     @ObservationIgnored
     private let captureService: AudioClipCaptureService
+
+    @ObservationIgnored
+    private let systemAudioClipCaptureService: SystemAudioClipCaptureService
 
     @ObservationIgnored
     private let database: LocalAudioLibraryDatabase
@@ -100,12 +104,14 @@ public final class LiveRecognitionSyncModel {
         database: LocalAudioLibraryDatabase,
         permissionService: any MicrophonePermissionProviding = MicrophonePermissionService(),
         captureService: AudioClipCaptureService = AudioClipCaptureService(),
+        systemAudioClipCaptureService: SystemAudioClipCaptureService = SystemAudioClipCaptureService(),
         referenceIndexBuilder: AmbientSyncReferenceIndexBuilder = AmbientSyncReferenceIndexBuilder(),
         inferenceEndpoint: any InferenceEndpointClient = InferenceEndpointWebSocketClient()
     ) {
         self.database = database
         self.permissionService = permissionService
         self.captureService = captureService
+        self.systemAudioClipCaptureService = systemAudioClipCaptureService
         self.resolver = LocalTrackResolver(database: database)
         self.referenceIndexBuilder = referenceIndexBuilder
         self.inferenceEndpoint = inferenceEndpoint
@@ -132,7 +138,7 @@ public final class LiveRecognitionSyncModel {
     }
 
     public var canStartFlow: Bool {
-        !phase.isBusy && phase != .ambientSyncing
+        flowTask == nil && !phase.isBusy && phase != .ambientSyncing
     }
 
     public var canStartAmbientSync: Bool {
@@ -140,7 +146,14 @@ public final class LiveRecognitionSyncModel {
             return false
         }
 
-        return selectedResolveResult.decision != .rejected && !phase.isBusy && phase != .ambientSyncing
+        return selectedResolveResult.decision != .rejected
+            && flowTask == nil
+            && !phase.isBusy
+            && phase != .ambientSyncing
+    }
+
+    public var canChangeMusicSource: Bool {
+        flowTask == nil && !phase.isBusy && phase != .ambientSyncing
     }
 
     public var selectedResolveResult: LocalResolveResult? {
@@ -162,24 +175,38 @@ public final class LiveRecognitionSyncModel {
             return
         }
 
-        stopAmbientSync(markStopped: false)
         flowTask?.cancel()
+        let selectedMusicSource = musicSource
+        phase = .recordingClip
+        statusMessage = "Starting \(selectedMusicSource.label) capture"
         flowTask = Task { [weak self] in
-            await self?.runFlow()
+            guard let self else {
+                return
+            }
+
+            await self.stopAmbientSyncAndWait(markStopped: false)
+            guard !Task.isCancelled else {
+                self.flowTask = nil
+                return
+            }
+
+            await self.runFlow(musicSource: selectedMusicSource)
         }
     }
 
     public func startAmbientSyncForSelectedResult() {
-        guard let selectedResolveResult,
-              selectedResolveResult.decision != .rejected,
-              !phase.isBusy
+        guard canStartAmbientSync,
+              let selectedResolveResult
         else {
             return
         }
 
         flowTask?.cancel()
+        let selectedMusicSource = musicSource
+        phase = .buildingReferenceIndex
+        statusMessage = "Starting ambient sync"
         flowTask = Task { [weak self] in
-            await self?.startAmbientSync(for: selectedResolveResult.asset)
+            await self?.startAmbientSync(for: selectedResolveResult.asset, musicSource: selectedMusicSource)
             self?.flowTask = nil
         }
     }
@@ -187,13 +214,14 @@ public final class LiveRecognitionSyncModel {
     public func stop() {
         flowTask?.cancel()
         flowTask = nil
+        let ambientSessionToStop = takeAmbientSession(markStopped: true)
+        stopInferenceSession(markStopped: true)
 
         Task {
             await captureService.cancelCapture()
+            await systemAudioClipCaptureService.cancelCapture()
+            await ambientSessionToStop?.stopAndWait()
         }
-
-        stopAmbientSync(markStopped: true)
-        stopInferenceSession(markStopped: true)
     }
 
     public func resolveManualTrack() {
@@ -219,14 +247,9 @@ public final class LiveRecognitionSyncModel {
         }
     }
 
-    private func runFlow() async {
+    private func runFlow(musicSource: MusicSource) async {
         resetRunState()
-        phase = .requestingPermission
-        statusMessage = "Requesting microphone access"
-        permissionStatus = await permissionService.requestAccess()
-
-        guard permissionStatus == .authorized else {
-            fail("Microphone access is \(permissionStatus.label).")
+        guard await prepareSelectedMusicSourceInput(musicSource: musicSource) else {
             flowTask = nil
             return
         }
@@ -243,6 +266,7 @@ public final class LiveRecognitionSyncModel {
         }
 
         let scanResult = await scanACRCloudWithGrowingClips(
+            musicSource: musicSource,
             clipRetryConfiguration: clipRetryConfiguration,
             identificationConfiguration: identificationConfiguration
         )
@@ -290,7 +314,7 @@ public final class LiveRecognitionSyncModel {
 
         if bestResult.decision == .autoAccepted {
             selectedResolveAssetID = bestResult.asset.id
-            await startAmbientSync(for: bestResult.asset)
+            await startAmbientSync(for: bestResult.asset, musicSource: musicSource)
         } else {
             phase = .awaitingLocalConfirmation
             statusMessage = "Local match needs confirmation"
@@ -344,9 +368,14 @@ public final class LiveRecognitionSyncModel {
         results.first { $0.decision != .rejected }
     }
 
-    private func startAmbientSync(for asset: LocalAudioAsset) async {
-        stopAmbientSync(markStopped: false)
-        startInferenceSession(for: asset)
+    private func startAmbientSync(for asset: LocalAudioAsset, musicSource: MusicSource) async {
+        await stopAmbientSyncAndWait(markStopped: false)
+        guard !Task.isCancelled else {
+            flowTask = nil
+            return
+        }
+
+        startInferenceSession(for: asset, musicSource: musicSource)
         phase = .buildingReferenceIndex
         statusMessage = "Building ambient reference index"
 
@@ -367,21 +396,44 @@ public final class LiveRecognitionSyncModel {
                 landmarkCount: referenceIndex.landmarks.count
             )
 
-            try startAmbientMicStream(referenceIndex: referenceIndex)
+            try await startAmbientStream(referenceIndex: referenceIndex, musicSource: musicSource)
             latestAmbientSnapshot = nil
             ambientUpdateCount = 0
             latestFrameBatchCount = 0
             phase = .ambientSyncing
             statusMessage = "Ambient sync listening"
         } catch is CancellationError {
+            stopInferenceSession(markStopped: false)
             statusMessage = "Stopped"
             phase = .idle
         } catch {
+            stopInferenceSession(markStopped: false)
             fail(error.localizedDescription)
         }
     }
 
-    private func startAmbientMicStream(referenceIndex: AmbientSyncReferenceIndex) throws {
+    private func prepareSelectedMusicSourceInput(musicSource: MusicSource) async -> Bool {
+        switch musicSource {
+        case .background:
+            phase = .requestingPermission
+            statusMessage = "Requesting microphone access"
+            permissionStatus = await permissionService.requestAccess()
+
+            guard permissionStatus == .authorized else {
+                fail("Microphone access is \(permissionStatus.label).")
+                return false
+            }
+
+            return true
+
+        case .systemAudio:
+            phase = .recordingClip
+            statusMessage = "Starting system audio capture"
+            return true
+        }
+    }
+
+    private func startAmbientStream(referenceIndex: AmbientSyncReferenceIndex, musicSource: MusicSource) async throws {
         let featureConfiguration = referenceIndex.featureConfiguration
         let streamConfiguration = AmbientMicFeatureStreamService.Configuration(
             retentionDurationMS: featureConfiguration.finalLockTargetDurationMS + 1_000,
@@ -391,21 +443,28 @@ public final class LiveRecognitionSyncModel {
         )
         let session = LiveAmbientSyncSession(
             referenceIndex: referenceIndex,
-            streamConfiguration: streamConfiguration
-        ) { [weak self] update, sessionID in
-            await MainActor.run {
-                self?.applyAmbientUpdate(update, sessionID: sessionID)
+            streamConfiguration: streamConfiguration,
+            musicSource: musicSource,
+            onUpdate: { [weak self] update, sessionID in
+                await MainActor.run {
+                    self?.applyAmbientUpdate(update, sessionID: sessionID)
+                }
+            },
+            onFailure: { [weak self] error, sessionID in
+                await MainActor.run {
+                    self?.applyAmbientStreamFailure(error, sessionID: sessionID)
+                }
             }
-        }
+        )
         ambientSessionID = session.id
 
         do {
-            try session.start()
+            try await session.start()
         } catch {
             if ambientSessionID == session.id {
                 ambientSessionID = nil
             }
-            session.stop()
+            await session.stopAndWait()
             throw error
         }
 
@@ -440,6 +499,18 @@ public final class LiveRecognitionSyncModel {
             phase = .completed
             statusMessage = "Ambient sync locked"
         }
+    }
+
+    private func applyAmbientStreamFailure(_ error: Error, sessionID: UUID) {
+        guard ambientSessionID == sessionID else {
+            return
+        }
+
+        ambientSessionID = nil
+        ambientSession?.stop()
+        ambientSession = nil
+        stopInferenceSession(markStopped: false)
+        fail("Ambient audio capture failed: \(error.localizedDescription)")
     }
 
     #if DEBUG
@@ -495,8 +566,18 @@ public final class LiveRecognitionSyncModel {
     }
 
     private func stopAmbientSync(markStopped: Bool) {
+        let session = takeAmbientSession(markStopped: markStopped)
+        session?.stop()
+    }
+
+    private func stopAmbientSyncAndWait(markStopped: Bool) async {
+        let session = takeAmbientSession(markStopped: markStopped)
+        await session?.stopAndWait()
+    }
+
+    private func takeAmbientSession(markStopped: Bool) -> LiveAmbientSyncSession? {
         ambientSessionID = nil
-        ambientSession?.stop()
+        let session = ambientSession
         ambientSession = nil
         resetAmbientSyncState()
 
@@ -506,9 +587,11 @@ public final class LiveRecognitionSyncModel {
                 phase = .idle
             }
         }
+
+        return session
     }
 
-    private func startInferenceSession(for asset: LocalAudioAsset) {
+    private func startInferenceSession(for asset: LocalAudioAsset, musicSource: MusicSource) {
         stopInferenceSession(markStopped: false)
 
         let sessionID = UUID().uuidString
@@ -532,7 +615,11 @@ public final class LiveRecognitionSyncModel {
 
             do {
                 try await inferenceEndpoint.prepare()
-                try await inferenceEndpoint.sendAudioPath(asset.displayPath, sessionID: sessionID)
+                try await inferenceEndpoint.sendAudioPath(
+                    asset.displayPath,
+                    sessionID: sessionID,
+                    musicSource: musicSource
+                )
                 guard inferenceSessionID == sessionID else {
                     return
                 }
@@ -670,10 +757,11 @@ public final class LiveRecognitionSyncModel {
     }
 
     private func scanACRCloudWithGrowingClips(
+        musicSource: MusicSource,
         clipRetryConfiguration: LiveRecognitionClipRetryConfiguration,
         identificationConfiguration: ACRCloudConfiguration
     ) async -> Result<LiveRecognitionACRCloudScanAttempt, RecognitionFailure> {
-        switch captureService.startCachedClipCapture() {
+        switch await startCachedClipCapture(musicSource: musicSource) {
         case .success:
             break
         case .failure(let failure):
@@ -698,7 +786,7 @@ public final class LiveRecognitionSyncModel {
                         try await Task.sleep(nanoseconds: UInt64((remaining * 1_000_000_000).rounded()))
                     } catch {
                         group.cancelAll()
-                        await captureService.cancelCapture()
+                        await cancelClipCapture(musicSource: musicSource)
                         return .failure(RecognitionFailure(
                             title: "Recognition Sync Cancelled",
                             message: "Recognition sync stopped before ACRCloud returned a match."
@@ -708,7 +796,7 @@ public final class LiveRecognitionSyncModel {
 
                 guard !Task.isCancelled else {
                     group.cancelAll()
-                    await captureService.cancelCapture()
+                    await cancelClipCapture(musicSource: musicSource)
                     return .failure(RecognitionFailure(
                         title: "Recognition Sync Cancelled",
                         message: "Recognition sync stopped before ACRCloud returned a match."
@@ -716,21 +804,29 @@ public final class LiveRecognitionSyncModel {
                 }
 
                 let clip: RecognitionAudioClip
-                switch captureService.cachedClip(duration: requestWindow) {
+                switch cachedClip(musicSource: musicSource, duration: requestWindow) {
                 case .success(let cachedClip):
                     clip = cachedClip
                     latestClip = cachedClip
 
                 case .failure(let failure):
                     group.cancelAll()
-                    await captureService.cancelCapture()
+                    await cancelClipCapture(musicSource: musicSource)
                     return .failure(failure)
                 }
 
                 phase = .scanningACRCloud
                 statusMessage = "Submitted ACRCloud request for \(requestWindow.secondsLabel) window"
                 submittedScanCount += 1
+                let shouldDiscardSystemAudioClip = musicSource == .systemAudio
+                let systemAudioClipCaptureService = systemAudioClipCaptureService
                 group.addTask {
+                    defer {
+                        if shouldDiscardSystemAudioClip {
+                            systemAudioClipCaptureService.discardTemporaryClip(at: clip.fileURL)
+                        }
+                    }
+
                     let provider = ACRCloudIdentificationProvider(configuration: identificationConfiguration)
                     let scanResult = await provider.identify(clip: clip)
 
@@ -743,7 +839,7 @@ public final class LiveRecognitionSyncModel {
                 }
             }
 
-            await captureService.cancelCapture()
+            await cancelClipCapture(musicSource: musicSource)
             phase = .scanningACRCloud
             statusMessage = "Waiting for ACRCloud responses"
 
@@ -782,6 +878,33 @@ public final class LiveRecognitionSyncModel {
                 title: "ACRCloud Recognition Skipped",
                 message: "No recognition request windows were configured."
             ))
+        }
+    }
+
+    private func startCachedClipCapture(musicSource: MusicSource) async -> Result<Void, RecognitionFailure> {
+        switch musicSource {
+        case .background:
+            return captureService.startCachedClipCapture()
+        case .systemAudio:
+            return await systemAudioClipCaptureService.startCachedClipCapture()
+        }
+    }
+
+    private func cachedClip(musicSource: MusicSource, duration: TimeInterval) -> Result<RecognitionAudioClip, RecognitionFailure> {
+        switch musicSource {
+        case .background:
+            return captureService.cachedClip(duration: duration)
+        case .systemAudio:
+            return systemAudioClipCaptureService.cachedClip(duration: duration)
+        }
+    }
+
+    private func cancelClipCapture(musicSource: MusicSource) async {
+        switch musicSource {
+        case .background:
+            await captureService.cancelCapture()
+        case .systemAudio:
+            await systemAudioClipCaptureService.cancelCapture()
         }
     }
 
@@ -1025,7 +1148,8 @@ public struct LiveRecognitionSyncWindow: View {
 
             Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
                 metricRow("status", model.statusMessage)
-                metricRow("microphone", model.permissionStatus.rawValue)
+                metricRow("music source", "\(model.musicSource.label) -> \(model.musicSource.input.label)")
+                inputStatusRow
                 metricRow("indexed assets", "\(model.localLibraryStatus.indexedCount)")
                 if let loadedEnvFilePath = model.loadedEnvFilePath {
                     metricRow("env", loadedEnvFilePath)
@@ -1038,12 +1162,23 @@ public struct LiveRecognitionSyncWindow: View {
         .sectionPanel()
     }
 
+    @ViewBuilder
+    private var inputStatusRow: some View {
+        switch model.musicSource {
+        case .background:
+            metricRow("microphone", model.permissionStatus.rawValue)
+        case .systemAudio:
+            metricRow("system audio", "ScreenCaptureKit")
+        }
+    }
+
     private var configurationSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Configuration")
                 .font(.headline)
 
             Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
+                musicSourceRow
                 inputRow("first request", text: $model.firstRequestAtText, suffix: "seconds", width: 90)
                 inputRow("cadence", text: $model.requestCadenceText, suffix: "seconds", width: 90)
                 inputRow("max window", text: $model.maxRequestWindowText, suffix: "seconds", width: 90)
@@ -1130,6 +1265,7 @@ public struct LiveRecognitionSyncWindow: View {
 
             if let referenceSummary = model.referenceSummary {
                 Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
+                    metricRow("music source", "\(model.musicSource.label) -> \(model.musicSource.input.label)")
                     metricRow("asset", referenceSummary.assetFileName)
                     metricRow("duration", referenceSummary.durationMS.durationLabel)
                     metricRow("frames", "\(referenceSummary.frameCount)")
@@ -1191,6 +1327,22 @@ public struct LiveRecognitionSyncWindow: View {
             }
         }
         .sectionPanel()
+    }
+
+    private var musicSourceRow: some View {
+        GridRow {
+            Text("music source")
+                .foregroundStyle(.secondary)
+            Picker("music source", selection: $model.musicSource) {
+                ForEach(MusicSource.allCases) { source in
+                    Text(source.label).tag(source)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .frame(width: 260)
+            .disabled(!model.canChangeMusicSource)
+        }
     }
 
     private func inputRow(
@@ -1400,9 +1552,10 @@ private actor LiveAmbientSyncRuntime {
 private final class LiveAmbientSyncSession: @unchecked Sendable {
     let id = UUID()
 
-    private let streamService: AmbientMicFeatureStreamService
+    private let streamSource: LiveAmbientFeatureStreamSource
     private let runtime: LiveAmbientSyncRuntime
     private let onUpdate: @Sendable (LiveAmbientSyncUpdate, UUID) async -> Void
+    private let onFailure: @Sendable (Error, UUID) async -> Void
 
     private var frameContinuation: AsyncStream<[MicFeatureFrame]>.Continuation?
     private var processingTask: Task<Void, Never>?
@@ -1410,18 +1563,24 @@ private final class LiveAmbientSyncSession: @unchecked Sendable {
     init(
         referenceIndex: AmbientSyncReferenceIndex,
         streamConfiguration: AmbientMicFeatureStreamService.Configuration,
-        onUpdate: @escaping @Sendable (LiveAmbientSyncUpdate, UUID) async -> Void
+        musicSource: MusicSource,
+        onUpdate: @escaping @Sendable (LiveAmbientSyncUpdate, UUID) async -> Void,
+        onFailure: @escaping @Sendable (Error, UUID) async -> Void
     ) {
-        streamService = AmbientMicFeatureStreamService(configuration: streamConfiguration)
+        streamSource = LiveAmbientFeatureStreamSource(
+            musicSource: musicSource,
+            configuration: streamConfiguration
+        )
         runtime = LiveAmbientSyncRuntime(referenceIndex: referenceIndex)
         self.onUpdate = onUpdate
+        self.onFailure = onFailure
     }
 
     deinit {
         stop()
     }
 
-    func start() throws {
+    func start() async throws {
         var continuation: AsyncStream<[MicFeatureFrame]>.Continuation!
         let frameStream = AsyncStream<[MicFeatureFrame]> { streamContinuation in
             continuation = streamContinuation
@@ -1436,21 +1595,92 @@ private final class LiveAmbientSyncSession: @unchecked Sendable {
         }
 
         do {
-            try streamService.start { frames in
-                streamContinuation.yield(frames)
-            }
+            try await streamSource.start(
+                onFrames: { frames in
+                    streamContinuation.yield(frames)
+                },
+                onStopWithError: { [weak self] error in
+                    self?.handleStreamFailure(error)
+                }
+            )
         } catch {
-            stop()
+            await stopAndWait()
             throw error
         }
     }
 
     func stop() {
-        streamService.stop()
+        streamSource.stop()
+        stopProcessing()
+    }
+
+    func stopAndWait() async {
+        await streamSource.stopAndWait()
+        stopProcessing()
+    }
+
+    private func stopProcessing() {
         processingTask?.cancel()
         processingTask = nil
         frameContinuation?.finish()
         frameContinuation = nil
+    }
+
+    private func handleStreamFailure(_ error: Error) {
+        stop()
+        Task { [id, onFailure] in
+            await onFailure(error, id)
+        }
+    }
+}
+
+private enum LiveAmbientFeatureStreamSource {
+    case microphone(AmbientMicFeatureStreamService)
+    case systemAudio(SystemAudioFeatureStreamService)
+
+    init(
+        musicSource: MusicSource,
+        configuration: AmbientMicFeatureStreamService.Configuration
+    ) {
+        switch musicSource {
+        case .background:
+            self = .microphone(AmbientMicFeatureStreamService(configuration: configuration))
+        case .systemAudio:
+            self = .systemAudio(SystemAudioFeatureStreamService(configuration: configuration))
+        }
+    }
+
+    func start(
+        onFrames: @escaping @Sendable ([MicFeatureFrame]) -> Void,
+        onStopWithError: (@Sendable (Error) -> Void)? = nil
+    ) async throws {
+        switch self {
+        case .microphone(let streamService):
+            try streamService.start(onFrames: onFrames)
+        case .systemAudio(let streamService):
+            try await streamService.start(
+                onFrames: onFrames,
+                onStopWithError: onStopWithError
+            )
+        }
+    }
+
+    func stop() {
+        switch self {
+        case .microphone(let streamService):
+            streamService.stop()
+        case .systemAudio(let streamService):
+            streamService.stop()
+        }
+    }
+
+    func stopAndWait() async {
+        switch self {
+        case .microphone(let streamService):
+            streamService.stop()
+        case .systemAudio(let streamService):
+            await streamService.stopAndWait()
+        }
     }
 }
 
@@ -1618,6 +1848,28 @@ private enum LiveRecognitionSyncError: LocalizedError {
 private enum MetricValueStyle {
     case normal
     case error
+}
+
+private extension MusicSource {
+    var label: String {
+        switch self {
+        case .background:
+            return "Background"
+        case .systemAudio:
+            return "System audio"
+        }
+    }
+}
+
+private extension MusicSourceInput {
+    var label: String {
+        switch self {
+        case .microphone:
+            return "Microphone"
+        case .screenCaptureKitAudio:
+            return "ScreenCaptureKit audio"
+        }
+    }
 }
 
 private extension LiveRecognitionSyncPhase {

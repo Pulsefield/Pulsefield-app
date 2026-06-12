@@ -36,6 +36,32 @@ public struct AmbientMicAudioChunkConverter: Sendable {
         )
     }
 
+    public func makeChunk(
+        from buffer: AVAudioPCMBuffer,
+        recordedStartTimeMS: Double,
+        hostStartTimeMS: Double
+    ) -> MicAudioChunk? {
+        let frameCount = Int(buffer.frameLength)
+        let channelCount = Int(buffer.format.channelCount)
+        let sampleRate = buffer.format.sampleRate
+
+        guard frameCount > 0, channelCount > 0, sampleRate > 0 else {
+            return nil
+        }
+
+        guard let monoSamples = makeMonoSamples(from: buffer, frameCount: frameCount, channelCount: channelCount) else {
+            return nil
+        }
+
+        return MicAudioChunk(
+            monoSamples: monoSamples,
+            sampleRate: sampleRate,
+            recordedStartTimeMS: recordedStartTimeMS,
+            hostStartTimeMS: hostStartTimeMS,
+            inputChannelCount: channelCount
+        )
+    }
+
     private func makeMonoSamples(
         from buffer: AVAudioPCMBuffer,
         frameCount: Int,
