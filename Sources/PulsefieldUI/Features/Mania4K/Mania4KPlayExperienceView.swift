@@ -29,11 +29,69 @@ public struct Mania4KPlayExperienceView: View {
     }
 }
 
+private enum Mania4KSetupGameMode: String, CaseIterable, Identifiable {
+    case localBeatmap = "1"
+    case generatedSong = "2"
+    case ambient = "3"
+
+    var id: String {
+        rawValue
+    }
+
+    var title: String {
+        switch self {
+        case .localBeatmap:
+            return "Mode 1"
+        case .generatedSong:
+            return "Mode 2"
+        case .ambient:
+            return "Mode 3"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .localBeatmap:
+            return "Song + beatmap"
+        case .generatedSong:
+            return "Song + backend chart"
+        case .ambient:
+            return "Ambient sync + backend chart"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .localBeatmap:
+            return "doc.text"
+        case .generatedSong:
+            return "antenna.radiowaves.left.and.right"
+        case .ambient:
+            return "waveform.badge.magnifyingglass"
+        }
+    }
+}
+
+private struct SessionSummaryRow: Identifiable {
+    let title: String
+    let value: String
+
+    var id: String {
+        title
+    }
+}
+
 private struct Mania4KSetupView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #if os(macOS) && DEBUG
+    @Environment(\.openWindow) private var openWindow
+    #endif
     @Bindable var model: Mania4KPlaySessionModel
     @State private var fileImportTarget: Mania4KFileImportTarget?
     @State private var isChoosingFile = false
+    @State private var selectedMode: Mania4KSetupGameMode?
+    @State private var backendIsMock = false
+    @State private var ambientModeStatus = "Idle"
 
     var body: some View {
         ScrollView {
@@ -89,7 +147,7 @@ private struct Mania4KSetupView: View {
 
             HStack(spacing: 10) {
                 Label("4K", systemImage: "square.grid.2x2.fill")
-                Text(model.isReadyToStart ? "READY" : "SETUP")
+                Text(headerStatusText)
             }
             .font(.caption.monospaced().weight(.bold))
             .padding(.horizontal, 12)
@@ -98,17 +156,74 @@ private struct Mania4KSetupView: View {
             .background(Mania4KStyle.controlFill, in: RoundedRectangle(cornerRadius: 8))
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(model.isReadyToStart ? Mania4KStyle.accentGreen : Mania4KStyle.border, lineWidth: 1)
+                    .stroke(isSelectedModeReady ? Mania4KStyle.accentGreen : Mania4KStyle.border, lineWidth: 1)
             )
         }
     }
 
     private var inputPanel: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("Play Setup")
-                .font(.title2.bold())
-                .foregroundStyle(Mania4KStyle.textPrimary)
+            HStack(spacing: 10) {
+                Text("Game Mode")
+                    .font(.title2.bold())
+                    .foregroundStyle(Mania4KStyle.textPrimary)
 
+                clearSetupButton
+
+                Spacer()
+            }
+
+            modeSelectionContent
+
+            if selectedMode != nil {
+                Divider()
+                    .overlay(Mania4KStyle.border)
+            }
+
+            modeSetupContent
+        }
+        .panelStyle()
+    }
+
+    @ViewBuilder
+    private var modeSelectionContent: some View {
+        if let selectedMode {
+            selectedModeSummary(selectedMode)
+        } else {
+            VStack(spacing: 10) {
+                ForEach(Mania4KSetupGameMode.allCases) { mode in
+                    modeButton(mode)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var modeSetupContent: some View {
+        switch selectedMode {
+        case nil:
+            EmptyView()
+        case .localBeatmap:
+            localBeatmapSetup
+        case .generatedSong:
+            generatedSongSetup
+        case .ambient:
+            ambientSetup
+        }
+    }
+
+    private var starDifficultyField: some View {
+        numericField(
+            title: "osu!mania star difficulty",
+            value: $model.starDifficulty,
+            range: 0.1...12.0,
+            step: 0.1,
+            suffix: "stars"
+        )
+    }
+
+    private var localBeatmapSetup: some View {
+        VStack(alignment: .leading, spacing: 18) {
             filePickerRow(
                 title: "Beatmap",
                 value: model.beatmapFileName,
@@ -139,17 +254,246 @@ private struct Mania4KSetupView: View {
             .controlSize(.large)
             .disabled(!model.isReadyToStart || model.phase == .loading)
         }
-        .panelStyle()
     }
 
-    private var starDifficultyField: some View {
-        numericField(
-            title: "osu!mania star difficulty",
-            value: $model.starDifficulty,
-            range: 0.1...12.0,
-            step: 0.1,
-            suffix: "stars"
+    private var generatedSongSetup: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            filePickerRow(
+                title: "Audio",
+                value: model.audioFileName,
+                message: model.audioSelectionErrorMessage,
+                systemImage: "waveform",
+                action: { presentFileImporter(for: .audio) }
+            )
+
+            backendMockToggle
+            starDifficultyField
+
+            Button {
+                startGeneratedSongMode()
+            } label: {
+                Label("Publish & Play", systemImage: "play.rectangle.on.rectangle")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(Mania4KPrimaryButtonStyle())
+            .controlSize(.large)
+            .disabled(model.audioFileURL == nil || model.phase == .loading)
+        }
+    }
+
+    private var ambientSetup: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 10) {
+                Image(systemName: "waveform.badge.magnifyingglass")
+                    .font(.headline)
+                    .frame(width: 32, height: 32)
+                    .foregroundStyle(Mania4KStyle.accentAmber)
+                    .background(Mania4KStyle.accentAmber.opacity(0.14), in: RoundedRectangle(cornerRadius: 7))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Ambient Recognition")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Mania4KStyle.textPrimary)
+
+                    Text(ambientModeStatus)
+                        .font(.caption)
+                        .foregroundStyle(Mania4KStyle.textSecondary)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+            }
+            .padding(12)
+            .background(Mania4KStyle.controlFill, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Mania4KStyle.border, lineWidth: 1)
+            )
+
+            Button {
+                startAmbientMode()
+            } label: {
+                Label("Start Ambient Flow", systemImage: "waveform")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(Mania4KPrimaryButtonStyle())
+            .controlSize(.large)
+        }
+    }
+
+    private var backendMockToggle: some View {
+        Toggle(isOn: $backendIsMock) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Mock backend")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Mania4KStyle.textPrimary)
+
+                Text(backendIsMock ? "is_mock true" : "is_mock false")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(Mania4KStyle.textSecondary)
+            }
+        }
+        .toggleStyle(.switch)
+        .tint(Mania4KStyle.accentGreen)
+    }
+
+    private func modeButton(_ mode: Mania4KSetupGameMode) -> some View {
+        Button {
+            selectedMode = mode
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: mode.systemImage)
+                    .font(.headline)
+                    .frame(width: 34, height: 34)
+                    .foregroundStyle(selectedMode == mode ? Mania4KStyle.accentGreen : Mania4KStyle.accentBlue)
+                    .background(
+                        (selectedMode == mode ? Mania4KStyle.accentGreen : Mania4KStyle.accentBlue).opacity(0.14),
+                        in: RoundedRectangle(cornerRadius: 7)
+                    )
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(mode.title)
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(Mania4KStyle.textPrimary)
+
+                    Text(mode.subtitle)
+                        .font(.caption)
+                        .foregroundStyle(Mania4KStyle.textSecondary)
+                }
+
+                Spacer()
+
+                Text(mode.rawValue)
+                    .font(.headline.monospaced().weight(.bold))
+                    .foregroundStyle(Mania4KStyle.textMuted)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Mania4KStyle.controlFill, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(selectedMode == mode ? Mania4KStyle.accentGreen : Mania4KStyle.border, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func selectedModeSummary(_ mode: Mania4KSetupGameMode) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: mode.systemImage)
+                .font(.headline)
+                .frame(width: 34, height: 34)
+                .foregroundStyle(Mania4KStyle.accentGreen)
+                .background(Mania4KStyle.accentGreen.opacity(0.14), in: RoundedRectangle(cornerRadius: 7))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(mode.title)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(Mania4KStyle.textPrimary)
+
+                Text(mode.subtitle)
+                    .font(.caption)
+                    .foregroundStyle(Mania4KStyle.textSecondary)
+            }
+
+            Spacer()
+
+            Text(mode.rawValue)
+                .font(.headline.monospaced().weight(.bold))
+                .foregroundStyle(Mania4KStyle.textMuted)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Mania4KStyle.controlFill, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Mania4KStyle.accentGreen, lineWidth: 1)
         )
+    }
+
+    private var clearSetupButton: some View {
+        Button {
+            clearSetupState()
+        } label: {
+            Label("Clear", systemImage: "arrow.counterclockwise")
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(hasSetupStateToClear ? Mania4KStyle.textSecondary : Mania4KStyle.textMuted)
+        .background(Mania4KStyle.controlFill, in: RoundedRectangle(cornerRadius: 7))
+        .overlay(
+            RoundedRectangle(cornerRadius: 7)
+                .stroke(Mania4KStyle.border, lineWidth: 1)
+        )
+        .disabled(!hasSetupStateToClear)
+        .help("Clear game mode setup")
+    }
+
+    private var headerStatusText: String {
+        switch selectedMode {
+        case nil:
+            return "MODE"
+        case .localBeatmap:
+            return model.isReadyToStart ? "READY" : "SETUP"
+        case .generatedSong:
+            return model.audioFileURL == nil ? "SETUP" : "BACKEND"
+        case .ambient:
+            return "AMBIENT"
+        }
+    }
+
+    private var isSelectedModeReady: Bool {
+        switch selectedMode {
+        case nil:
+            return false
+        case .localBeatmap:
+            return model.isReadyToStart
+        case .generatedSong:
+            return model.audioFileURL != nil
+        case .ambient:
+            return true
+        }
+    }
+
+    private var hasSetupStateToClear: Bool {
+        selectedMode != nil
+            || model.beatmapFileURL != nil
+            || model.audioFileURL != nil
+            || backendIsMock
+            || ambientModeStatus != "Idle"
+    }
+
+    private func clearSetupState() {
+        selectedMode = nil
+        backendIsMock = false
+        ambientModeStatus = "Idle"
+        fileImportTarget = nil
+        model.clearSetupSelections()
+    }
+
+    private func startGeneratedSongMode() {
+        guard let audioFileURL = model.audioFileURL else {
+            return
+        }
+
+        Task {
+            await model.startGeneratedBackendPlay(
+                audioFileURL: audioFileURL,
+                isMock: backendIsMock,
+                referenceTimeMS: 0
+            )
+        }
+    }
+
+    private func startAmbientMode() {
+        #if os(macOS) && DEBUG
+        ambientModeStatus = "Recognition flow opened"
+        openWindow(id: LiveRecognitionSyncWindow.windowID)
+        #else
+        ambientModeStatus = "Ambient recognition is available in the macOS debug build"
+        #endif
     }
 
     private func presentFileImporter(for target: Mania4KFileImportTarget) {
@@ -202,28 +546,58 @@ private struct Mania4KSetupView: View {
 
                 Spacer()
 
-                Text(model.isReadyToStart ? "READY" : "WAITING")
+                Text(sessionBadgeText)
                     .font(.caption.monospaced().weight(.bold))
                     .padding(.horizontal, 9)
                     .padding(.vertical, 5)
-                    .foregroundStyle(model.isReadyToStart ? Mania4KStyle.accentGreen : Mania4KStyle.textMuted)
+                    .foregroundStyle(isSelectedModeReady ? Mania4KStyle.accentGreen : Mania4KStyle.textMuted)
                     .background(
-                        (model.isReadyToStart ? Mania4KStyle.accentGreen : Mania4KStyle.textMuted).opacity(0.12),
+                        (isSelectedModeReady ? Mania4KStyle.accentGreen : Mania4KStyle.textMuted).opacity(0.12),
                         in: RoundedRectangle(cornerRadius: 6)
                     )
             }
 
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: 10) {
-                    statTile(title: "Beatmap", value: model.beatmapFileURL?.lastPathComponent ?? "--")
-                    statTile(title: "Audio", value: model.audioFileURL?.lastPathComponent ?? "--")
-                    statTile(title: "Difficulty", value: model.starDifficulty.formatted(.number.precision(.fractionLength(1))))
+                VStack(spacing: 10) {
+                    HStack(spacing: 10) {
+                        ForEach(sessionSummaryRows.prefix(3)) { row in
+                            statTile(title: row.title, value: row.value)
+                        }
+                    }
+
+                    HStack(spacing: 10) {
+                        ForEach(sessionSummaryRows.dropFirst(3).prefix(3)) { row in
+                            statTile(title: row.title, value: row.value)
+                        }
+                    }
                 }
 
                 VStack(spacing: 10) {
-                    statTile(title: "Beatmap", value: model.beatmapFileURL?.lastPathComponent ?? "--")
-                    statTile(title: "Audio", value: model.audioFileURL?.lastPathComponent ?? "--")
-                    statTile(title: "Difficulty", value: model.starDifficulty.formatted(.number.precision(.fractionLength(1))))
+                    ForEach(sessionSummaryRows) { row in
+                        statTile(title: row.title, value: row.value)
+                    }
+                }
+            }
+
+            if shouldShowBackendDetails {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Backend")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Mania4KStyle.textPrimary)
+
+                    statTile(title: "Status", value: model.backendSessionStatus)
+                    HStack(spacing: 10) {
+                        statTile(title: "Tokens", value: String(model.backendReceivedTokenCount))
+                        statTile(title: "Ready Window", value: "\(Int(model.backendReadyWindowMS.rounded())) ms")
+                    }
+
+                    if let token = model.backendLastTokenDescription {
+                        Text(token)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(Mania4KStyle.textSecondary)
+                            .lineLimit(2)
+                            .truncationMode(.middle)
+                    }
                 }
             }
 
@@ -231,6 +605,55 @@ private struct Mania4KSetupView: View {
                 .frame(minHeight: 360)
         }
         .panelStyle()
+    }
+
+    private var sessionBadgeText: String {
+        switch selectedMode {
+        case nil:
+            return "WAITING"
+        case .localBeatmap:
+            return model.isReadyToStart ? "READY" : "WAITING"
+        case .generatedSong:
+            return model.audioFileURL == nil ? "WAITING" : "READY"
+        case .ambient:
+            return "SYNC"
+        }
+    }
+
+    private var sessionSummaryRows: [SessionSummaryRow] {
+        [
+            SessionSummaryRow(title: "Mode", value: selectedMode?.rawValue ?? "--"),
+            SessionSummaryRow(title: "Song", value: model.audioFileURL?.lastPathComponent ?? "--"),
+            SessionSummaryRow(title: "Beatmap", value: beatmapSummaryText),
+            SessionSummaryRow(title: "Difficulty", value: model.starDifficulty.formatted(.number.precision(.fractionLength(1)))),
+            SessionSummaryRow(title: "Mock", value: backendIsMock ? "true" : "false"),
+            SessionSummaryRow(title: "Reference", value: referenceSummaryText)
+        ]
+    }
+
+    private var beatmapSummaryText: String {
+        switch selectedMode {
+        case nil:
+            return "--"
+        case .localBeatmap:
+            return model.beatmapFileURL?.lastPathComponent ?? "--"
+        case .generatedSong:
+            return model.activeConfiguration?.chartSource.displayName ?? "Backend generated"
+        case .ambient:
+            return "Ambient generated"
+        }
+    }
+
+    private var referenceSummaryText: String {
+        guard let referenceTimeMS = model.backendReferenceTimeMS else {
+            return selectedMode == .ambient ? "ambient lock" : "0 ms"
+        }
+
+        return "\(Int(referenceTimeMS.rounded())) ms"
+    }
+
+    private var shouldShowBackendDetails: Bool {
+        selectedMode == .generatedSong || selectedMode == .ambient || model.backendSessionID != nil
     }
 
     private func filePickerRow(
@@ -1541,7 +1964,7 @@ private struct Mania4KPlaySceneView: View {
 
     private var playTitle: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(model.playFrame?.metadata.title ?? model.activeConfiguration?.beatmapFileURL.deletingPathExtension().lastPathComponent ?? "mania4k")
+            Text(model.playFrame?.metadata.title ?? model.activeConfiguration?.chartSource.displayName ?? "mania4k")
                 .font(.headline)
                 .foregroundStyle(Mania4KStyle.textPrimary)
                 .lineLimit(1)
@@ -1632,7 +2055,7 @@ private struct Mania4KPlaySceneView: View {
     private var overlayState: some View {
         switch model.phase {
         case .loading:
-            statePanel(title: "Loading", detail: model.activeConfiguration?.beatmapFileURL.lastPathComponent ?? "Preparing chart")
+            statePanel(title: "Loading", detail: model.activeConfiguration?.chartSource.displayName ?? "Preparing chart")
         case .failed(let failure):
             statePanel(title: "Failed", detail: failure.localizedDescription)
         case .finished(let result):

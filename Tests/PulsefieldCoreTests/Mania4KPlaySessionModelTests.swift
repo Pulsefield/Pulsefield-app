@@ -136,6 +136,21 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         XCTAssertNil(model.beatmapSelectionErrorMessage)
     }
 
+    func testClearSetupSelectionsClearsFilesAndImportErrors() {
+        let model = Mania4KPlaySessionModel()
+
+        model.selectBeatmapFile(URL(fileURLWithPath: "/tmp/song.mp3"))
+        model.selectAudioFile(URL(fileURLWithPath: "/tmp/song.mp3"))
+        model.clearSetupSelections()
+
+        XCTAssertNil(model.beatmapFileURL)
+        XCTAssertNil(model.audioFileURL)
+        XCTAssertNil(model.beatmapSelectionErrorMessage)
+        XCTAssertNil(model.audioSelectionErrorMessage)
+        XCTAssertFalse(model.isReadyToStart)
+        XCTAssertEqual(model.phase, .setup)
+    }
+
     func testQuitReturnsToSetupWithoutClearingSelections() async throws {
         let model = try modelWithInMemoryChart(objects: [tap(.left, 1_000)])
         let beatmapURL = URL(fileURLWithPath: "/tmp/mock.osu")

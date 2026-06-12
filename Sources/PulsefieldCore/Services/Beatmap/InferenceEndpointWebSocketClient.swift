@@ -14,9 +14,14 @@ public struct InferenceEndpointConfiguration: Equatable, Sendable {
     public static let global = InferenceEndpointConfiguration()
 
     public let difficulty: Double
+    public let isMock: Bool
 
-    public init(difficulty: Double = InferenceEndpointConfiguration.defaultDifficulty) {
+    public init(
+        difficulty: Double = InferenceEndpointConfiguration.defaultDifficulty,
+        isMock: Bool = false
+    ) {
         self.difficulty = difficulty
+        self.isMock = isMock
     }
 }
 
@@ -27,6 +32,7 @@ public struct InferenceEndpointOutgoingMessage: Encodable, Equatable, Sendable {
     public let refTimeMS: Int?
     public let localHostTimeSendMS: Double?
     public let difficulty: Double?
+    public let isMock: Bool?
     public let control: String?
 
     enum CodingKeys: String, CodingKey {
@@ -36,6 +42,7 @@ public struct InferenceEndpointOutgoingMessage: Encodable, Equatable, Sendable {
         case refTimeMS = "ref_time_ms"
         case localHostTimeSendMS = "local_host_time_send_ms"
         case difficulty
+        case isMock = "is_mock"
         case control
     }
 
@@ -46,6 +53,7 @@ public struct InferenceEndpointOutgoingMessage: Encodable, Equatable, Sendable {
         refTimeMS: Int? = nil,
         localHostTimeSendMS: Double? = nil,
         difficulty: Double? = nil,
+        isMock: Bool? = nil,
         control: String? = nil
     ) {
         self.type = type
@@ -54,6 +62,7 @@ public struct InferenceEndpointOutgoingMessage: Encodable, Equatable, Sendable {
         self.refTimeMS = refTimeMS
         self.localHostTimeSendMS = localHostTimeSendMS
         self.difficulty = difficulty
+        self.isMock = isMock
         self.control = control
     }
 
@@ -70,7 +79,8 @@ public struct InferenceEndpointOutgoingMessage: Encodable, Equatable, Sendable {
             type: .audioPath,
             audioPath: audioPath,
             sessionID: sessionID,
-            difficulty: configuration.difficulty
+            difficulty: configuration.difficulty,
+            isMock: configuration.isMock
         )
     }
 

@@ -2,6 +2,7 @@ import Foundation
 import Observation
 
 public typealias Mania4KHitObjectStreamFactory = @Sendable (URL) -> any Mania4KHitObjectStreaming
+public typealias InferenceEndpointClientFactory = @Sendable (InferenceEndpointConfiguration) -> any InferenceEndpointClient
 
 private struct Mania4KFrameTiming {
     let gameplayChartTimeMs: Double
@@ -31,10 +32,20 @@ public final class Mania4KPlaySessionModel {
     public private(set) var phase: Mania4KPlayPhase
     public private(set) var playFrame: Mania4KPlayFrame?
     public private(set) var liveInputLaneStates: [Mania4KLaneState]
+    public private(set) var backendSessionID: String?
+    public private(set) var backendSessionStatus: String
+    public private(set) var backendReceivedTokenCount: Int
+    public private(set) var backendReadyWindowMS: Double
+    public private(set) var backendLastTokenDescription: String?
+    public private(set) var backendIsMock: Bool
+    public private(set) var backendReferenceTimeMS: Double?
 
     private let streamFactory: Mania4KHitObjectStreamFactory
+    private let inferenceEndpointClientFactory: InferenceEndpointClientFactory
     private let audioClock: any Mania4KAudioClock
     private var activeStream: (any Mania4KHitObjectStreaming)?
+    private var backendClient: (any InferenceEndpointClient)?
+    private var backendReceiveTask: Task<Void, Never>?
     private var engine: Mania4KJudgementEngine?
     private var metadata: Mania4KChartMetadata?
     private var audioMetadata: Mania4KAudioMetadata?
@@ -59,7 +70,10 @@ public final class Mania4KPlaySessionModel {
         judgeDifficulty: Mania4KJudgeDifficulty = .c,
         keyBindings: Mania4KKeyBindingSet = .default,
         audioClock: any Mania4KAudioClock = AVFoundationMania4KAudioClock(),
-        streamFactory: @escaping Mania4KHitObjectStreamFactory = { OsuMania4KBeatmapStream(beatmapFileURL: $0) }
+        streamFactory: @escaping Mania4KHitObjectStreamFactory = { OsuMania4KBeatmapStream(beatmapFileURL: $0) },
+        inferenceEndpointClientFactory: @escaping InferenceEndpointClientFactory = {
+            InferenceEndpointWebSocketClient(configuration: $0)
+        }
     ) {
         self.beatmapFileURL = beatmapFileURL
         self.audioFileURL = audioFileURL
@@ -71,8 +85,16 @@ public final class Mania4KPlaySessionModel {
         self.keyBindings = keyBindings
         self.audioClock = audioClock
         self.streamFactory = streamFactory
+        self.inferenceEndpointClientFactory = inferenceEndpointClientFactory
         self.phase = .setup
         self.liveInputLaneStates = Self.makeLaneStates(pressedLanes: [])
+        self.backendSessionID = nil
+        self.backendSessionStatus = "Idle"
+        self.backendReceivedTokenCount = 0
+        self.backendReadyWindowMS = 0
+        self.backendLastTokenDescription = nil
+        self.backendIsMock = false
+        self.backendReferenceTimeMS = nil
         self.streamCompleteThroughChartTimeMs = 0
         self.streamEnded = false
         self.streamReadGate = AsyncGate()
@@ -116,6 +138,18 @@ public final class Mania4KPlaySessionModel {
         resetPreparedPlayState()
     }
 
+    public func clearSetupSelections() {
+        guard phase == .setup else {
+            return
+        }
+
+        resetPreparedPlayState()
+        beatmapFileURL = nil
+        audioFileURL = nil
+        beatmapSelectionErrorMessage = nil
+        audioSelectionErrorMessage = nil
+    }
+
     public func recordBeatmapImportFailure(_ error: Error) {
         beatmapSelectionErrorMessage = "Could not choose beatmap: \(error.localizedDescription)"
     }
@@ -142,10 +176,116 @@ public final class Mania4KPlaySessionModel {
             judgeDifficulty: judgeDifficulty,
             keyBindings: keyBindings
         )
+        return await startPreparedPlay(
+            configuration: configuration,
+            stream: streamFactory(beatmapFileURL),
+            startGeneration: startGeneration
+        )
+    }
+
+    @discardableResult
+    public func startGeneratedBackendPlay(
+        audioFileURL: URL,
+        isMock: Bool,
+        referenceTimeMS: Double = 0,
+        durationMS: Double? = nil,
+        title: String? = nil
+    ) async -> Bool {
+        self.audioFileURL = audioFileURL
+        resetPreparedPlayState()
+        self.audioFileURL = audioFileURL
+
+        let startGeneration = playStateGeneration
+        let sessionID = UUID().uuidString
+        let sourceTitle = title?.trimmedNilIfEmpty ?? audioFileURL.deletingPathExtension().lastPathComponent
+        let endpointConfiguration = InferenceEndpointConfiguration(
+            difficulty: starDifficulty,
+            isMock: isMock
+        )
+        let endpointClient = inferenceEndpointClientFactory(endpointConfiguration)
+        let referenceTimeProvider = FixedInferenceReferenceTimeProvider(timeMS: referenceTimeMS)
+        let generatedStream = BufferedInferenceMania4KHitObjectStream(
+            metadata: Mania4KChartMetadata(
+                title: sourceTitle,
+                sourceDescription: "Inference endpoint",
+                durationMs: durationMS
+            ),
+            referenceTimeProvider: {
+                await referenceTimeProvider.value()
+            }
+        )
+
+        backendClient = endpointClient
+        backendSessionID = sessionID
+        backendSessionStatus = "Connecting to inference backend"
+        backendReceivedTokenCount = 0
+        backendReadyWindowMS = 0
+        backendLastTokenDescription = nil
+        backendIsMock = isMock
+        backendReferenceTimeMS = referenceTimeMS
+        startBackendReceiveTask(
+            client: endpointClient,
+            stream: generatedStream,
+            sessionID: sessionID,
+            generation: startGeneration
+        )
+
+        do {
+            try await endpointClient.prepare()
+            guard playStateGeneration == startGeneration, backendSessionID == sessionID else {
+                return false
+            }
+
+            backendSessionStatus = "Publishing audio path"
+            try await endpointClient.sendAudioPath(audioFileURL.path, sessionID: sessionID)
+            guard playStateGeneration == startGeneration, backendSessionID == sessionID else {
+                return false
+            }
+
+            backendSessionStatus = "Publishing reference time"
+            try await endpointClient.sendReferenceTime(
+                sessionID: sessionID,
+                refTimeMS: referenceTimeMS,
+                localHostTimeSendMS: PulsefieldHostClock.currentTimeMS()
+            )
+            guard playStateGeneration == startGeneration, backendSessionID == sessionID else {
+                return false
+            }
+
+            backendSessionStatus = "Waiting for generated beatmap"
+        } catch {
+            guard playStateGeneration == startGeneration, backendSessionID == sessionID else {
+                return false
+            }
+            await fail(.streamFailed("Inference backend setup failed: \(error.localizedDescription)"))
+            return false
+        }
+
+        let configuration = Mania4KPlayConfiguration(
+            chartSource: .generated(displayName: "Generated: \(sourceTitle)"),
+            audioFileURL: audioFileURL,
+            starDifficulty: starDifficulty,
+            scrollSpeed: scrollSpeed,
+            audioOffsetMilliseconds: audioOffsetMilliseconds,
+            visualOffsetMilliseconds: visualOffsetMilliseconds,
+            judgeDifficulty: judgeDifficulty,
+            keyBindings: keyBindings
+        )
+        return await startPreparedPlay(
+            configuration: configuration,
+            stream: generatedStream,
+            startGeneration: startGeneration
+        )
+    }
+
+    private func startPreparedPlay(
+        configuration: Mania4KPlayConfiguration,
+        stream: any Mania4KHitObjectStreaming,
+        startGeneration: UInt64
+    ) async -> Bool {
         activeConfiguration = configuration
         phase = .loading
 
-        let stream = streamFactory(beatmapFileURL)
         activeStream = stream
         var preparedEngine = Mania4KJudgementEngine(judgeDifficulty: judgeDifficulty)
         engine = preparedEngine
@@ -178,7 +318,7 @@ public final class Mania4KPlaySessionModel {
 
         let preparedAudioMetadata: Mania4KAudioMetadata
         do {
-            preparedAudioMetadata = try await audioClock.prepare(audioFileURL: audioFileURL)
+            preparedAudioMetadata = try await audioClock.prepare(audioFileURL: configuration.audioFileURL)
             if await abandonStaleStartIfNeeded(startGeneration) {
                 return false
             }
@@ -501,6 +641,7 @@ public final class Mania4KPlaySessionModel {
         playStateGeneration &+= 1
         frameLoopTask?.cancel()
         frameLoopTask = nil
+        stopBackendSession(markStopped: false)
         activeConfiguration = nil
         activeStream = nil
         engine = nil
@@ -515,6 +656,101 @@ public final class Mania4KPlaySessionModel {
         keyboardRouter.reset()
         resetLiveInputLaneStates()
         finishQueuedGameplayInputs(returning: false)
+    }
+
+    private func startBackendReceiveTask(
+        client: any InferenceEndpointClient,
+        stream: BufferedInferenceMania4KHitObjectStream,
+        sessionID: String,
+        generation: UInt64
+    ) {
+        backendReceiveTask?.cancel()
+        backendReceiveTask = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            do {
+                while !Task.isCancelled {
+                    let event = try await client.nextEvent()
+                    await self.applyBackendEvent(
+                        event,
+                        stream: stream,
+                        expectedSessionID: sessionID,
+                        generation: generation
+                    )
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                guard self.playStateGeneration == generation,
+                      self.backendSessionID == sessionID
+                else {
+                    return
+                }
+                self.backendSessionStatus = "Backend receive failed: \(error.localizedDescription)"
+                if self.phase == .loading || self.phase == .playing || self.phase == .paused {
+                    await self.fail(.streamFailed(error.localizedDescription))
+                }
+            }
+        }
+    }
+
+    private func applyBackendEvent(
+        _ event: InferenceEndpointEvent,
+        stream: BufferedInferenceMania4KHitObjectStream,
+        expectedSessionID: String,
+        generation: UInt64
+    ) async {
+        guard playStateGeneration == generation,
+              backendSessionID == expectedSessionID
+        else {
+            return
+        }
+
+        switch event {
+        case .hitObjectToken(let token):
+            guard token.sessionID == expectedSessionID else {
+                return
+            }
+
+            guard await stream.append(contentsOf: token.objects) else {
+                return
+            }
+
+            backendReceivedTokenCount += 1
+            let readiness = await stream.currentRenderReadiness()
+            backendReadyWindowMS = readiness?.bufferedDurationAfterFirstObjectMS ?? 0
+            backendLastTokenDescription = "token_id \(token.tokenID) -> \(token.objects.count) objects @ \(Int(token.timeMS.rounded())) ms"
+
+            if readiness?.isReady == true {
+                backendSessionStatus = "Generated beatmap ready"
+            } else {
+                backendSessionStatus = "Buffering generated beatmap"
+            }
+        }
+    }
+
+    private func stopBackendSession(markStopped: Bool) {
+        let sessionID = backendSessionID
+        let client = backendClient
+
+        backendSessionID = nil
+        backendClient = nil
+        backendReceiveTask?.cancel()
+        backendReceiveTask = nil
+        backendReceivedTokenCount = 0
+        backendReadyWindowMS = 0
+        backendLastTokenDescription = nil
+        backendReferenceTimeMS = nil
+
+        if let sessionID, let client {
+            Task {
+                try? await client.stop(sessionID: sessionID)
+            }
+        }
+
+        backendSessionStatus = markStopped ? "Stopped" : "Idle"
     }
 
     private func startFrameLoop() {
@@ -789,6 +1025,18 @@ private struct QueuedMania4KInput {
     let continuation: CheckedContinuation<Bool, Never>
 }
 
+private actor FixedInferenceReferenceTimeProvider {
+    private let timeMS: Double
+
+    init(timeMS: Double) {
+        self.timeMS = timeMS
+    }
+
+    func value() -> Double {
+        timeMS
+    }
+}
+
 @MainActor
 private final class AsyncGate {
     private var isEntered = false
@@ -828,5 +1076,12 @@ private struct StaleMania4KPlayStateError: Error {}
 private extension URL {
     var hasOsuBeatmapExtension: Bool {
         pathExtension.localizedCaseInsensitiveCompare("osu") == .orderedSame
+    }
+}
+
+private extension String {
+    var trimmedNilIfEmpty: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
