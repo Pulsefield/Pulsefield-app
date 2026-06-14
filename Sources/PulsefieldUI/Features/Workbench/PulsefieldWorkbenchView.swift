@@ -13,15 +13,18 @@ public struct PulsefieldWorkbenchView: View {
     @State private var localLibraryModel: LocalLibraryDashboardModel
     @State private var isShowingSettings = false
     @State private var didRestoreStoredManiaSettings = false
+    private let onAmbientRecognitionRequested: (@MainActor (Bool) -> Void)?
 
     public init(
         maniaModel: Mania4KPlaySessionModel = Mania4KPlaySessionModel(),
         localLibraryModel: LocalLibraryDashboardModel = .livePrototype(),
-        initialSelection: WorkbenchTab = .localLibrary
+        initialSelection: WorkbenchTab = .localLibrary,
+        onAmbientRecognitionRequested: (@MainActor (Bool) -> Void)? = nil
     ) {
         _selection = State(initialValue: initialSelection)
         _maniaModel = State(initialValue: maniaModel)
         _localLibraryModel = State(initialValue: localLibraryModel)
+        self.onAmbientRecognitionRequested = onAmbientRecognitionRequested
     }
 
     public var body: some View {
@@ -32,7 +35,10 @@ public struct PulsefieldWorkbenchView: View {
             }
             .tag(WorkbenchTab.localLibrary)
 
-            Mania4KPlayExperienceView(model: maniaModel)
+            Mania4KPlayExperienceView(
+                model: maniaModel,
+                onAmbientRecognitionRequested: onAmbientRecognitionRequested
+            )
                 .tabItem {
                     Label("Play", systemImage: "square.grid.2x2")
                 }

@@ -44,6 +44,53 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         XCTAssertEqual(clampedTimeMS, 180_000)
     }
 
+    func testAmbientGeneratedBackendPlayUsesHostClockWithoutPlayingDefaultAudio() async throws {
+        let defaultClock = TrackingMania4KAudioClock()
+        let endpoint = ScriptedInferenceEndpoint(
+            objects: [
+                tap(.left, 3_000),
+                tap(.right, 8_500)
+            ],
+            completeThroughMS: 10_000
+        )
+        let endpointFactory = ScriptedInferenceEndpointFactory(endpoint: endpoint)
+        let model = Mania4KPlaySessionModel(
+            audioOffsetMilliseconds: 0,
+            visualOffsetMilliseconds: 0,
+            audioClock: defaultClock,
+            inferenceEndpointClientFactory: endpointFactory.makeClient(configuration:)
+        )
+        let anchorHostTimeMS = PulsefieldHostClock.currentTimeMS()
+
+        let started = await model.startAmbientGeneratedBackendPlay(
+            audioFileURL: URL(fileURLWithPath: "/tmp/ambient.mp3"),
+            isMock: true,
+            referenceTimeMS: 2_000,
+            anchorHostTimeMS: anchorHostTimeMS,
+            durationMS: 10_000,
+            title: "Ambient Test",
+            musicSource: .background
+        )
+
+        XCTAssertTrue(started)
+        XCTAssertEqual(model.phase, .playing)
+        XCTAssertEqual(model.activeConfiguration?.chartSource, .generated(displayName: "Ambient: Ambient Test"))
+        XCTAssertEqual(model.backendReferenceTimeMS, 2_000)
+        XCTAssertGreaterThanOrEqual(model.playFrame?.gameplayChartTimeMs ?? -1, 2_000)
+        let prepareCallCount = await defaultClock.prepareCallCount()
+        let playCallCount = await defaultClock.playCallCount()
+        let audioPathMusicSources = await endpoint.audioPathCalls().map(\.musicSource)
+        let referenceTimes = await endpoint.referenceTimeCalls().map(\.refTimeMS)
+
+        XCTAssertEqual(prepareCallCount, 0)
+        XCTAssertEqual(playCallCount, 0)
+        XCTAssertEqual(endpointFactory.recordedConfigurations, [
+            InferenceEndpointConfiguration(difficulty: 4.0, isMock: true)
+        ])
+        XCTAssertEqual(audioPathMusicSources, [.background])
+        XCTAssertEqual(referenceTimes, [2_000])
+    }
+
     func testKeyBindingSetNormalizesKeysAndRejectsInvalidUpdates() {
         let custom = Mania4KKeyBindingSet(keysByLane: [
             .left: "A",
@@ -1006,6 +1053,153 @@ private actor PreparedTimeMania4KAudioClock: Mania4KAudioClock {
 
     func isRunning() async -> Bool {
         running
+    }
+}
+
+private actor TrackingMania4KAudioClock: Mania4KAudioClock {
+    private var prepareCalls = 0
+    private var playCalls = 0
+    private var running = false
+
+    func prepare(audioFileURL: URL) async throws -> Mania4KAudioMetadata {
+        prepareCalls += 1
+        return Mania4KAudioMetadata(durationMs: 10_000, title: "Tracking")
+    }
+
+    func play() async throws {
+        playCalls += 1
+        running = true
+    }
+
+    func pause() async {
+        running = false
+    }
+
+    func stop() async {
+        running = false
+    }
+
+    func currentAudioTimeMs() async -> Double {
+        0
+    }
+
+    func isRunning() async -> Bool {
+        running
+    }
+
+    func prepareCallCount() -> Int {
+        prepareCalls
+    }
+
+    func playCallCount() -> Int {
+        playCalls
+    }
+}
+
+private final class ScriptedInferenceEndpointFactory: @unchecked Sendable {
+    private let endpoint: ScriptedInferenceEndpoint
+    private let lock = NSLock()
+    private var configurations: [InferenceEndpointConfiguration] = []
+
+    init(endpoint: ScriptedInferenceEndpoint) {
+        self.endpoint = endpoint
+    }
+
+    var recordedConfigurations: [InferenceEndpointConfiguration] {
+        lock.lock()
+        defer { lock.unlock() }
+        return configurations
+    }
+
+    func makeClient(configuration: InferenceEndpointConfiguration) -> any InferenceEndpointClient {
+        lock.lock()
+        configurations.append(configuration)
+        lock.unlock()
+        return endpoint
+    }
+}
+
+private actor ScriptedInferenceEndpoint: InferenceEndpointClient {
+    struct AudioPathCall: Equatable, Sendable {
+        let audioPath: String
+        let sessionID: String
+        let musicSource: MusicSource
+    }
+
+    struct ReferenceTimeCall: Equatable, Sendable {
+        let sessionID: String
+        let refTimeMS: Double
+        let localHostTimeSendMS: Double
+    }
+
+    private let objects: [Mania4KHitObject]
+    private let completeThroughMS: Double
+    private var audioPathCallLog: [AudioPathCall] = []
+    private var referenceTimeCallLog: [ReferenceTimeCall] = []
+    private var queuedEvents: [InferenceEndpointEvent] = []
+    private var eventWaiters: [CheckedContinuation<InferenceEndpointEvent, Never>] = []
+
+    init(objects: [Mania4KHitObject], completeThroughMS: Double) {
+        self.objects = objects
+        self.completeThroughMS = completeThroughMS
+    }
+
+    func prepare() async throws {}
+
+    func sendAudioPath(_ audioPath: String, sessionID: String, musicSource: MusicSource) async throws {
+        audioPathCallLog.append(AudioPathCall(
+            audioPath: audioPath,
+            sessionID: sessionID,
+            musicSource: musicSource
+        ))
+    }
+
+    func sendReferenceTime(sessionID: String, refTimeMS: Double, localHostTimeSendMS: Double) async throws {
+        referenceTimeCallLog.append(ReferenceTimeCall(
+            sessionID: sessionID,
+            refTimeMS: refTimeMS,
+            localHostTimeSendMS: localHostTimeSendMS
+        ))
+        enqueue(.hitObjectToken(InferenceEndpointHitObjectToken(
+            sessionID: sessionID,
+            tokenID: 25,
+            timeMS: objects.first?.timeMs ?? 0,
+            objects: objects
+        )))
+        enqueue(.endOfStream(InferenceEndpointEndOfStream(
+            sessionID: sessionID,
+            audioLengthMS: completeThroughMS,
+            completeThroughMS: completeThroughMS
+        )))
+    }
+
+    func stop(sessionID: String) async throws {}
+
+    func nextEvent() async throws -> InferenceEndpointEvent {
+        if !queuedEvents.isEmpty {
+            return queuedEvents.removeFirst()
+        }
+
+        return await withCheckedContinuation { continuation in
+            eventWaiters.append(continuation)
+        }
+    }
+
+    func audioPathCalls() -> [AudioPathCall] {
+        audioPathCallLog
+    }
+
+    func referenceTimeCalls() -> [ReferenceTimeCall] {
+        referenceTimeCallLog
+    }
+
+    private func enqueue(_ event: InferenceEndpointEvent) {
+        if !eventWaiters.isEmpty {
+            let waiter = eventWaiters.removeFirst()
+            waiter.resume(returning: event)
+        } else {
+            queuedEvents.append(event)
+        }
     }
 }
 

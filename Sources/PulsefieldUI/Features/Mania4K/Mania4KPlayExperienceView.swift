@@ -7,11 +7,21 @@ import UniformTypeIdentifiers
 import AppKit
 #endif
 
+public enum Mania4KPlaySessionWindow {
+    public static let windowID = "mania4k-play-session"
+    public static let windowTitle = "Pulsefield Play Session"
+}
+
 public struct Mania4KPlayExperienceView: View {
     @Bindable public var model: Mania4KPlaySessionModel
+    private let onAmbientRecognitionRequested: (@MainActor (Bool) -> Void)?
 
-    public init(model: Mania4KPlaySessionModel) {
+    public init(
+        model: Mania4KPlaySessionModel,
+        onAmbientRecognitionRequested: (@MainActor (Bool) -> Void)? = nil
+    ) {
         self.model = model
+        self.onAmbientRecognitionRequested = onAmbientRecognitionRequested
     }
 
     public var body: some View {
@@ -19,7 +29,10 @@ public struct Mania4KPlayExperienceView: View {
             Mania4KBackdrop()
 
             if model.phase == .setup {
-                Mania4KSetupView(model: model)
+                Mania4KSetupView(
+                    model: model,
+                    onAmbientRecognitionRequested: onAmbientRecognitionRequested
+                )
             } else {
                 Mania4KPlaySceneView(model: model)
             }
@@ -92,6 +105,7 @@ private struct Mania4KSetupView: View {
     @State private var selectedMode: Mania4KSetupGameMode?
     @State private var backendIsMock = false
     @State private var ambientModeStatus = "Idle"
+    let onAmbientRecognitionRequested: (@MainActor (Bool) -> Void)?
 
     var body: some View {
         ScrollView {
@@ -310,6 +324,8 @@ private struct Mania4KSetupView: View {
                     .stroke(Mania4KStyle.border, lineWidth: 1)
             )
 
+            backendMockToggle
+
             Button {
                 startAmbientMode()
             } label: {
@@ -489,8 +505,12 @@ private struct Mania4KSetupView: View {
 
     private func startAmbientMode() {
         #if os(macOS) && DEBUG
+        if let onAmbientRecognitionRequested {
+            onAmbientRecognitionRequested(backendIsMock)
+        } else {
+            openWindow(id: LiveRecognitionSyncWindow.windowID)
+        }
         ambientModeStatus = "Recognition flow opened"
-        openWindow(id: LiveRecognitionSyncWindow.windowID)
         #else
         ambientModeStatus = "Ambient recognition is available in the macOS debug build"
         #endif

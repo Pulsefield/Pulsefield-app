@@ -42,7 +42,8 @@ public final class Mania4KPlaySessionModel {
 
     private let streamFactory: Mania4KHitObjectStreamFactory
     private let inferenceEndpointClientFactory: InferenceEndpointClientFactory
-    private let audioClock: any Mania4KAudioClock
+    private let defaultAudioClock: any Mania4KAudioClock
+    private var activeAudioClock: any Mania4KAudioClock
     private var activeStream: (any Mania4KHitObjectStreaming)?
     private var backendClient: (any InferenceEndpointClient)?
     private var backendReceiveTask: Task<Void, Never>?
@@ -83,7 +84,8 @@ public final class Mania4KPlaySessionModel {
         self.visualOffsetMilliseconds = visualOffsetMilliseconds
         self.judgeDifficulty = judgeDifficulty
         self.keyBindings = keyBindings
-        self.audioClock = audioClock
+        self.defaultAudioClock = audioClock
+        self.activeAudioClock = audioClock
         self.streamFactory = streamFactory
         self.inferenceEndpointClientFactory = inferenceEndpointClientFactory
         self.phase = .setup
@@ -191,6 +193,69 @@ public final class Mania4KPlaySessionModel {
         durationMS: Double? = nil,
         title: String? = nil
     ) async -> Bool {
+        let referenceTimeProvider = FixedInferenceReferenceTimeProvider(timeMS: referenceTimeMS)
+        return await startGeneratedBackendPlay(
+            audioFileURL: audioFileURL,
+            isMock: isMock,
+            referenceTimeMS: referenceTimeMS,
+            durationMS: durationMS,
+            title: title,
+            musicSource: .systemAudio,
+            playbackClock: defaultAudioClock,
+            sourceDescription: "Inference endpoint",
+            chartSourcePrefix: "Generated",
+            referenceTimeProvider: {
+                await referenceTimeProvider.value()
+            }
+        )
+    }
+
+    @discardableResult
+    public func startAmbientGeneratedBackendPlay(
+        audioFileURL: URL,
+        isMock: Bool,
+        referenceTimeMS: Double,
+        anchorHostTimeMS: Double,
+        durationMS: Double? = nil,
+        title: String? = nil,
+        musicSource: MusicSource = .background
+    ) async -> Bool {
+        let sourceTitle = title?.trimmedNilIfEmpty ?? audioFileURL.deletingPathExtension().lastPathComponent
+        let ambientClock = HostTimeAnchoredMania4KAudioClock(
+            referenceTimeAtAnchorMS: referenceTimeMS,
+            durationMS: durationMS,
+            title: sourceTitle,
+            anchorHostTimeMS: anchorHostTimeMS
+        )
+
+        return await startGeneratedBackendPlay(
+            audioFileURL: audioFileURL,
+            isMock: isMock,
+            referenceTimeMS: referenceTimeMS,
+            durationMS: durationMS,
+            title: sourceTitle,
+            musicSource: musicSource,
+            playbackClock: ambientClock,
+            sourceDescription: "Ambient inference endpoint",
+            chartSourcePrefix: "Ambient",
+            referenceTimeProvider: {
+                await ambientClock.currentAudioTimeMs()
+            }
+        )
+    }
+
+    private func startGeneratedBackendPlay(
+        audioFileURL: URL,
+        isMock: Bool,
+        referenceTimeMS: Double,
+        durationMS: Double?,
+        title: String?,
+        musicSource: MusicSource,
+        playbackClock: any Mania4KAudioClock,
+        sourceDescription: String,
+        chartSourcePrefix: String,
+        referenceTimeProvider: @escaping BufferedInferenceMania4KHitObjectStream.ReferenceTimeProvider
+    ) async -> Bool {
         self.audioFileURL = audioFileURL
         resetPreparedPlayState()
         self.audioFileURL = audioFileURL
@@ -203,17 +268,14 @@ public final class Mania4KPlaySessionModel {
             isMock: isMock
         )
         let endpointClient = inferenceEndpointClientFactory(endpointConfiguration)
-        let referenceTimeProvider = FixedInferenceReferenceTimeProvider(timeMS: referenceTimeMS)
         let generatedStream = BufferedInferenceMania4KHitObjectStream(
             metadata: Mania4KChartMetadata(
                 title: sourceTitle,
-                sourceDescription: "Inference endpoint",
+                sourceDescription: sourceDescription,
                 durationMs: durationMS
             ),
             maximumAcceptedTimeMS: durationMS,
-            referenceTimeProvider: {
-                await referenceTimeProvider.value()
-            }
+            referenceTimeProvider: referenceTimeProvider
         )
 
         backendClient = endpointClient
@@ -241,7 +303,7 @@ public final class Mania4KPlaySessionModel {
             try await endpointClient.sendAudioPath(
                 audioFileURL.path,
                 sessionID: sessionID,
-                musicSource: .systemAudio
+                musicSource: musicSource
             )
             guard playStateGeneration == startGeneration, backendSessionID == sessionID else {
                 return false
@@ -267,7 +329,7 @@ public final class Mania4KPlaySessionModel {
         }
 
         let configuration = Mania4KPlayConfiguration(
-            chartSource: .generated(displayName: "Generated: \(sourceTitle)"),
+            chartSource: .generated(displayName: "\(chartSourcePrefix): \(sourceTitle)"),
             audioFileURL: audioFileURL,
             starDifficulty: starDifficulty,
             scrollSpeed: scrollSpeed,
@@ -279,17 +341,20 @@ public final class Mania4KPlaySessionModel {
         return await startPreparedPlay(
             configuration: configuration,
             stream: generatedStream,
-            startGeneration: startGeneration
+            startGeneration: startGeneration,
+            playbackClock: playbackClock
         )
     }
 
     private func startPreparedPlay(
         configuration: Mania4KPlayConfiguration,
         stream: any Mania4KHitObjectStreaming,
-        startGeneration: UInt64
+        startGeneration: UInt64,
+        playbackClock: (any Mania4KAudioClock)? = nil
     ) async -> Bool {
         activeConfiguration = configuration
         phase = .loading
+        activeAudioClock = playbackClock ?? defaultAudioClock
 
         activeStream = stream
         var preparedEngine = Mania4KJudgementEngine(judgeDifficulty: judgeDifficulty)
@@ -323,7 +388,7 @@ public final class Mania4KPlaySessionModel {
 
         let preparedAudioMetadata: Mania4KAudioMetadata
         do {
-            preparedAudioMetadata = try await audioClock.prepare(audioFileURL: configuration.audioFileURL)
+            preparedAudioMetadata = try await activeAudioClock.prepare(audioFileURL: configuration.audioFileURL)
             if await abandonStaleStartIfNeeded(startGeneration) {
                 return false
             }
@@ -362,7 +427,7 @@ public final class Mania4KPlaySessionModel {
             engine = preparedEngine
             publishFrame(timing: initialTiming)
 
-            try await audioClock.play()
+            try await activeAudioClock.play()
             if await abandonStaleStartIfNeeded(startGeneration) {
                 return false
             }
@@ -424,7 +489,7 @@ public final class Mania4KPlaySessionModel {
         phase = .paused
         frameLoopTask?.cancel()
         frameLoopTask = nil
-        await audioClock.pause()
+        await activeAudioClock.pause()
     }
 
     public func resume() async {
@@ -433,7 +498,7 @@ public final class Mania4KPlaySessionModel {
         }
 
         do {
-            try await audioClock.play()
+            try await activeAudioClock.play()
         } catch let failure as Mania4KPlayFailure {
             await fail(failure)
             return
@@ -453,7 +518,7 @@ public final class Mania4KPlaySessionModel {
     public func quitToSetup() async {
         frameLoopTask?.cancel()
         frameLoopTask = nil
-        await audioClock.stop()
+        await activeAudioClock.stop()
         resetPreparedPlayState()
     }
 
@@ -463,7 +528,7 @@ public final class Mania4KPlaySessionModel {
             return false
         }
 
-        let audioTimeMs = await audioClock.currentAudioTimeMs()
+        let audioTimeMs = await activeAudioClock.currentAudioTimeMs()
         let timing = frameTiming(audioTimeMs: audioTimeMs)
         let streamReadThrough = timing.streamReadThroughChartTimeMs(scrollTimeMs: scrollTimeMs)
 
@@ -905,8 +970,8 @@ public final class Mania4KPlaySessionModel {
             return
         }
 
-        let audioTimeMs = await audioClock.currentAudioTimeMs()
-        let running = await audioClock.isRunning()
+        let audioTimeMs = await activeAudioClock.currentAudioTimeMs()
+        let running = await activeAudioClock.isRunning()
         let durationMs = audioMetadata?.durationMs ?? metadata.durationMs
         let audioHasEnded = durationMs.map { audioTimeMs >= $0 - 1 } ?? !running
 
@@ -916,7 +981,7 @@ public final class Mania4KPlaySessionModel {
 
         frameLoopTask?.cancel()
         frameLoopTask = nil
-        await audioClock.stop()
+        await activeAudioClock.stop()
         resetLiveInputLaneStates()
         phase = .finished(
             Mania4KPlayResult(
@@ -931,7 +996,7 @@ public final class Mania4KPlaySessionModel {
         let failureGeneration = playStateGeneration
         frameLoopTask?.cancel()
         frameLoopTask = nil
-        await audioClock.stop()
+        await activeAudioClock.stop()
         guard playStateGeneration == failureGeneration else {
             return
         }
@@ -940,7 +1005,7 @@ public final class Mania4KPlaySessionModel {
     }
 
     private func currentFrameTiming() async -> Mania4KFrameTiming {
-        let audioTimeMs = await audioClock.currentAudioTimeMs()
+        let audioTimeMs = await activeAudioClock.currentAudioTimeMs()
         return frameTiming(audioTimeMs: audioTimeMs)
     }
 
@@ -980,7 +1045,7 @@ public final class Mania4KPlaySessionModel {
         }
 
         if phase == .setup {
-            await audioClock.stop()
+            await activeAudioClock.stop()
         }
         return true
     }
