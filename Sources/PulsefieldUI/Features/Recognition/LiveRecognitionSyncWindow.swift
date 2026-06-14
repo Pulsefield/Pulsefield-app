@@ -724,6 +724,17 @@ public final class LiveRecognitionSyncModel {
             } else {
                 inferenceEndpointStatus = "Buffering tokens"
             }
+        case .endOfStream(let end):
+            guard end.sessionID == expectedSessionID,
+                  end.sessionID == inferenceSessionID
+            else {
+                return
+            }
+
+            inferenceTokenBuffer.setMaximumAcceptedTimeMS(end.completeThroughMS)
+            inferenceReadyWindowMS = inferenceTokenBuffer.readyWindow?.lengthMS ?? inferenceReadyWindowMS
+            inferenceLastTokenDescription = "end_of_stream @ \(Int(end.completeThroughMS.rounded())) ms"
+            inferenceEndpointStatus = "Inference stream complete"
         }
     }
 

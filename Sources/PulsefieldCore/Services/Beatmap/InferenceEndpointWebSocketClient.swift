@@ -5,6 +5,7 @@ public enum InferenceEndpointMessageType: String, Codable, Sendable {
     case audioPath = "audio_path"
     case referenceTime = "reference_time"
     case hitObjectTokens = "hitobject_tokens"
+    case endOfStream = "end_of_stream"
     case stop
     case error
 }
@@ -112,12 +113,16 @@ public struct InferenceEndpointIncomingMessage: Decodable, Equatable, Sendable {
     public let type: InferenceEndpointMessageType
     public let sessionID: String?
     public let token: InferenceEndpointTokenPayload?
+    public let audioLengthMS: Double?
+    public let completeThroughMS: Double?
     public let error: String?
 
     enum CodingKeys: String, CodingKey {
         case type
         case sessionID = "session_id"
         case token
+        case audioLengthMS = "audio_length_ms"
+        case completeThroughMS = "complete_through_ms"
         case error
     }
 }
@@ -167,13 +172,27 @@ public struct InferenceEndpointHitObjectToken: Equatable, Sendable {
     }
 }
 
+public struct InferenceEndpointEndOfStream: Equatable, Sendable {
+    public let sessionID: String
+    public let audioLengthMS: Double?
+    public let completeThroughMS: Double
+
+    public init(sessionID: String, audioLengthMS: Double?, completeThroughMS: Double) {
+        self.sessionID = sessionID
+        self.audioLengthMS = audioLengthMS
+        self.completeThroughMS = completeThroughMS
+    }
+}
+
 public enum InferenceEndpointEvent: Equatable, Sendable {
     case hitObjectToken(InferenceEndpointHitObjectToken)
+    case endOfStream(InferenceEndpointEndOfStream)
 }
 
 public enum InferenceEndpointProtocolError: Error, Equatable, LocalizedError, Sendable {
     case missingSessionID
     case missingToken
+    case missingEndOfStreamTime
     case unsupportedMessageType(InferenceEndpointMessageType)
     case invalidTextFrame
     case invalidHitObjectTokenID(Int)
@@ -185,6 +204,8 @@ public enum InferenceEndpointProtocolError: Error, Equatable, LocalizedError, Se
             return "Inference endpoint message is missing session_id."
         case .missingToken:
             return "Inference endpoint hitobject_tokens message is missing token."
+        case .missingEndOfStreamTime:
+            return "Inference endpoint end_of_stream message is missing complete_through_ms."
         case .unsupportedMessageType(let type):
             return "Unsupported inference endpoint message type: \(type.rawValue)."
         case .invalidTextFrame:
@@ -550,6 +571,7 @@ public actor BufferedInferenceMania4KHitObjectStream: Mania4KHitObjectStreaming 
     private let referenceTimeProvider: ReferenceTimeProvider
     private var buffer: InferenceHitObjectTokenBuffer
     private var renderStartWindow: InferenceHitObjectReadyWindow?
+    private var endOfStreamTimeMS: Double?
     private var emittedObjectCounts: [EmittedObjectKey: Int] = [:]
     private var waiters: [CheckedContinuation<Void, Never>] = []
 
@@ -569,6 +591,7 @@ public actor BufferedInferenceMania4KHitObjectStream: Mania4KHitObjectStreaming 
             minimumAcceptedTimeMS: minimumAcceptedTimeMS,
             maximumAcceptedTimeMS: maximumAcceptedTimeMS
         )
+        self.endOfStreamTimeMS = nil
     }
 
     public func prepare() async throws -> Mania4KChartMetadata {
@@ -577,6 +600,10 @@ public actor BufferedInferenceMania4KHitObjectStream: Mania4KHitObjectStreaming 
 
     @discardableResult
     public func append(contentsOf objects: [Mania4KHitObject]) -> Bool {
+        guard endOfStreamTimeMS == nil else {
+            return false
+        }
+
         let appended: Bool
         if renderStartWindow == nil {
             appended = buffer.append(contentsOf: objects)
@@ -587,6 +614,20 @@ public actor BufferedInferenceMania4KHitObjectStream: Mania4KHitObjectStreaming 
             resumeWaiters()
         }
         return appended
+    }
+
+    public func finish(completeThroughTimeMS: Double) {
+        guard completeThroughTimeMS.isFinite, completeThroughTimeMS >= 0 else {
+            return
+        }
+
+        if let endOfStreamTimeMS {
+            self.endOfStreamTimeMS = min(endOfStreamTimeMS, completeThroughTimeMS)
+        } else {
+            self.endOfStreamTimeMS = completeThroughTimeMS
+        }
+        buffer.setMaximumAcceptedTimeMS(completeThroughTimeMS)
+        resumeWaiters()
     }
 
     public func setMinimumAcceptedTimeMS(_ timeMS: Double) {
@@ -652,11 +693,14 @@ public actor BufferedInferenceMania4KHitObjectStream: Mania4KHitObjectStreaming 
 
         let emittedCount = emittedObjectCounts.values.reduce(0, +)
         let nextCursor = Mania4KHitObjectStreamCursor(rawValue: String(emittedCount))
+        let didReachEndOfStream = endOfStreamTimeMS.map {
+            throughChartTimeMs >= $0 && emitted.count < safeLimit
+        } ?? false
         return Mania4KHitObjectBatch(
             objects: emitted,
             nextCursor: nextCursor,
             completeThroughChartTimeMs: throughChartTimeMs,
-            isEndOfStream: false
+            isEndOfStream: didReachEndOfStream
         )
     }
 
@@ -673,6 +717,13 @@ public actor BufferedInferenceMania4KHitObjectStream: Mania4KHitObjectStreaming 
             )
             if readiness.isReady, let readyWindow = readiness.readyWindow {
                 renderStartWindow = readyWindow
+                return
+            }
+
+            if let endOfStreamTimeMS {
+                renderStartWindow = readiness.readyWindow
+                    ?? buffer.readyWindow
+                    ?? InferenceHitObjectReadyWindow(startTimeMS: 0, endTimeMS: endOfStreamTimeMS)
                 return
             }
 
@@ -844,6 +895,19 @@ public actor InferenceEndpointWebSocketClient: InferenceEndpointClient {
                 tokenID: payload.tokenID,
                 timeMS: payload.timeMS,
                 objects: objects
+            ))
+
+        case .endOfStream:
+            guard let sessionID = incoming.sessionID else {
+                throw InferenceEndpointProtocolError.missingSessionID
+            }
+            guard let completeThroughMS = incoming.completeThroughMS ?? incoming.audioLengthMS else {
+                throw InferenceEndpointProtocolError.missingEndOfStreamTime
+            }
+            return .endOfStream(InferenceEndpointEndOfStream(
+                sessionID: sessionID,
+                audioLengthMS: incoming.audioLengthMS,
+                completeThroughMS: completeThroughMS
             ))
 
         case .error:

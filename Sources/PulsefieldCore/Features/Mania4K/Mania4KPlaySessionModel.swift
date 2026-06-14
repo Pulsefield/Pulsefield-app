@@ -210,6 +210,7 @@ public final class Mania4KPlaySessionModel {
                 sourceDescription: "Inference endpoint",
                 durationMs: durationMS
             ),
+            maximumAcceptedTimeMS: durationMS,
             referenceTimeProvider: {
                 await referenceTimeProvider.value()
             }
@@ -732,6 +733,15 @@ public final class Mania4KPlaySessionModel {
             } else {
                 backendSessionStatus = "Buffering generated beatmap"
             }
+        case .endOfStream(let end):
+            guard end.sessionID == expectedSessionID else {
+                return
+            }
+
+            await stream.finish(completeThroughTimeMS: end.completeThroughMS)
+            backendReadyWindowMS = end.completeThroughMS
+            backendLastTokenDescription = "end_of_stream @ \(Int(end.completeThroughMS.rounded())) ms"
+            backendSessionStatus = "Generated beatmap complete"
         }
     }
 

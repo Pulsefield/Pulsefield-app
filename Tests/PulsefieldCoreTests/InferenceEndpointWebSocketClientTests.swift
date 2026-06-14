@@ -83,6 +83,16 @@ final class InferenceEndpointWebSocketClientTests: XCTestCase {
         ])
     }
 
+    func testEndOfStreamMessageDecodesAudioLengthAndCompleteThroughTime() throws {
+        let json = #"{"type":"end_of_stream","session_id":"session-1","audio_length_ms":94277,"complete_through_ms":94277}"#
+        let message = try JSONDecoder().decode(InferenceEndpointIncomingMessage.self, from: Data(json.utf8))
+
+        XCTAssertEqual(message.type, .endOfStream)
+        XCTAssertEqual(message.sessionID, "session-1")
+        XCTAssertEqual(message.audioLengthMS, 94_277)
+        XCTAssertEqual(message.completeThroughMS, 94_277)
+    }
+
     func testHitObjectTokenRejectsIdsOutsideMapperEventRange() {
         XCTAssertThrowsError(try InferenceEndpointHitObjectTokenParser.hitObjects(
             from: InferenceEndpointTokenPayload(tokenID: 24, timeMS: 100)
@@ -278,6 +288,93 @@ final class InferenceEndpointWebSocketClientTests: XCTestCase {
             Mania4KHitObject(lane: .innerLeft, timeMs: 2_000, kind: .tap)
         ])
         XCTAssertEqual(buffer.readyWindow, InferenceHitObjectReadyWindow(startTimeMS: 1_000, endTimeMS: 2_000))
+    }
+
+    func testBufferedInferenceStreamMarksEndOfStreamAtCompleteThroughTime() async throws {
+        let referenceTime = ManualInferenceReferenceTime(timeMS: 0)
+        let stream = BufferedInferenceMania4KHitObjectStream(
+            metadata: Mania4KChartMetadata(title: "Generated", sourceDescription: "Test"),
+            minimumBufferedDurationMS: 0,
+            firstObjectLeadTimeMS: 0,
+            referenceTimeProvider: {
+                await referenceTime.value()
+            }
+        )
+
+        await stream.append(contentsOf: [
+            Mania4KHitObject(lane: .left, timeMs: 100, kind: .tap)
+        ])
+
+        var batch = try await stream.read(after: nil, throughChartTimeMs: 100, limit: 10)
+        XCTAssertEqual(batch.objects, [
+            Mania4KHitObject(lane: .left, timeMs: 100, kind: .tap)
+        ])
+        XCTAssertFalse(batch.isEndOfStream)
+
+        await stream.finish(completeThroughTimeMS: 200)
+        let appendedAfterEnd = await stream.append(contentsOf: [
+            Mania4KHitObject(lane: .innerLeft, timeMs: 150, kind: .tap)
+        ])
+        XCTAssertFalse(appendedAfterEnd)
+
+        batch = try await stream.read(after: batch.nextCursor, throughChartTimeMs: 199, limit: 10)
+        XCTAssertFalse(batch.isEndOfStream)
+
+        batch = try await stream.read(after: batch.nextCursor, throughChartTimeMs: 200, limit: 10)
+        XCTAssertTrue(batch.isEndOfStream)
+    }
+
+    func testBufferedInferenceStreamDoesNotEndWhileLimitedBatchMayHaveMoreObjects() async throws {
+        let referenceTime = ManualInferenceReferenceTime(timeMS: 0)
+        let stream = BufferedInferenceMania4KHitObjectStream(
+            metadata: Mania4KChartMetadata(title: "Generated", sourceDescription: "Test"),
+            minimumBufferedDurationMS: 0,
+            firstObjectLeadTimeMS: 0,
+            referenceTimeProvider: {
+                await referenceTime.value()
+            }
+        )
+
+        await stream.append(contentsOf: [
+            Mania4KHitObject(lane: .left, timeMs: 100, kind: .tap),
+            Mania4KHitObject(lane: .innerLeft, timeMs: 120, kind: .tap)
+        ])
+        await stream.finish(completeThroughTimeMS: 200)
+
+        var batch = try await stream.read(after: nil, throughChartTimeMs: 200, limit: 1)
+        XCTAssertEqual(batch.objects, [
+            Mania4KHitObject(lane: .left, timeMs: 100, kind: .tap)
+        ])
+        XCTAssertFalse(batch.isEndOfStream)
+
+        batch = try await stream.read(after: batch.nextCursor, throughChartTimeMs: 200, limit: 1)
+        XCTAssertEqual(batch.objects, [
+            Mania4KHitObject(lane: .innerLeft, timeMs: 120, kind: .tap)
+        ])
+        XCTAssertFalse(batch.isEndOfStream)
+
+        batch = try await stream.read(after: batch.nextCursor, throughChartTimeMs: 200, limit: 1)
+        XCTAssertEqual(batch.objects, [])
+        XCTAssertTrue(batch.isEndOfStream)
+    }
+
+    func testBufferedInferenceStreamCanFinishWithoutInitialReadyWindow() async throws {
+        let referenceTime = ManualInferenceReferenceTime(timeMS: 0)
+        let stream = BufferedInferenceMania4KHitObjectStream(
+            metadata: Mania4KChartMetadata(title: "Generated", sourceDescription: "Test"),
+            minimumBufferedDurationMS: 5_000,
+            firstObjectLeadTimeMS: 1_000,
+            referenceTimeProvider: {
+                await referenceTime.value()
+            }
+        )
+
+        await stream.finish(completeThroughTimeMS: 800)
+        let batch = try await stream.read(after: nil, throughChartTimeMs: 800, limit: 10)
+
+        XCTAssertEqual(batch.objects, [])
+        XCTAssertEqual(batch.completeThroughChartTimeMs, 800)
+        XCTAssertTrue(batch.isEndOfStream)
     }
 
     func testBufferRejectsNonFiniteTokenTimes() {
