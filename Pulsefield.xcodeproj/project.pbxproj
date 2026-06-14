@@ -53,6 +53,7 @@
 		6F7132E6F6A45979C43029C4 /* LocalAudioMetadataExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 426CF1CB599BC7B1BB2CEAE8 /* LocalAudioMetadataExtractor.swift */; };
 		6FD2A9A3A03105AE1C5CD6B9 /* AudioClipCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B4C1174D9F3E6865C67129B /* AudioClipCaptureService.swift */; };
 		728A04DA71A0DF4C5696005F /* InferenceEndpointWebSocketClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DE68EF31E67DA9DAA7378F3 /* InferenceEndpointWebSocketClientTests.swift */; };
+		74E7C6C6D5D0F802540C0D5E /* SwiftProtobuf in Frameworks */ = {isa = PBXBuildFile; productRef = 36F46DF43D1CAE1A42C04195 /* SwiftProtobuf */; };
 		7752F7EAFF1D57B9A8657190 /* RecognitionServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = E522B477DC378F5CF8AB9C4C /* RecognitionServiceProtocol.swift */; };
 		7992421E5B9DD804C89F3EC8 /* PulsefieldCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */; };
 		79A78B41EC226018D2E55F11 /* RecognitionDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE86054D09DCC083F246CB0C /* RecognitionDomain.swift */; };
@@ -86,6 +87,7 @@
 		CF0CF9B20DF566614EDED287 /* PulsefieldUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A9C81D865B64C6D256B24F2B /* PulsefieldUI.framework */; };
 		D294F231300A83B5A026CE26 /* AmbientSyncOffsetTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 323DAE9135C600CD9EF24DE1 /* AmbientSyncOffsetTracker.swift */; };
 		D341F844440FAB984B185C59 /* PulsefieldUI.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A9C81D865B64C6D256B24F2B /* PulsefieldUI.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		D37C3CFDB6F6C43406BB124F /* PulsefieldProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = 860E3AAC20F0688599E7F678 /* PulsefieldProtocol */; };
 		D3A932DF8385FDF6983710EB /* RecognitionAppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ECCDB69F561441CFB7369B2 /* RecognitionAppModel.swift */; };
 		D46F277B68C8F973A3FE9529 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 56EB7BD2459DEAB60737DD1E /* AVFoundation.framework */; };
 		DB02F5130C3C9A526C48CED9 /* PreviewFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78ACE1CB799708B529D40F93 /* PreviewFixtures.swift */; };
@@ -93,6 +95,7 @@
 		DDA020C2C77C3D38F434521F /* LocalAudioLibraryIndexerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2E5A4D715D8CFE3E004CF00 /* LocalAudioLibraryIndexerTests.swift */; };
 		DFDBFA0A9F8E07469B62D950 /* PulsefieldWorkbenchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11BD89B20D37F8DEF32673CD /* PulsefieldWorkbenchView.swift */; };
 		E2A8570789AC186771AAE508 /* BeatmapDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40490916DA33124F9DB0B512 /* BeatmapDomain.swift */; };
+		E4E2ED099F13B073600BDD8A /* PulsefieldProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = 9D5477406907760227461C35 /* PulsefieldProtocol */; };
 		E868221122BB1E37F6FA51E8 /* calibration_tick.wav in Resources */ = {isa = PBXBuildFile; fileRef = AC82D9AA876D1FD18FF786A2 /* calibration_tick.wav */; };
 		ECF3037BA07A3E150C8E6870 /* AmbientSyncEngineGates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32340577D99A930BA703401F /* AmbientSyncEngineGates.swift */; };
 		ED55AA5CA54DA406092935A9 /* AmbientSyncEngineConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95E034F27EE1AA8DF4AE9375 /* AmbientSyncEngineConfiguration.swift */; };
@@ -249,6 +252,7 @@
 		65931740476AF6B6432DB7FF /* Mania4KPlaySessionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mania4KPlaySessionModel.swift; sourceTree = "<group>"; };
 		69CB4A9B6FE3AD7BFFCB8D72 /* AmbientSyncEngineTracking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncEngineTracking.swift; sourceTree = "<group>"; };
 		6A5DC9D386B2ECD255849946 /* PulsefieldiOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PulsefieldiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6B4CA62A806BECBE6B1254F2 /* pulsefield-protocol */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "pulsefield-protocol"; path = "../pulsefield-protocol"; sourceTree = SOURCE_ROOT; };
 		6CA7A26E40728ECEA439A0AA /* RecognitionDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionDashboardView.swift; sourceTree = "<group>"; };
 		6F9387C5804051FD90CC2C18 /* known-track-ambient-sync-multi-stage-matching-spec.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "known-track-ambient-sync-multi-stage-matching-spec.md"; sourceTree = "<group>"; };
 		728B90249B2A0A72FCD3580B /* BeatmapGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeatmapGenerationService.swift; sourceTree = "<group>"; };
@@ -314,6 +318,7 @@
 			files = (
 				02BD03125AEA567B23286D53 /* PulsefieldCore.framework in Frameworks */,
 				CF0CF9B20DF566614EDED287 /* PulsefieldUI.framework in Frameworks */,
+				D37C3CFDB6F6C43406BB124F /* PulsefieldProtocol in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -350,6 +355,8 @@
 			files = (
 				D46F277B68C8F973A3FE9529 /* AVFoundation.framework in Frameworks */,
 				F409134DAC2C9F08DFD3C7E1 /* Accelerate.framework in Frameworks */,
+				E4E2ED099F13B073600BDD8A /* PulsefieldProtocol in Frameworks */,
+				74E7C6C6D5D0F802540C0D5E /* SwiftProtobuf in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -498,6 +505,7 @@
 				13621072D594A7CD021F2B13 /* README.md */,
 				3467BAE7E553589AB7891349 /* Apps */,
 				0836D9C79BB52C1F5F0AD1BA /* docs */,
+				BCEEDEE1AC3F95B396C91104 /* Packages */,
 				8531547808AB3132D551D011 /* Sources */,
 				FDD1267957FCCE37D053068C /* Tests */,
 				8FB32A6A5E7D01FB98D281B6 /* Tools */,
@@ -683,6 +691,14 @@
 			path = LocalLibrary;
 			sourceTree = "<group>";
 		};
+		BCEEDEE1AC3F95B396C91104 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				6B4CA62A806BECBE6B1254F2 /* pulsefield-protocol */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
 		C257E42A6DDD088636F2F66F /* Services */ = {
 			isa = PBXGroup;
 			children = (
@@ -757,6 +773,7 @@
 			);
 			name = PulsefieldCoreTests;
 			packageProductDependencies = (
+				860E3AAC20F0688599E7F678 /* PulsefieldProtocol */,
 			);
 			productName = PulsefieldCoreTests;
 			productReference = 17DCB31FB4118757EAD79704 /* PulsefieldCoreTests.xctest */;
@@ -837,6 +854,8 @@
 			);
 			name = PulsefieldCore;
 			packageProductDependencies = (
+				9D5477406907760227461C35 /* PulsefieldProtocol */,
+				36F46DF43D1CAE1A42C04195 /* SwiftProtobuf */,
 			);
 			productName = PulsefieldCore;
 			productReference = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */;
@@ -899,6 +918,10 @@
 			);
 			mainGroup = 5A25F763B47C30D8730EBB14;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				9A2BD4E80D33B3C2DD4C037C /* XCRemoteSwiftPackageReference "swift-protobuf" */,
+				DB521252FA3D58D77014C44A /* XCLocalSwiftPackageReference "../pulsefield-protocol" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 996234DD38B53E20B19FD62A /* Products */;
 			projectDirPath = "";
@@ -1536,6 +1559,40 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		DB521252FA3D58D77014C44A /* XCLocalSwiftPackageReference "../pulsefield-protocol" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../pulsefield-protocol";
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		9A2BD4E80D33B3C2DD4C037C /* XCRemoteSwiftPackageReference "swift-protobuf" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-protobuf.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.38.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		36F46DF43D1CAE1A42C04195 /* SwiftProtobuf */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9A2BD4E80D33B3C2DD4C037C /* XCRemoteSwiftPackageReference "swift-protobuf" */;
+			productName = SwiftProtobuf;
+		};
+		860E3AAC20F0688599E7F678 /* PulsefieldProtocol */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PulsefieldProtocol;
+		};
+		9D5477406907760227461C35 /* PulsefieldProtocol */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PulsefieldProtocol;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = F9B722C391474AD55EB39B2E /* Project object */;
 }

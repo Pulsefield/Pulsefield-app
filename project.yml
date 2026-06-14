@@ -20,6 +20,13 @@ fileGroups:
   - LICENSE
   - docs
 
+packages:
+  PulsefieldProtocol:
+    path: ../pulsefield-protocol
+  SwiftProtobuf:
+    url: https://github.com/apple/swift-protobuf.git
+    from: "1.38.0"
+
 targets:
   PulsefieldiOS:
     type: application
@@ -75,6 +82,8 @@ targets:
     dependencies:
       - sdk: AVFoundation.framework
       - sdk: Accelerate.framework
+      - package: PulsefieldProtocol
+      - package: SwiftProtobuf
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.pulsefield.core
@@ -106,6 +115,7 @@ targets:
     dependencies:
       - target: PulsefieldCore
       - target: PulsefieldUI
+      - package: PulsefieldProtocol
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.pulsefield.core.tests

@@ -1,5 +1,5 @@
 ---
-commit: 3a45fbf4419d28b6264c2f83c84df48f3948faaa
+commit: c4e4d1127c42d945cab919567b12bd1b6f015e1e
 ---
 
 # Pulsefield
@@ -133,13 +133,14 @@ pip install acrcloud-cli
 
 ## Inference endpoint
 
-`InferenceEndpointWebSocketClient` connects to `ws://localhost:8765` by default. That endpoint is expected to be served by the companion `Pulsefield/Pulsefield-model` process during the live-chart prototype. The app sends:
+`InferenceEndpointWebSocketClient` connects to `ws://localhost:8765` by default. That endpoint is expected to be served by the companion `Pulsefield/Pulsefield-model` process during the live-chart prototype. The app imports the local `PulsefieldProtocol` Swift package and sends binary protobuf `Envelope` websocket frames:
 
-- an `audio_path` message with the selected local audio path
-- a `reference_time` message after ambient sync reaches a final lock
-- a `stop` message when the debug session is stopped
+- a `ready` payload before endpoint preparation
+- an `audio` payload with the selected local audio path, sync source, difficulty, and route
+- a `reference_time` payload after ambient sync reaches a final lock
+- a `stop_session` payload when the debug session is stopped
 
-Incoming `hitobject_tokens` are parsed into mania4k hit objects and buffered until the stream has enough ready-window coverage for rendering diagnostics. The generated token stream is the intended chart source for "play the music around you"; it is not yet wired into the normal `Play` tab as the primary user-facing play path.
+Incoming `hit_object_token` and `end_of_stream` envelope payloads are decoded through the shared Swift package, parsed into mania4k hit objects, and buffered until the stream has enough ready-window coverage for rendering diagnostics. JSON is reserved for endpoint debugging and logs, not the reference transport. The generated token stream is the intended chart source for "play the music around you"; it is not yet wired into the normal `Play` tab as the primary user-facing play path.
 
 ## Not done yet
 

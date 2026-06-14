@@ -1,33 +1,64 @@
+import PulsefieldProtocol
 import XCTest
 @testable import PulsefieldCore
 
 final class InferenceEndpointWebSocketClientTests: XCTestCase {
-    func testAudioPathMessageUsesFlatProtocolKeysAndDefaultDifficulty() throws {
-        let message = InferenceEndpointOutgoingMessage.audioPath("/Users/ken/audio/song1.wav", sessionID: "session-1")
-        let data = try JSONEncoder().encode(message)
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    private let metadata = InferenceEndpointEnvelopeMetadata(
+        sequence: 42,
+        sentAtUnixMs: 1_700_000_000_000,
+        sourceNodeID: "test-node",
+        messageID: "message-1",
+        correlationID: "correlation-1"
+    )
 
-        XCTAssertEqual(json["type"] as? String, "audio_path")
-        XCTAssertEqual(json["audio_path"] as? String, "/Users/ken/audio/song1.wav")
-        XCTAssertEqual(json["music_source"] as? String, "background")
-        XCTAssertEqual(json["session_id"] as? String, "session-1")
-        XCTAssertEqual(json["difficulty"] as? Double, 4.0)
-        XCTAssertEqual(json["is_mock"] as? Bool, false)
+    func testReadyEnvelopeUsesProtocolPayloadAndMetadata() throws {
+        let envelope = InferenceEndpointProtocolCodec.readyEnvelope(metadata: metadata)
+
+        XCTAssertEqual(envelope.sessionID, "")
+        XCTAssertEqual(envelope.sequence, 42)
+        XCTAssertEqual(envelope.sentAtUnixMs, 1_700_000_000_000)
+        XCTAssertEqual(envelope.sourceNodeID, "test-node")
+        XCTAssertEqual(envelope.messageID, "message-1")
+        XCTAssertEqual(envelope.correlationID, "correlation-1")
+        guard case .ready? = envelope.payload else {
+            return XCTFail("Expected ready payload.")
+        }
     }
 
-    func testAudioPathMessageUsesConfiguredDifficultyAndMockFlag() throws {
-        let message = InferenceEndpointOutgoingMessage.audioPath(
+    func testAudioPathEnvelopeUsesProtocolFieldsAndDefaultRoute() throws {
+        let envelope = InferenceEndpointProtocolCodec.audioPathEnvelope(
+            "/Users/ken/audio/song1.wav",
+            sessionID: "session-1",
+            metadata: metadata
+        )
+
+        XCTAssertEqual(envelope.sessionID, "session-1")
+        guard case .audio(let request)? = envelope.payload else {
+            return XCTFail("Expected audio payload.")
+        }
+        XCTAssertEqual(request.audio.localPath, "/Users/ken/audio/song1.wav")
+        XCTAssertEqual(request.syncSource, .background)
+        XCTAssertTrue(request.hasDifficulty)
+        XCTAssertEqual(request.difficulty, 4.0)
+        XCTAssertEqual(request.route, .mapper)
+    }
+
+    func testAudioPathEnvelopeUsesConfiguredDifficultyAndMockRoute() throws {
+        let envelope = InferenceEndpointProtocolCodec.audioPathEnvelope(
             "/Users/ken/audio/song1.wav",
             sessionID: "session-1",
             musicSource: .systemAudio,
-            configuration: InferenceEndpointConfiguration(difficulty: 5.5, isMock: true)
+            configuration: InferenceEndpointConfiguration(difficulty: 5.5, isMock: true),
+            metadata: metadata
         )
-        let data = try JSONEncoder().encode(message)
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
 
-        XCTAssertEqual(json["music_source"] as? String, "system_audio")
-        XCTAssertEqual(json["difficulty"] as? Double, 5.5)
-        XCTAssertEqual(json["is_mock"] as? Bool, true)
+        guard case .audio(let request)? = envelope.payload else {
+            return XCTFail("Expected audio payload.")
+        }
+        XCTAssertEqual(request.syncSource, .systemAudio)
+        XCTAssertTrue(request.hasDifficulty)
+        XCTAssertEqual(request.difficulty, 5.5)
+        XCTAssertEqual(request.route, .timingMock)
     }
 
     func testMusicSourceMapsToInputRoute() {
@@ -35,62 +66,97 @@ final class InferenceEndpointWebSocketClientTests: XCTestCase {
         XCTAssertEqual(MusicSource.systemAudio.input, .screenCaptureKitAudio)
     }
 
-    func testReferenceTimeMessageIncludesLocalHostSendTime() throws {
-        let message = InferenceEndpointOutgoingMessage.referenceTime(
+    func testReferenceTimeEnvelopeIncludesLocalHostSendTime() throws {
+        let envelope = try InferenceEndpointProtocolCodec.referenceTimeEnvelope(
             sessionID: "session-1",
             refTimeMS: 1_234,
-            localHostTimeSendMS: 6_789.25
+            localHostTimeSendMS: 6_789.25,
+            metadata: metadata
         )
-        let data = try JSONEncoder().encode(message)
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
 
-        XCTAssertEqual(json["type"] as? String, "reference_time")
-        XCTAssertEqual(json["session_id"] as? String, "session-1")
-        XCTAssertEqual(json["ref_time_ms"] as? Int, 1_234)
-        XCTAssertEqual(json["local_host_time_send_ms"] as? Double, 6_789.25)
-        XCTAssertNil(json["difficulty"])
+        XCTAssertEqual(envelope.sessionID, "session-1")
+        guard case .referenceTime(let request)? = envelope.payload else {
+            return XCTFail("Expected reference_time payload.")
+        }
+        XCTAssertEqual(request.refTimeMs, 1_234)
+        XCTAssertEqual(request.localHostTimeSendMs, 6_789)
+        XCTAssertFalse(request.hasAudioLengthMs)
     }
 
-    func testHitObjectTokenTupleDecodesAndParsesMapperEventTokenID() throws {
-        let json = #"{"type":"hitobject_tokens","session_id":"session-1","token":[30,1234]}"#
-        let message = try JSONDecoder().decode(InferenceEndpointIncomingMessage.self, from: Data(json.utf8))
-        let payload = try XCTUnwrap(message.token)
-        let objects = try InferenceEndpointHitObjectTokenParser.hitObjects(from: payload)
+    func testStopEnvelopeUsesProtocolReason() throws {
+        let envelope = InferenceEndpointProtocolCodec.stopEnvelope(
+            sessionID: "session-1",
+            metadata: metadata
+        )
 
-        XCTAssertEqual(message.type, .hitObjectTokens)
-        XCTAssertEqual(message.sessionID, "session-1")
-        XCTAssertEqual(payload.tokenID, 30)
-        XCTAssertEqual(payload.timeMS, 1_234)
-        XCTAssertEqual(objects, [
-            Mania4KHitObject(lane: .left, timeMs: 1_234, kind: .holdStart),
-            Mania4KHitObject(lane: .innerLeft, timeMs: 1_234, kind: .tap)
-        ])
+        XCTAssertEqual(envelope.sessionID, "session-1")
+        guard case .stopSession(let request)? = envelope.payload else {
+            return XCTFail("Expected stop_session payload.")
+        }
+        XCTAssertEqual(request.reason, "client_stop")
     }
 
-    func testHitObjectTokenKeyedPayloadDecodesMapperContractNames() throws {
-        let json = #"{"type":"hitobject_tokens","session_id":"session-1","token":{"token_id":279,"ms_in_ref_audio":9876}}"#
-        let message = try JSONDecoder().decode(InferenceEndpointIncomingMessage.self, from: Data(json.utf8))
-        let payload = try XCTUnwrap(message.token)
-        let objects = try InferenceEndpointHitObjectTokenParser.hitObjects(from: payload)
+    func testBinaryHitObjectTokenEnvelopeDecodesAndParsesMapperEventTokenID() throws {
+        var token = Pulsefield_Protocol_V1_HitObjectTokenEvent()
+        token.tokenID = 30
+        token.msInRefAudio = 1_234
+        let envelope = InferenceEndpointProtocolCodec.envelope(
+            sessionID: "session-1",
+            payload: .hitObjectToken(token),
+            metadata: metadata
+        )
+        let data = try InferenceEndpointProtocolCodec.serializedData(for: envelope)
+        let decoded = try InferenceEndpointProtocolCodec.decodeEvent(from: .data(data))
 
-        XCTAssertEqual(payload.tokenID, 279)
-        XCTAssertEqual(payload.timeMS, 9_876)
-        XCTAssertEqual(objects, [
-            Mania4KHitObject(lane: .left, timeMs: 9_876, kind: .holdEnd),
-            Mania4KHitObject(lane: .innerLeft, timeMs: 9_876, kind: .holdEnd),
-            Mania4KHitObject(lane: .innerRight, timeMs: 9_876, kind: .holdEnd),
-            Mania4KHitObject(lane: .right, timeMs: 9_876, kind: .holdEnd)
-        ])
+        XCTAssertEqual(decoded, .hitObjectToken(InferenceEndpointHitObjectToken(
+            sessionID: "session-1",
+            tokenID: 30,
+            timeMS: 1_234,
+            objects: [
+                Mania4KHitObject(lane: .left, timeMs: 1_234, kind: .holdStart),
+                Mania4KHitObject(lane: .innerLeft, timeMs: 1_234, kind: .tap)
+            ]
+        )))
     }
 
-    func testEndOfStreamMessageDecodesAudioLengthAndCompleteThroughTime() throws {
-        let json = #"{"type":"end_of_stream","session_id":"session-1","audio_length_ms":94277,"complete_through_ms":94277}"#
-        let message = try JSONDecoder().decode(InferenceEndpointIncomingMessage.self, from: Data(json.utf8))
+    func testBinaryEndOfStreamEnvelopeDecodesAudioLengthAndCompleteThroughTime() throws {
+        var endOfStream = Pulsefield_Protocol_V1_EndOfStreamEvent()
+        endOfStream.audioLengthMs = 94_277
+        endOfStream.completeThroughMs = 94_277
+        let envelope = InferenceEndpointProtocolCodec.envelope(
+            sessionID: "session-1",
+            payload: .endOfStream(endOfStream),
+            metadata: metadata
+        )
+        let data = try InferenceEndpointProtocolCodec.serializedData(for: envelope)
+        let decoded = try InferenceEndpointProtocolCodec.decodeEvent(from: .data(data))
 
-        XCTAssertEqual(message.type, .endOfStream)
-        XCTAssertEqual(message.sessionID, "session-1")
-        XCTAssertEqual(message.audioLengthMS, 94_277)
-        XCTAssertEqual(message.completeThroughMS, 94_277)
+        XCTAssertEqual(decoded, .endOfStream(InferenceEndpointEndOfStream(
+            sessionID: "session-1",
+            audioLengthMS: 94_277,
+            completeThroughMS: 94_277
+        )))
+    }
+
+    func testErrorEnvelopeThrowsServerError() throws {
+        var error = Pulsefield_Protocol_V1_ErrorEvent()
+        error.code = "inference_failed"
+        error.message = "mapper unavailable"
+        let envelope = InferenceEndpointProtocolCodec.envelope(
+            sessionID: "session-1",
+            payload: .error(error),
+            metadata: metadata
+        )
+
+        XCTAssertThrowsError(try InferenceEndpointProtocolCodec.decodeEvent(from: envelope)) { thrown in
+            XCTAssertEqual(thrown as? InferenceEndpointProtocolError, .serverError("inference_failed: mapper unavailable"))
+        }
+    }
+
+    func testTextWebSocketFrameIsRejectedForBinaryProtocol() {
+        XCTAssertThrowsError(try InferenceEndpointProtocolCodec.decodeEvent(from: .string("{}"))) { error in
+            XCTAssertEqual(error as? InferenceEndpointProtocolError, .invalidBinaryFrame)
+        }
     }
 
     func testHitObjectTokenRejectsIdsOutsideMapperEventRange() {

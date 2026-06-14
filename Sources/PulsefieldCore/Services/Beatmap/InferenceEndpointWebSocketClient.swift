@@ -1,14 +1,8 @@
 import Foundation
+import PulsefieldProtocol
+import SwiftProtobuf
 
-public enum InferenceEndpointMessageType: String, Codable, Sendable {
-    case ready
-    case audioPath = "audio_path"
-    case referenceTime = "reference_time"
-    case hitObjectTokens = "hitobject_tokens"
-    case endOfStream = "end_of_stream"
-    case stop
-    case error
-}
+typealias InferenceEndpointProtocolEnvelope = Pulsefield_Protocol_V1_Envelope
 
 public struct InferenceEndpointConfiguration: Equatable, Sendable {
     public static let defaultDifficulty = 4.0
@@ -26,108 +20,207 @@ public struct InferenceEndpointConfiguration: Equatable, Sendable {
     }
 }
 
-public struct InferenceEndpointOutgoingMessage: Encodable, Equatable, Sendable {
-    public let type: InferenceEndpointMessageType
-    public let audioPath: String?
-    public let musicSource: MusicSource?
-    public let sessionID: String?
-    public let refTimeMS: Int?
-    public let localHostTimeSendMS: Double?
-    public let difficulty: Double?
-    public let isMock: Bool?
-    public let control: String?
+struct InferenceEndpointEnvelopeMetadata: Equatable, Sendable {
+    static let sourceNodeID = "pulsefield.reference.swift"
 
-    enum CodingKeys: String, CodingKey {
-        case type
-        case audioPath = "audio_path"
-        case musicSource = "music_source"
-        case sessionID = "session_id"
-        case refTimeMS = "ref_time_ms"
-        case localHostTimeSendMS = "local_host_time_send_ms"
-        case difficulty
-        case isMock = "is_mock"
-        case control
-    }
+    let sequence: UInt64
+    let sentAtUnixMs: Int64
+    let sourceNodeID: String
+    let messageID: String
+    let correlationID: String
 
-    public init(
-        type: InferenceEndpointMessageType,
-        audioPath: String? = nil,
-        musicSource: MusicSource? = nil,
-        sessionID: String? = nil,
-        refTimeMS: Int? = nil,
-        localHostTimeSendMS: Double? = nil,
-        difficulty: Double? = nil,
-        isMock: Bool? = nil,
-        control: String? = nil
+    init(
+        sequence: UInt64 = 0,
+        sentAtUnixMs: Int64 = InferenceEndpointEnvelopeMetadata.currentUnixMillis(),
+        sourceNodeID: String = InferenceEndpointEnvelopeMetadata.sourceNodeID,
+        messageID: String = UUID().uuidString,
+        correlationID: String = ""
     ) {
-        self.type = type
-        self.audioPath = audioPath
-        self.musicSource = musicSource
-        self.sessionID = sessionID
-        self.refTimeMS = refTimeMS
-        self.localHostTimeSendMS = localHostTimeSendMS
-        self.difficulty = difficulty
-        self.isMock = isMock
-        self.control = control
+        self.sequence = sequence
+        self.sentAtUnixMs = sentAtUnixMs
+        self.sourceNodeID = sourceNodeID
+        self.messageID = messageID
+        self.correlationID = correlationID
     }
 
-    public static func ready() -> InferenceEndpointOutgoingMessage {
-        InferenceEndpointOutgoingMessage(type: .ready, control: "ready")
+    private static func currentUnixMillis() -> Int64 {
+        Int64((Date().timeIntervalSince1970 * 1_000).rounded())
+    }
+}
+
+enum InferenceEndpointProtocolCodec {
+    static func readyEnvelope(
+        metadata: InferenceEndpointEnvelopeMetadata = .init()
+    ) -> InferenceEndpointProtocolEnvelope {
+        envelope(
+            payload: .ready(Pulsefield_Protocol_V1_ReadyRequest()),
+            metadata: metadata
+        )
     }
 
-    public static func audioPath(
+    static func audioPathEnvelope(
         _ audioPath: String,
         sessionID: String,
         musicSource: MusicSource = .background,
-        configuration: InferenceEndpointConfiguration = .global
-    ) -> InferenceEndpointOutgoingMessage {
-        InferenceEndpointOutgoingMessage(
-            type: .audioPath,
-            audioPath: audioPath,
-            musicSource: musicSource,
+        configuration: InferenceEndpointConfiguration = .global,
+        metadata: InferenceEndpointEnvelopeMetadata = .init()
+    ) -> InferenceEndpointProtocolEnvelope {
+        var asset = Pulsefield_Protocol_V1_AudioAssetRef()
+        asset.localPath = audioPath
+
+        var request = Pulsefield_Protocol_V1_AudioRequest()
+        request.audio = asset
+        request.syncSource = musicSource.protocolSyncSource
+        request.difficulty = configuration.difficulty
+        request.route = configuration.protocolRoute
+
+        return envelope(
             sessionID: sessionID,
-            difficulty: configuration.difficulty,
-            isMock: configuration.isMock
+            payload: .audio(request),
+            metadata: metadata
         )
     }
 
-    public static func referenceTime(
+    static func referenceTimeEnvelope(
         sessionID: String,
         refTimeMS: Double,
-        localHostTimeSendMS: Double
-    ) -> InferenceEndpointOutgoingMessage {
-        InferenceEndpointOutgoingMessage(
-            type: .referenceTime,
+        localHostTimeSendMS: Double,
+        metadata: InferenceEndpointEnvelopeMetadata = .init()
+    ) throws -> InferenceEndpointProtocolEnvelope {
+        var request = Pulsefield_Protocol_V1_ReferenceTimeRequest()
+        request.refTimeMs = try roundedUInt32(refTimeMS, field: "ref_time_ms")
+        request.localHostTimeSendMs = try roundedUInt64(localHostTimeSendMS, field: "local_host_time_send_ms")
+
+        return envelope(
             sessionID: sessionID,
-            refTimeMS: Int(refTimeMS.rounded()),
-            localHostTimeSendMS: localHostTimeSendMS
+            payload: .referenceTime(request),
+            metadata: metadata
         )
     }
 
-    public static func stop(sessionID: String) -> InferenceEndpointOutgoingMessage {
-        InferenceEndpointOutgoingMessage(type: .stop, sessionID: sessionID, control: "end_session")
+    static func stopEnvelope(
+        sessionID: String,
+        metadata: InferenceEndpointEnvelopeMetadata = .init()
+    ) -> InferenceEndpointProtocolEnvelope {
+        var request = Pulsefield_Protocol_V1_StopSessionRequest()
+        request.reason = "client_stop"
+
+        return envelope(
+            sessionID: sessionID,
+            payload: .stopSession(request),
+            metadata: metadata
+        )
+    }
+
+    static func serializedData(for envelope: InferenceEndpointProtocolEnvelope) throws -> Data {
+        try envelope.serializedData()
+    }
+
+    static func decodeEvent(from message: URLSessionWebSocketTask.Message) throws -> InferenceEndpointEvent? {
+        switch message {
+        case .data(let data):
+            return try decodeEvent(from: data)
+        case .string:
+            throw InferenceEndpointProtocolError.invalidBinaryFrame
+        @unknown default:
+            throw InferenceEndpointProtocolError.invalidBinaryFrame
+        }
+    }
+
+    static func decodeEvent(from data: Data) throws -> InferenceEndpointEvent? {
+        let envelope = try InferenceEndpointProtocolEnvelope(serializedData: data)
+        return try decodeEvent(from: envelope)
+    }
+
+    static func decodeEvent(from envelope: InferenceEndpointProtocolEnvelope) throws -> InferenceEndpointEvent? {
+        switch envelope.payload {
+        case .hitObjectToken(let event)?:
+            guard !envelope.sessionID.isEmpty else {
+                throw InferenceEndpointProtocolError.missingSessionID
+            }
+
+            let payload = InferenceEndpointTokenPayload(event)
+            let objects = try InferenceEndpointHitObjectTokenParser.hitObjects(from: payload)
+            return .hitObjectToken(InferenceEndpointHitObjectToken(
+                sessionID: envelope.sessionID,
+                tokenID: payload.tokenID,
+                timeMS: payload.timeMS,
+                objects: objects
+            ))
+
+        case .endOfStream(let event)?:
+            guard !envelope.sessionID.isEmpty else {
+                throw InferenceEndpointProtocolError.missingSessionID
+            }
+
+            return .endOfStream(InferenceEndpointEndOfStream(
+                sessionID: envelope.sessionID,
+                audioLengthMS: event.hasAudioLengthMs ? Double(event.audioLengthMs) : nil,
+                completeThroughMS: Double(event.completeThroughMs)
+            ))
+
+        case .error(let event)?:
+            throw InferenceEndpointProtocolError.serverError(event.clientMessage)
+        case .nodeHello?, .ready?, .audio?, .referenceTime?, .stopSession?, .mapperStreamBegin?, .status?, nil:
+            return nil
+        }
+    }
+
+    static func envelope(
+        sessionID: String = "",
+        payload: InferenceEndpointProtocolEnvelope.OneOf_Payload,
+        metadata: InferenceEndpointEnvelopeMetadata
+    ) -> InferenceEndpointProtocolEnvelope {
+        var envelope = InferenceEndpointProtocolEnvelope()
+        envelope.sessionID = sessionID
+        envelope.sequence = metadata.sequence
+        envelope.sentAtUnixMs = metadata.sentAtUnixMs
+        envelope.sourceNodeID = metadata.sourceNodeID
+        envelope.messageID = metadata.messageID
+        envelope.correlationID = metadata.correlationID
+        envelope.payload = payload
+        return envelope
+    }
+
+    private static func roundedUInt32(_ value: Double, field: String) throws -> UInt32 {
+        guard value.isFinite, value >= 0, value <= Double(UInt32.max) else {
+            throw InferenceEndpointProtocolError.invalidProtocolField(field)
+        }
+        return UInt32(value.rounded())
+    }
+
+    private static func roundedUInt64(_ value: Double, field: String) throws -> UInt64 {
+        guard value.isFinite, value >= 0, value <= Double(UInt64.max) else {
+            throw InferenceEndpointProtocolError.invalidProtocolField(field)
+        }
+        return UInt64(value.rounded())
     }
 }
 
-public struct InferenceEndpointIncomingMessage: Decodable, Equatable, Sendable {
-    public let type: InferenceEndpointMessageType
-    public let sessionID: String?
-    public let token: InferenceEndpointTokenPayload?
-    public let audioLengthMS: Double?
-    public let completeThroughMS: Double?
-    public let error: String?
+public enum InferenceEndpointProtocolError: Error, Equatable, LocalizedError, Sendable {
+    case missingSessionID
+    case invalidBinaryFrame
+    case invalidHitObjectTokenID(Int)
+    case invalidProtocolField(String)
+    case serverError(String)
 
-    enum CodingKeys: String, CodingKey {
-        case type
-        case sessionID = "session_id"
-        case token
-        case audioLengthMS = "audio_length_ms"
-        case completeThroughMS = "complete_through_ms"
-        case error
+    public var errorDescription: String? {
+        switch self {
+        case .missingSessionID:
+            return "Inference endpoint message is missing session_id."
+        case .invalidBinaryFrame:
+            return "Inference endpoint sent a non-binary protobuf WebSocket frame."
+        case .invalidHitObjectTokenID(let tokenID):
+            return "Could not parse inference hitobject token_id: \(tokenID)."
+        case .invalidProtocolField(let field):
+            return "Inference endpoint protocol field is out of range: \(field)."
+        case .serverError(let message):
+            return "Inference endpoint server error: \(message)"
+        }
     }
 }
 
-public struct InferenceEndpointTokenPayload: Decodable, Equatable, Sendable {
+public struct InferenceEndpointTokenPayload: Equatable, Sendable {
     public let tokenID: Int
     public let timeMS: Double
 
@@ -136,25 +229,8 @@ public struct InferenceEndpointTokenPayload: Decodable, Equatable, Sendable {
         self.timeMS = timeMS
     }
 
-    public init(from decoder: Decoder) throws {
-        if var unkeyed = try? decoder.unkeyedContainer() {
-            let tokenID = try unkeyed.decode(Int.self)
-            let timeMS = try unkeyed.decode(Double.self)
-            self.init(tokenID: tokenID, timeMS: timeMS)
-            return
-        }
-
-        let keyed = try decoder.container(keyedBy: CodingKeys.self)
-        let tokenID = try keyed.decode(Int.self, forKey: .tokenID)
-        let timeMS = try keyed.decodeIfPresent(Double.self, forKey: .timeMS)
-            ?? keyed.decode(Double.self, forKey: .msInRefAudio)
-        self.init(tokenID: tokenID, timeMS: timeMS)
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case tokenID = "token_id"
-        case timeMS = "time_ms"
-        case msInRefAudio = "ms_in_ref_audio"
+    init(_ event: Pulsefield_Protocol_V1_HitObjectTokenEvent) {
+        self.init(tokenID: Int(event.tokenID), timeMS: Double(event.msInRefAudio))
     }
 }
 
@@ -187,35 +263,6 @@ public struct InferenceEndpointEndOfStream: Equatable, Sendable {
 public enum InferenceEndpointEvent: Equatable, Sendable {
     case hitObjectToken(InferenceEndpointHitObjectToken)
     case endOfStream(InferenceEndpointEndOfStream)
-}
-
-public enum InferenceEndpointProtocolError: Error, Equatable, LocalizedError, Sendable {
-    case missingSessionID
-    case missingToken
-    case missingEndOfStreamTime
-    case unsupportedMessageType(InferenceEndpointMessageType)
-    case invalidTextFrame
-    case invalidHitObjectTokenID(Int)
-    case serverError(String)
-
-    public var errorDescription: String? {
-        switch self {
-        case .missingSessionID:
-            return "Inference endpoint message is missing session_id."
-        case .missingToken:
-            return "Inference endpoint hitobject_tokens message is missing token."
-        case .missingEndOfStreamTime:
-            return "Inference endpoint end_of_stream message is missing complete_through_ms."
-        case .unsupportedMessageType(let type):
-            return "Unsupported inference endpoint message type: \(type.rawValue)."
-        case .invalidTextFrame:
-            return "Inference endpoint sent a non-text WebSocket frame."
-        case .invalidHitObjectTokenID(let tokenID):
-            return "Could not parse inference hitobject token_id: \(tokenID)."
-        case .serverError(let message):
-            return "Inference endpoint server error: \(message)"
-        }
-    }
 }
 
 public enum InferenceEndpointHitObjectTokenParser {
@@ -252,6 +299,41 @@ public enum InferenceEndpointHitObjectTokenParser {
         }
 
         return objects
+    }
+}
+
+private extension InferenceEndpointConfiguration {
+    var protocolRoute: Pulsefield_Protocol_V1_InferenceRoute {
+        isMock ? .timingMock : .mapper
+    }
+}
+
+private extension MusicSource {
+    var protocolSyncSource: Pulsefield_Protocol_V1_SyncSource {
+        switch self {
+        case .background:
+            return .background
+        case .systemAudio:
+            return .systemAudio
+        }
+    }
+}
+
+private extension Pulsefield_Protocol_V1_ErrorEvent {
+    var clientMessage: String {
+        if !code.isEmpty, !message.isEmpty {
+            return "\(code): \(message)"
+        }
+        if !message.isEmpty {
+            return message
+        }
+        if !code.isEmpty {
+            return code
+        }
+        if errorCode != .unspecified {
+            return "\(errorCode)"
+        }
+        return "unknown error"
     }
 }
 
@@ -765,8 +847,7 @@ public actor InferenceEndpointWebSocketClient: InferenceEndpointClient {
     private let urlSession: URLSession
     private let configuration: InferenceEndpointConfiguration
     private var task: URLSessionWebSocketTask?
-    private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
+    private var nextSequence: UInt64 = 1
 
     public init(
         endpointURL: URL = InferenceEndpointWebSocketClient.defaultEndpointURL,
@@ -779,15 +860,16 @@ public actor InferenceEndpointWebSocketClient: InferenceEndpointClient {
     }
 
     public func prepare() async throws {
-        try await send(.ready())
+        try await send(InferenceEndpointProtocolCodec.readyEnvelope(metadata: nextEnvelopeMetadata()))
     }
 
     public func sendAudioPath(_ audioPath: String, sessionID: String, musicSource: MusicSource) async throws {
-        try await send(.audioPath(
+        try await send(InferenceEndpointProtocolCodec.audioPathEnvelope(
             audioPath,
             sessionID: sessionID,
             musicSource: musicSource,
-            configuration: configuration
+            configuration: configuration,
+            metadata: nextEnvelopeMetadata()
         ))
     }
 
@@ -796,10 +878,11 @@ public actor InferenceEndpointWebSocketClient: InferenceEndpointClient {
         refTimeMS: Double,
         localHostTimeSendMS: Double
     ) async throws {
-        try await send(.referenceTime(
+        try await send(InferenceEndpointProtocolCodec.referenceTimeEnvelope(
             sessionID: sessionID,
             refTimeMS: refTimeMS,
-            localHostTimeSendMS: localHostTimeSendMS
+            localHostTimeSendMS: localHostTimeSendMS,
+            metadata: nextEnvelopeMetadata()
         ))
     }
 
@@ -807,7 +890,10 @@ public actor InferenceEndpointWebSocketClient: InferenceEndpointClient {
         defer {
             disconnect()
         }
-        try await send(.stop(sessionID: sessionID))
+        try await send(InferenceEndpointProtocolCodec.stopEnvelope(
+            sessionID: sessionID,
+            metadata: nextEnvelopeMetadata()
+        ))
     }
 
     public func disconnect() {
@@ -828,15 +914,12 @@ public actor InferenceEndpointWebSocketClient: InferenceEndpointClient {
         }
     }
 
-    private func send(_ message: InferenceEndpointOutgoingMessage) async throws {
+    private func send(_ envelope: InferenceEndpointProtocolEnvelope) async throws {
         let task = ensureConnected()
-        let data = try encoder.encode(message)
-        guard let string = String(data: data, encoding: .utf8) else {
-            throw InferenceEndpointProtocolError.invalidTextFrame
-        }
+        let data = try InferenceEndpointProtocolCodec.serializedData(for: envelope)
 
         do {
-            try await task.send(.string(string))
+            try await task.send(.data(data))
         } catch {
             resetConnection()
             throw error
@@ -869,51 +952,13 @@ public actor InferenceEndpointWebSocketClient: InferenceEndpointClient {
         task = nil
     }
 
+    private func nextEnvelopeMetadata() -> InferenceEndpointEnvelopeMetadata {
+        let sequence = nextSequence
+        nextSequence = sequence == UInt64.max ? 1 : sequence + 1
+        return InferenceEndpointEnvelopeMetadata(sequence: sequence)
+    }
+
     private func decodeEvent(from message: URLSessionWebSocketTask.Message) throws -> InferenceEndpointEvent? {
-        let data: Data
-        switch message {
-        case .string(let string):
-            data = Data(string.utf8)
-        case .data(let messageData):
-            data = messageData
-        @unknown default:
-            throw InferenceEndpointProtocolError.invalidTextFrame
-        }
-
-        let incoming = try decoder.decode(InferenceEndpointIncomingMessage.self, from: data)
-        switch incoming.type {
-        case .hitObjectTokens:
-            guard let sessionID = incoming.sessionID else {
-                throw InferenceEndpointProtocolError.missingSessionID
-            }
-            guard let payload = incoming.token else {
-                throw InferenceEndpointProtocolError.missingToken
-            }
-            let objects = try InferenceEndpointHitObjectTokenParser.hitObjects(from: payload)
-            return .hitObjectToken(InferenceEndpointHitObjectToken(
-                sessionID: sessionID,
-                tokenID: payload.tokenID,
-                timeMS: payload.timeMS,
-                objects: objects
-            ))
-
-        case .endOfStream:
-            guard let sessionID = incoming.sessionID else {
-                throw InferenceEndpointProtocolError.missingSessionID
-            }
-            guard let completeThroughMS = incoming.completeThroughMS ?? incoming.audioLengthMS else {
-                throw InferenceEndpointProtocolError.missingEndOfStreamTime
-            }
-            return .endOfStream(InferenceEndpointEndOfStream(
-                sessionID: sessionID,
-                audioLengthMS: incoming.audioLengthMS,
-                completeThroughMS: completeThroughMS
-            ))
-
-        case .error:
-            throw InferenceEndpointProtocolError.serverError(incoming.error ?? "unknown error")
-        case .ready, .audioPath, .referenceTime, .stop:
-            return nil
-        }
+        try InferenceEndpointProtocolCodec.decodeEvent(from: message)
     }
 }
