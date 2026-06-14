@@ -47,14 +47,18 @@ targets:
       - macOS
     sources:
       - path: Apps/PulsefieldMac
+    info:
+      path: Apps/PulsefieldMac/Info.plist
+      properties:
+        CFBundleDisplayName: Pulsefield
+        NSMicrophoneUsageDescription: Pulsefield uses the microphone to prototype nearby music recognition flows.
+        NSAudioCaptureUsageDescription: Pulsefield captures system audio to synchronize gameplay with audio playing on this Mac.
     dependencies:
       - target: PulsefieldCore
       - target: PulsefieldUI
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.pulsefield.mac
-        INFOPLIST_KEY_CFBundleDisplayName: Pulsefield
-        INFOPLIST_KEY_NSMicrophoneUsageDescription: Pulsefield uses the microphone to prototype nearby music recognition flows.
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
       configs:
         Debug:

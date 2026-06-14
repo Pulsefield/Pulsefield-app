@@ -34,6 +34,8 @@
 		329BB535F4258BD08E5083C1 /* DebugACRCloudRecognitionProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB648D517F669CA6872F7086 /* DebugACRCloudRecognitionProviderTests.swift */; };
 		35E05459BA1758B1B7E8477A /* MicFeaturePayloadExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0A2F8B94DABCCF88315C57 /* MicFeaturePayloadExtractor.swift */; };
 		3DFE6B740D0A897B64D2A42C /* LocalTrackResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D16F8F551D7CDA0B98C48AB /* LocalTrackResolver.swift */; };
+		3F1D36EFC2BF0CF0F7EB130B /* SystemAudioCaptureSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BF0A1D410B19C4728AE4349 /* SystemAudioCaptureSource.swift */; };
+		3FF7EAFB864A0A01EEB36C3D /* SystemAudioClipCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F705FE69D426FC405381CC13 /* SystemAudioClipCaptureService.swift */; };
 		458CB10F9A8F527DE5A4C8F5 /* LocalAudioDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFC2DA5593A0EF4FCF73F870 /* LocalAudioDomain.swift */; };
 		45A98DB9677287374091F460 /* RecognitionAppModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A37495C7C03786C6C70AF14 /* RecognitionAppModelTests.swift */; };
 		46B8BBAB28C248F523ABCF3F /* AmbientSyncFixtureReplayRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDEDA6AC9C11275546BCEC3D /* AmbientSyncFixtureReplayRunnerTests.swift */; };
@@ -78,6 +80,7 @@
 		BDDF99E1182F9FACB65B03C9 /* LocalTrackResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE665E134535975B24A1E332 /* LocalTrackResolverTests.swift */; };
 		C2DC4CA9490680BF832B1AA0 /* PulsefieldUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A9C81D865B64C6D256B24F2B /* PulsefieldUI.framework */; };
 		C45C58B04CB3C3A882270F98 /* ACRCloudDebugCLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5C6A5077F9EC9C94C8D6C15 /* ACRCloudDebugCLI.swift */; };
+		C671200022C61AA08BDBE9F3 /* SystemAudioFeatureStreamService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA693A231B1FBF3AA8AB748B /* SystemAudioFeatureStreamService.swift */; };
 		C7242914A9F7E1B45C77B347 /* AmbientSyncEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38420A49669BF125346BB2B5 /* AmbientSyncEngineTests.swift */; };
 		CB7D87478FF3F706E7CDF5E4 /* Mania4KNoteRenderLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81CE9B56AE5FDD881A5C4C60 /* Mania4KNoteRenderLayoutTests.swift */; };
 		CF0CF9B20DF566614EDED287 /* PulsefieldUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A9C81D865B64C6D256B24F2B /* PulsefieldUI.framework */; };
@@ -252,6 +255,7 @@
 		73B35F8D96050AB0DFD88478 /* local-music-matching-current-diagnostics.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "local-music-matching-current-diagnostics.md"; sourceTree = "<group>"; };
 		75A5FB5A3BCAE43E8E2A529C /* LocalAudioLibraryDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalAudioLibraryDatabase.swift; sourceTree = "<group>"; };
 		78ACE1CB799708B529D40F93 /* PreviewFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewFixtures.swift; sourceTree = "<group>"; };
+		7BF0A1D410B19C4728AE4349 /* SystemAudioCaptureSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioCaptureSource.swift; sourceTree = "<group>"; };
 		81CE9B56AE5FDD881A5C4C60 /* Mania4KNoteRenderLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mania4KNoteRenderLayoutTests.swift; sourceTree = "<group>"; };
 		95016FBD95CC37729305B4B1 /* AmbientSyncReferenceIndexBinaryCacheCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncReferenceIndexBinaryCacheCodec.swift; sourceTree = "<group>"; };
 		958D0935A473AE291732561D /* MicFeaturePayloadExtractorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicFeaturePayloadExtractorTests.swift; sourceTree = "<group>"; };
@@ -282,6 +286,7 @@
 		D500FFA522E2376979CED6AA /* CanonicalTrackDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanonicalTrackDomain.swift; sourceTree = "<group>"; };
 		D6AE855CD84CDFD620DA302F /* MockRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockRecognitionService.swift; sourceTree = "<group>"; };
 		DB3AB8BC1BBB70660A5FB599 /* LiveRecognitionSyncWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRecognitionSyncWindow.swift; sourceTree = "<group>"; };
+		DE56D18134B978F718E2A3DC /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		DF50496D18C3AAD786776BE0 /* AmbientSyncEngineReference.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncEngineReference.swift; sourceTree = "<group>"; };
 		E245947146687B15D9DEC7BF /* Mania4KOffsetCalibrationModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mania4KOffsetCalibrationModelTests.swift; sourceTree = "<group>"; };
 		E508A37754B1BA46F8326CE3 /* AmbientSyncOffsetHistogram.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncOffsetHistogram.swift; sourceTree = "<group>"; };
@@ -292,8 +297,10 @@
 		ED4A20CA439FE4F3513DB1A2 /* CascadingRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CascadingRecognitionService.swift; sourceTree = "<group>"; };
 		EE665E134535975B24A1E332 /* LocalTrackResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalTrackResolverTests.swift; sourceTree = "<group>"; };
 		F45F8208B52EF6BC2629EBDD /* MicrophonePermissionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophonePermissionService.swift; sourceTree = "<group>"; };
+		F705FE69D426FC405381CC13 /* SystemAudioClipCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioClipCaptureService.swift; sourceTree = "<group>"; };
 		F9DD7295C58E266CD8B5F1EC /* real-path-recognition-ambient-sync-scene-design.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "real-path-recognition-ambient-sync-scene-design.md"; sourceTree = "<group>"; };
 		FA2FFCC68E129EAFC9665A1B /* LiveRecognitionSyncModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRecognitionSyncModelTests.swift; sourceTree = "<group>"; };
+		FA693A231B1FBF3AA8AB748B /* SystemAudioFeatureStreamService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioFeatureStreamService.swift; sourceTree = "<group>"; };
 		FD389549C6F4C934EA3E5197 /* AmbientSyncOffsetHistogramTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncOffsetHistogramTests.swift; sourceTree = "<group>"; };
 		FDEDA6AC9C11275546BCEC3D /* AmbientSyncFixtureReplayRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncFixtureReplayRunnerTests.swift; sourceTree = "<group>"; };
 		FE2945ECBC93B59DE91AC331 /* ambient-sync-fixture-audit-report.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "ambient-sync-fixture-audit-report.md"; sourceTree = "<group>"; };
@@ -469,6 +476,8 @@
 				1C7010027830EEB3B5B09BC4 /* AmbientSyncReferenceIndexBuilder.swift */,
 				CA0A2F8B94DABCCF88315C57 /* MicFeaturePayloadExtractor.swift */,
 				D234442CBC0035196DB3E68C /* MicFeatureStreamBuffer.swift */,
+				7BF0A1D410B19C4728AE4349 /* SystemAudioCaptureSource.swift */,
+				FA693A231B1FBF3AA8AB748B /* SystemAudioFeatureStreamService.swift */,
 			);
 			path = AmbientSync;
 			sourceTree = "<group>";
@@ -658,6 +667,7 @@
 		A477F690D1B4A5D6A1D2554B /* PulsefieldMac */ = {
 			isa = PBXGroup;
 			children = (
+				DE56D18134B978F718E2A3DC /* Info.plist */,
 				571E459554DDE450E8EE1726 /* PulsefieldMacApp.swift */,
 			);
 			path = PulsefieldMac;
@@ -690,6 +700,7 @@
 			children = (
 				9B4C1174D9F3E6865C67129B /* AudioClipCaptureService.swift */,
 				5149F3075F1D7BEC3BED6F9D /* DebugACRCloudRecognitionProvider.swift */,
+				F705FE69D426FC405381CC13 /* SystemAudioClipCaptureService.swift */,
 			);
 			path = Live;
 			sourceTree = "<group>";
@@ -1024,6 +1035,9 @@
 				0FF3A89698A64FC665C1EA12 /* RecognitionArchitecture.swift in Sources */,
 				79A78B41EC226018D2E55F11 /* RecognitionDomain.swift in Sources */,
 				7752F7EAFF1D57B9A8657190 /* RecognitionServiceProtocol.swift in Sources */,
+				3F1D36EFC2BF0CF0F7EB130B /* SystemAudioCaptureSource.swift in Sources */,
+				3FF7EAFB864A0A01EEB36C3D /* SystemAudioClipCaptureService.swift in Sources */,
+				C671200022C61AA08BDBE9F3 /* SystemAudioFeatureStreamService.swift in Sources */,
 				4B59F19EC0E3380CE1A99D4E /* UnavailableLiveRecognitionService.swift in Sources */,
 				2B05FC1CF3FF0DC5F76D63D0 /* UnavailableRecognitionProviderClient.swift in Sources */,
 			);
@@ -1248,8 +1262,7 @@
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGNING_REQUIRED = NO;
 				COMBINE_HIDPI_IMAGES = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Pulsefield;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Pulsefield uses the microphone to prototype nearby music recognition flows.";
+				INFOPLIST_FILE = Apps/PulsefieldMac/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -1390,8 +1403,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "";
 				COMBINE_HIDPI_IMAGES = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Pulsefield;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Pulsefield uses the microphone to prototype nearby music recognition flows.";
+				INFOPLIST_FILE = Apps/PulsefieldMac/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

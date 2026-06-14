@@ -21,8 +21,31 @@ public enum Mania4KJudgeDifficulty: String, CaseIterable, Identifiable, Equatabl
     }
 }
 
+public enum Mania4KChartSource: Equatable, Sendable {
+    case localBeatmap(URL)
+    case generated(displayName: String)
+
+    public var beatmapFileURL: URL? {
+        switch self {
+        case .localBeatmap(let url):
+            return url
+        case .generated:
+            return nil
+        }
+    }
+
+    public var displayName: String {
+        switch self {
+        case .localBeatmap(let url):
+            return url.deletingPathExtension().lastPathComponent
+        case .generated(let displayName):
+            return displayName
+        }
+    }
+}
+
 public struct Mania4KPlayConfiguration: Equatable, Sendable {
-    public let beatmapFileURL: URL
+    public let chartSource: Mania4KChartSource
     public let audioFileURL: URL
     public let starDifficulty: Double
     public let scrollSpeed: Double
@@ -41,7 +64,7 @@ public struct Mania4KPlayConfiguration: Equatable, Sendable {
         judgeDifficulty: Mania4KJudgeDifficulty,
         keyBindings: Mania4KKeyBindingSet = .default
     ) {
-        self.beatmapFileURL = beatmapFileURL
+        self.chartSource = .localBeatmap(beatmapFileURL)
         self.audioFileURL = audioFileURL
         self.starDifficulty = starDifficulty
         self.scrollSpeed = scrollSpeed
@@ -49,6 +72,30 @@ public struct Mania4KPlayConfiguration: Equatable, Sendable {
         self.visualOffsetMilliseconds = visualOffsetMilliseconds
         self.judgeDifficulty = judgeDifficulty
         self.keyBindings = keyBindings
+    }
+
+    public init(
+        chartSource: Mania4KChartSource,
+        audioFileURL: URL,
+        starDifficulty: Double,
+        scrollSpeed: Double,
+        audioOffsetMilliseconds: Double,
+        visualOffsetMilliseconds: Double,
+        judgeDifficulty: Mania4KJudgeDifficulty,
+        keyBindings: Mania4KKeyBindingSet = .default
+    ) {
+        self.chartSource = chartSource
+        self.audioFileURL = audioFileURL
+        self.starDifficulty = starDifficulty
+        self.scrollSpeed = scrollSpeed
+        self.audioOffsetMilliseconds = audioOffsetMilliseconds
+        self.visualOffsetMilliseconds = visualOffsetMilliseconds
+        self.judgeDifficulty = judgeDifficulty
+        self.keyBindings = keyBindings
+    }
+
+    public var beatmapFileURL: URL? {
+        chartSource.beatmapFileURL
     }
 }
 
