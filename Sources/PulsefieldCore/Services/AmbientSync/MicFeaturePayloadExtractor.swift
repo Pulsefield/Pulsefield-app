@@ -103,6 +103,7 @@ public struct MicFeaturePayloadExtractor: Equatable, Sendable {
     private var landmarkFrameIndex = 0
     private var noiseFloorDBFS: Double?
     private var spectrumAnalyzer = MicFeatureSpectrumAnalyzer()
+    private var frequencyMapping: MicFeatureFrequencyBinMapping?
 
     public init(configuration: Configuration = Configuration()) {
         self.configuration = configuration
@@ -134,25 +135,28 @@ public struct MicFeaturePayloadExtractor: Equatable, Sendable {
 
         let energyDBFS = calculateEnergyDBFS(samples: window.monoSamples)
         let spectralBins = calculateSpectrum(samples: window.monoSamples, sampleRate: window.sampleRate)
-        let subbandEnergies = logFrequencyBandEnergies(
+        let frequencyMapping = frequencyMapping(for: spectralBins, sampleRate: window.sampleRate)
+        var subbandLogEnergies = logFrequencyBandEnergies(
             from: spectralBins,
-            sampleRate: window.sampleRate,
-            bandCount: configuration.subbandCount
+            frequencyMapping: frequencyMapping
         )
-        let subbandLogEnergies = subbandEnergies.map(logScaledEnergy)
-        let subbandOnset = calculateSubbandOnset(currentLogEnergies: subbandLogEnergies)
-        let melEnergies = melBandEnergies(from: spectralBins, sampleRate: window.sampleRate)
+        for index in subbandLogEnergies.indices {
+            subbandLogEnergies[index] = logScaledEnergy(subbandLogEnergies[index])
+        }
+        let subbandOnsetResult = calculateSubbandOnset(currentLogEnergies: subbandLogEnergies)
+        let subbandOnset = subbandOnsetResult.values
+        let melEnergies = melBandEnergies(from: spectralBins, frequencyMapping: frequencyMapping)
         let pcenMel = calculatePCENMel(from: melEnergies)
-        let chroma = calculateChroma(from: spectralBins, sampleRate: window.sampleRate)
+        let chroma = calculateChroma(from: spectralBins, frequencyMapping: frequencyMapping)
         let cens = calculateCENS(from: chroma)
-        let peaks = calculateSpectralPeaks(from: spectralBins, sampleRate: window.sampleRate)
+        let peaks = calculateSpectralPeaks(from: spectralBins, frequencyMapping: frequencyMapping)
         let landmarks = calculateLandmarks(currentPeaks: peaks, currentTimeMS: window.recordedTimeMS)
         let snrDB = updateSNR(energyDBFS: energyDBFS)
 
         previousSubbandLogEnergies = subbandLogEnergies
 
         return MicFeaturePayload(
-            onsetEnvelope: subbandOnset.reduce(0, +),
+            onsetEnvelope: subbandOnsetResult.envelope,
             subbandOnset: subbandOnset,
             pcenMel: pcenMel,
             chroma: chroma,
@@ -162,6 +166,24 @@ public struct MicFeaturePayloadExtractor: Equatable, Sendable {
             energyDBFS: energyDBFS,
             snrDB: snrDB
         )
+    }
+
+    private mutating func frequencyMapping(
+        for spectralBins: [SpectralBin],
+        sampleRate: Double
+    ) -> MicFeatureFrequencyBinMapping {
+        if let frequencyMapping,
+           frequencyMapping.matches(sampleRate: sampleRate, spectralBinCount: spectralBins.count) {
+            return frequencyMapping
+        }
+
+        let updatedMapping = MicFeatureFrequencyBinMapping(
+            spectralBins: spectralBins,
+            sampleRate: sampleRate,
+            configuration: configuration
+        )
+        frequencyMapping = updatedMapping
+        return updatedMapping
     }
 
     private func emptyPayload() -> MicFeaturePayload {
@@ -196,99 +218,52 @@ public struct MicFeaturePayloadExtractor: Equatable, Sendable {
 
     private func logFrequencyBandEnergies(
         from spectralBins: [SpectralBin],
-        sampleRate: Double,
-        bandCount: Int
+        frequencyMapping: MicFeatureFrequencyBinMapping
     ) -> [Float] {
-        guard let range = usableFrequencyRange(sampleRate: sampleRate) else {
-            return Array(repeating: 0, count: bandCount)
-        }
-
-        let lowerLog = log2(range.lowerBound)
-        let upperLog = log2(range.upperBound)
-        guard upperLog > lowerLog else {
-            return Array(repeating: 0, count: bandCount)
-        }
-
-        var energies = Array(repeating: Float(0), count: bandCount)
-        for bin in spectralBins where range.contains(bin.frequency) {
-            let position = (log2(bin.frequency) - lowerLog) / (upperLog - lowerLog)
-            let bandIndex = min(bandCount - 1, max(0, Int(position * Double(bandCount))))
-            energies[bandIndex] += bin.power
+        var energies = Array(repeating: Float(0), count: configuration.subbandCount)
+        for assignment in frequencyMapping.subbandAssignments {
+            energies[assignment.featureBinIndex] += spectralBins[assignment.spectralBinIndex].power
         }
 
         return energies
     }
 
-    private func melBandEnergies(from spectralBins: [SpectralBin], sampleRate: Double) -> [Float] {
-        guard let range = usableFrequencyRange(sampleRate: sampleRate) else {
-            return Array(repeating: 0, count: configuration.melBandCount)
-        }
-
-        let lowerMel = hertzToMel(range.lowerBound)
-        let upperMel = hertzToMel(range.upperBound)
-        let melPoints = (0..<(configuration.melBandCount + 2)).map { pointIndex in
-            lowerMel + (upperMel - lowerMel) * Double(pointIndex) / Double(configuration.melBandCount + 1)
-        }
+    private func melBandEnergies(
+        from spectralBins: [SpectralBin],
+        frequencyMapping: MicFeatureFrequencyBinMapping
+    ) -> [Float] {
         var energies = Array(repeating: Float(0), count: configuration.melBandCount)
 
         for bandIndex in 0..<configuration.melBandCount {
-            let lower = melPoints[bandIndex]
-            let center = melPoints[bandIndex + 1]
-            let upper = melPoints[bandIndex + 2]
-
-            for bin in spectralBins where range.contains(bin.frequency) {
-                let mel = hertzToMel(bin.frequency)
-                let weight: Double
-                if mel >= lower, mel <= center {
-                    weight = (mel - lower) / max(center - lower, .ulpOfOne)
-                } else if mel > center, mel <= upper {
-                    weight = (upper - mel) / max(upper - center, .ulpOfOne)
-                } else {
-                    weight = 0
-                }
-
-                if weight > 0 {
-                    energies[bandIndex] += bin.power * Float(weight)
-                }
+            for assignment in frequencyMapping.melAssignmentsByBand[bandIndex] {
+                energies[bandIndex] += spectralBins[assignment.spectralBinIndex].power * Float(assignment.weight)
             }
         }
 
         return energies
     }
 
-    private func usableFrequencyRange(sampleRate: Double) -> ClosedRange<Double>? {
-        let nyquist = sampleRate / 2
-        guard nyquist > 0 else {
-            return nil
-        }
-
-        let upper = min(configuration.maximumFrequency, nyquist)
-        let lower = min(configuration.minimumFrequency, upper * 0.5)
-        guard upper > lower else {
-            return nil
-        }
-
-        return lower...upper
-    }
-
-    private func hertzToMel(_ hertz: Double) -> Double {
-        2_595 * log10(1 + hertz / 700)
-    }
-
     private func logScaledEnergy(_ energy: Float) -> Float {
         Float(log1p(Double(max(0, energy)) * 1_000))
     }
 
-    private mutating func calculateSubbandOnset(currentLogEnergies: [Float]) -> [Float] {
+    private mutating func calculateSubbandOnset(currentLogEnergies: [Float]) -> (values: [Float], envelope: Float) {
         guard let previousSubbandLogEnergies,
               previousSubbandLogEnergies.count == currentLogEnergies.count
         else {
-            return Array(repeating: 0, count: currentLogEnergies.count)
+            return (Array(repeating: 0, count: currentLogEnergies.count), 0)
         }
 
-        return zip(currentLogEnergies, previousSubbandLogEnergies).map { current, previous in
-            max(0, current - previous)
+        var onsetValues: [Float] = []
+        onsetValues.reserveCapacity(currentLogEnergies.count)
+        var onsetEnvelope: Float = 0
+        for index in currentLogEnergies.indices {
+            let onset = max(0, currentLogEnergies[index] - previousSubbandLogEnergies[index])
+            onsetValues.append(onset)
+            onsetEnvelope += onset
         }
+
+        return (onsetValues, onsetEnvelope)
     }
 
     private mutating func calculatePCENMel(from melEnergies: [Float]) -> [Float] {
@@ -309,19 +284,17 @@ public struct MicFeaturePayloadExtractor: Equatable, Sendable {
         }
     }
 
-    private func calculateChroma(from spectralBins: [SpectralBin], sampleRate: Double) -> [Float] {
-        guard let range = usableFrequencyRange(sampleRate: sampleRate) else {
-            return Array(repeating: 0, count: configuration.chromaBinCount)
-        }
-
+    private func calculateChroma(
+        from spectralBins: [SpectralBin],
+        frequencyMapping: MicFeatureFrequencyBinMapping
+    ) -> [Float] {
         var chroma = Array(repeating: Float(0), count: configuration.chromaBinCount)
-        for bin in spectralBins where range.contains(bin.frequency) {
-            let midiNote = 69 + 12 * log2(bin.frequency / 440)
-            let chromaIndex = positiveModulo(Int(round(midiNote)), configuration.chromaBinCount)
-            chroma[chromaIndex] += bin.power
+        for assignment in frequencyMapping.chromaAssignments {
+            chroma[assignment.featureBinIndex] += spectralBins[assignment.spectralBinIndex].power
         }
 
-        return l2Normalized(chroma)
+        l2NormalizeInPlace(&chroma)
+        return chroma
     }
 
     private mutating func calculateCENS(from chroma: [Float]) -> [Float] {
@@ -329,31 +302,39 @@ public struct MicFeaturePayloadExtractor: Equatable, Sendable {
             censSmoother = chroma
         } else {
             let smoothing = configuration.censSmoothingCoefficient
-            censSmoother = zip(censSmoother, chroma).map { previous, current in
-                (1 - smoothing) * previous + smoothing * current
+            for index in censSmoother.indices {
+                censSmoother[index] = (1 - smoothing) * censSmoother[index] + smoothing * chroma[index]
             }
         }
 
-        let quantized = censSmoother.map { value -> Float in
+        var quantized: [Float] = []
+        quantized.reserveCapacity(censSmoother.count)
+        for value in censSmoother {
             switch value {
             case ..<0.05:
-                return 0
+                quantized.append(0)
             case ..<0.10:
-                return 1
+                quantized.append(1)
             case ..<0.20:
-                return 2
+                quantized.append(2)
             case ..<0.40:
-                return 3
+                quantized.append(3)
             default:
-                return 4
+                quantized.append(4)
             }
         }
 
-        return l2Normalized(quantized)
+        l2NormalizeInPlace(&quantized)
+        return quantized
     }
 
-    private func calculateSpectralPeaks(from spectralBins: [SpectralBin], sampleRate: Double) -> [SpectralPeak] {
-        guard let maximumMagnitude = spectralBins.map(\.magnitude).max(), maximumMagnitude > 0 else {
+    private func calculateSpectralPeaks(
+        from spectralBins: [SpectralBin],
+        frequencyMapping: MicFeatureFrequencyBinMapping
+    ) -> [SpectralPeak] {
+        guard let maximumMagnitude = maximumSpectralMagnitude(in: spectralBins),
+              maximumMagnitude > 0
+        else {
             return []
         }
 
@@ -370,20 +351,32 @@ public struct MicFeaturePayloadExtractor: Equatable, Sendable {
                 : 0
 
             if magnitude >= floorMagnitude, magnitude >= previousMagnitude, magnitude >= nextMagnitude {
-                let bin = spectralBins[index]
                 peaks.append(
                     SpectralPeak(
-                        frequencyBin: quantizedFrequencyBin(frequency: bin.frequency, sampleRate: sampleRate),
+                        frequencyBin: frequencyMapping.landmarkFrequencyBins[index],
                         magnitude: magnitude
                     )
                 )
             }
         }
 
+        peaks.sort { $0.magnitude > $1.magnitude }
+        if peaks.count > configuration.landmarkPeakCount {
+            peaks.removeLast(peaks.count - configuration.landmarkPeakCount)
+        }
         return peaks
-            .sorted { $0.magnitude > $1.magnitude }
-            .prefix(configuration.landmarkPeakCount)
-            .map { $0 }
+    }
+
+    private func maximumSpectralMagnitude(in spectralBins: [SpectralBin]) -> Float? {
+        guard var maximumMagnitude = spectralBins.first?.magnitude else {
+            return nil
+        }
+
+        for index in spectralBins.indices.dropFirst() {
+            maximumMagnitude = max(maximumMagnitude, spectralBins[index].magnitude)
+        }
+
+        return maximumMagnitude
     }
 
     private mutating func calculateLandmarks(
@@ -426,38 +419,20 @@ public struct MicFeaturePayloadExtractor: Equatable, Sendable {
             }
         }
 
-        updatedAnchors.append(
-            contentsOf: currentPeaks.map { peak in
+        updatedAnchors.reserveCapacity(updatedAnchors.count + currentPeaks.count)
+        for peak in currentPeaks {
+            updatedAnchors.append(
                 LandmarkAnchor(
                     frameIndex: currentFrameIndex,
                     timeMS: currentTimeMS,
                     frequencyBin: peak.frequencyBin
                 )
-            }
-        )
+            )
+        }
         pendingLandmarkAnchors = updatedAnchors
         landmarkFrameIndex += 1
 
         return landmarks
-    }
-
-    private func quantizedFrequencyBin(frequency: Double, sampleRate: Double) -> Int {
-        guard let range = usableFrequencyRange(sampleRate: sampleRate) else {
-            return 0
-        }
-
-        let clampedFrequency = min(max(frequency, range.lowerBound), range.upperBound)
-        let lowerLog = log2(range.lowerBound)
-        let upperLog = log2(range.upperBound)
-        guard upperLog > lowerLog else {
-            return 0
-        }
-
-        let position = (log2(clampedFrequency) - lowerLog) / (upperLog - lowerLog)
-        return min(
-            configuration.landmarkFrequencyBinCount - 1,
-            max(0, Int(position * Double(configuration.landmarkFrequencyBinCount)))
-        )
     }
 
     private func landmarkHash(anchorFrequencyBin: Int, targetFrequencyBin: Int, deltaFrames: Int) -> UInt64 {
@@ -482,21 +457,185 @@ public struct MicFeaturePayloadExtractor: Equatable, Sendable {
         return max(0, energyDBFS - updatedNoiseFloor)
     }
 
-    private func positiveModulo(_ value: Int, _ modulo: Int) -> Int {
-        let remainder = value % modulo
-        return remainder >= 0 ? remainder : remainder + modulo
-    }
-
-    private func l2Normalized(_ values: [Float]) -> [Float] {
+    private func l2NormalizeInPlace(_ values: inout [Float]) {
         let norm = sqrt(values.reduce(0) { partial, value in
             partial + value * value
         })
         guard norm > 0 else {
-            return values
+            return
         }
 
-        return values.map { $0 / norm }
+        for index in values.indices {
+            values[index] /= norm
+        }
     }
+}
+
+private struct MicFeatureFrequencyBinMapping: Equatable, Sendable {
+    let sampleRate: Double
+    let spectralBinCount: Int
+    let subbandAssignments: [MicFeatureFrequencyBinAssignment]
+    let melAssignmentsByBand: [[MicFeatureWeightedFrequencyBinAssignment]]
+    let chromaAssignments: [MicFeatureFrequencyBinAssignment]
+    let landmarkFrequencyBins: [Int]
+
+    init(
+        spectralBins: [SpectralBin],
+        sampleRate: Double,
+        configuration: MicFeaturePayloadExtractor.Configuration
+    ) {
+        self.sampleRate = sampleRate
+        spectralBinCount = spectralBins.count
+
+        var subbandAssignments: [MicFeatureFrequencyBinAssignment] = []
+        var melAssignmentsByBand = Array(
+            repeating: [MicFeatureWeightedFrequencyBinAssignment](),
+            count: configuration.melBandCount
+        )
+        var chromaAssignments: [MicFeatureFrequencyBinAssignment] = []
+        var landmarkFrequencyBins = Array(repeating: 0, count: spectralBins.count)
+
+        guard let range = Self.usableFrequencyRange(sampleRate: sampleRate, configuration: configuration) else {
+            self.subbandAssignments = subbandAssignments
+            self.melAssignmentsByBand = melAssignmentsByBand
+            self.chromaAssignments = chromaAssignments
+            self.landmarkFrequencyBins = landmarkFrequencyBins
+            return
+        }
+
+        let lowerLog = log2(range.lowerBound)
+        let upperLog = log2(range.upperBound)
+        let lowerMel = Self.hertzToMel(range.lowerBound)
+        let upperMel = Self.hertzToMel(range.upperBound)
+        let melBandDivisor = Double(configuration.melBandCount + 1)
+        let melSpan = upperMel - lowerMel
+        let melPoints = (0..<(configuration.melBandCount + 2)).map { pointIndex -> Double in
+            lowerMel + melSpan * Double(pointIndex) / melBandDivisor
+        }
+
+        for index in spectralBins.indices {
+            let frequency = spectralBins[index].frequency
+            landmarkFrequencyBins[index] = Self.quantizedFrequencyBin(
+                frequency: frequency,
+                range: range,
+                lowerLog: lowerLog,
+                upperLog: upperLog,
+                binCount: configuration.landmarkFrequencyBinCount
+            )
+
+            guard range.contains(frequency), upperLog > lowerLog else {
+                continue
+            }
+
+            let logPosition = (log2(frequency) - lowerLog) / (upperLog - lowerLog)
+            subbandAssignments.append(
+                MicFeatureFrequencyBinAssignment(
+                    spectralBinIndex: index,
+                    featureBinIndex: min(
+                        configuration.subbandCount - 1,
+                        max(0, Int(logPosition * Double(configuration.subbandCount)))
+                    )
+                )
+            )
+
+            let mel = Self.hertzToMel(frequency)
+            for bandIndex in 0..<configuration.melBandCount {
+                let lower = melPoints[bandIndex]
+                let center = melPoints[bandIndex + 1]
+                let upper = melPoints[bandIndex + 2]
+                let weight: Double
+                if mel >= lower, mel <= center {
+                    weight = (mel - lower) / Swift.max(center - lower, Double.ulpOfOne)
+                } else if mel > center, mel <= upper {
+                    weight = (upper - mel) / Swift.max(upper - center, Double.ulpOfOne)
+                } else {
+                    weight = 0
+                }
+
+                if weight > 0 {
+                    melAssignmentsByBand[bandIndex].append(
+                        MicFeatureWeightedFrequencyBinAssignment(
+                            spectralBinIndex: index,
+                            weight: weight
+                        )
+                    )
+                }
+            }
+
+            let midiNote = 69 + 12 * log2(frequency / 440)
+            chromaAssignments.append(
+                MicFeatureFrequencyBinAssignment(
+                    spectralBinIndex: index,
+                    featureBinIndex: Self.positiveModulo(Int(round(midiNote)), configuration.chromaBinCount)
+                )
+            )
+        }
+
+        self.subbandAssignments = subbandAssignments
+        self.melAssignmentsByBand = melAssignmentsByBand
+        self.chromaAssignments = chromaAssignments
+        self.landmarkFrequencyBins = landmarkFrequencyBins
+    }
+
+    func matches(sampleRate: Double, spectralBinCount: Int) -> Bool {
+        self.sampleRate == sampleRate && self.spectralBinCount == spectralBinCount
+    }
+
+    private static func usableFrequencyRange(
+        sampleRate: Double,
+        configuration: MicFeaturePayloadExtractor.Configuration
+    ) -> ClosedRange<Double>? {
+        let nyquist = sampleRate / 2
+        guard nyquist > 0 else {
+            return nil
+        }
+
+        let upper = min(configuration.maximumFrequency, nyquist)
+        let lower = min(configuration.minimumFrequency, upper * 0.5)
+        guard upper > lower else {
+            return nil
+        }
+
+        return lower...upper
+    }
+
+    private static func hertzToMel(_ hertz: Double) -> Double {
+        2_595 * log10(1 + hertz / 700)
+    }
+
+    private static func quantizedFrequencyBin(
+        frequency: Double,
+        range: ClosedRange<Double>,
+        lowerLog: Double,
+        upperLog: Double,
+        binCount: Int
+    ) -> Int {
+        let clampedFrequency = min(max(frequency, range.lowerBound), range.upperBound)
+        guard upperLog > lowerLog else {
+            return 0
+        }
+
+        let position = (log2(clampedFrequency) - lowerLog) / (upperLog - lowerLog)
+        return min(
+            binCount - 1,
+            max(0, Int(position * Double(binCount)))
+        )
+    }
+
+    private static func positiveModulo(_ value: Int, _ modulo: Int) -> Int {
+        let remainder = value % modulo
+        return remainder >= 0 ? remainder : remainder + modulo
+    }
+}
+
+private struct MicFeatureFrequencyBinAssignment: Equatable, Sendable {
+    let spectralBinIndex: Int
+    let featureBinIndex: Int
+}
+
+private struct MicFeatureWeightedFrequencyBinAssignment: Equatable, Sendable {
+    let spectralBinIndex: Int
+    let weight: Double
 }
 
 private struct SpectralBin: Equatable, Sendable {

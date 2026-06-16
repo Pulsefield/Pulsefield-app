@@ -21,6 +21,22 @@ final class AmbientSyncOffsetHistogramTests: XCTestCase {
         XCTAssertEqual(stats.idfWeight, log1p(3.0 / 2.0), accuracy: 0.0001)
     }
 
+    func testLandmarkIndexReturnsAnchorTimesInsideClosedRange() {
+        let index = AmbientSyncLandmarkIndex(
+            landmarks: [
+                makeLandmark(hash: 7, anchorTimeMS: 500),
+                makeLandmark(hash: 7, anchorTimeMS: 1_000),
+                makeLandmark(hash: 7, anchorTimeMS: 2_000),
+                makeLandmark(hash: 7, anchorTimeMS: 3_000),
+                makeLandmark(hash: 8, anchorTimeMS: 2_000)
+            ]
+        )
+
+        XCTAssertEqual(Array(index.anchorTimes(for: 7, in: 1_000 ... 2_000)), [1_000, 2_000])
+        XCTAssertTrue(index.anchorTimes(for: 7, in: 1_001 ... 1_999).isEmpty)
+        XCTAssertTrue(index.anchorTimes(for: 99, in: 0 ... 10_000).isEmpty)
+    }
+
     func testCandidateDiagnosticsDecodesLegacyJSONWithoutWeightedFields() throws {
         let json = """
         {
@@ -284,9 +300,11 @@ final class AmbientSyncOffsetHistogramTests: XCTestCase {
         ]
         let localIndex = AmbientSyncLandmarkIndex(
             landmarks: [
+                makeLandmark(hash: 20, anchorTimeMS: -8_000),
                 makeLandmark(hash: 20, anchorTimeMS: 1_900),
                 makeLandmark(hash: 21, anchorTimeMS: 1_950),
-                makeLandmark(hash: 20, anchorTimeMS: 5_000)
+                makeLandmark(hash: 20, anchorTimeMS: 5_000),
+                makeLandmark(hash: 21, anchorTimeMS: 12_000)
             ]
         )
 
@@ -419,6 +437,58 @@ final class AmbientSyncOffsetHistogramTests: XCTestCase {
 
         XCTAssertEqual(result.bestCandidate?.offsetMS ?? 0, 4_000, accuracy: 0.001)
         XCTAssertEqual(result.bestCandidate?.combinedDenseScore ?? 0, 1, accuracy: 0.0001)
+    }
+
+    func testDenseRerankProgressiveRefinesOnlySelectedCoarseCandidates() throws {
+        let queryWindow = MicFeatureWindow(frames: makeDensePatternFrames(offsetMS: 0))
+        let localFrames = makeDensePatternFrames(offsetMS: 4_000)
+            + makeDensePatternFrames(offsetMS: 8_000)
+        let candidates = [
+            makeCandidate(offsetMS: 4_010, voteCount: 30, voteDensity: 0.80),
+            makeCandidate(offsetMS: 8_055, voteCount: 10, voteDensity: 0.80)
+        ]
+        let configuration = AmbientSyncDenseReranker.Configuration(
+            minimumComparableFrameCount: 4,
+            minimumComparableDurationMS: 0,
+            maximumRefinedCandidateCount: 1,
+            refinementCandidateScoreMargin: 0
+        )
+
+        let result = AmbientSyncDenseReranker(configuration: configuration).rerank(
+            queryWindow: queryWindow,
+            localFrames: localFrames,
+            candidates: candidates
+        )
+
+        let selectedCandidate = try XCTUnwrap(result.candidates.first { $0.coarseOffsetMS == 4_010 })
+        let prunedCandidate = try XCTUnwrap(result.candidates.first { $0.coarseOffsetMS == 8_055 })
+        XCTAssertEqual(selectedCandidate.offsetMS, 4_000, accuracy: 0.001)
+        XCTAssertEqual(prunedCandidate.offsetMS, 8_055, accuracy: 0.001)
+    }
+
+    func testDenseRerankProgressiveRefinesCandidatesInsideCoarseScoreMargin() throws {
+        let queryWindow = MicFeatureWindow(frames: makeDensePatternFrames(offsetMS: 0))
+        let localFrames = makeDensePatternFrames(offsetMS: 4_000)
+            + makeDensePatternFrames(offsetMS: 8_000)
+        let candidates = [
+            makeCandidate(offsetMS: 4_010, voteCount: 30, voteDensity: 0.80),
+            makeCandidate(offsetMS: 8_055, voteCount: 10, voteDensity: 0.80)
+        ]
+        let configuration = AmbientSyncDenseReranker.Configuration(
+            minimumComparableFrameCount: 4,
+            minimumComparableDurationMS: 0,
+            maximumRefinedCandidateCount: 1,
+            refinementCandidateScoreMargin: 1
+        )
+
+        let result = AmbientSyncDenseReranker(configuration: configuration).rerank(
+            queryWindow: queryWindow,
+            localFrames: localFrames,
+            candidates: candidates
+        )
+
+        let marginCandidate = try XCTUnwrap(result.candidates.first { $0.coarseOffsetMS == 8_055 })
+        XCTAssertEqual(marginCandidate.offsetMS, 8_000, accuracy: 0.001)
     }
 
     func testDenseRerankDefaultDoesNotExposeBestCandidateForShortWindow() {
@@ -598,6 +668,41 @@ final class AmbientSyncOffsetHistogramTests: XCTestCase {
         XCTAssertEqual(result.candidates.first?.comparableFrameCount, 0)
         XCTAssertEqual(result.candidates.first?.coverageRatio ?? 0, 1, accuracy: 0.0001)
         XCTAssertFalse(result.candidates.first?.hasSufficientCoverage ?? true)
+        XCTAssertEqual(result.candidates.first?.onsetScore ?? 1, 0, accuracy: 0.0001)
+        XCTAssertEqual(result.candidates.first?.subbandOnsetScore ?? 1, 0, accuracy: 0.0001)
+        XCTAssertEqual(result.candidates.first?.pcenMelScore ?? 1, 0, accuracy: 0.0001)
+        XCTAssertEqual(result.candidates.first?.chromaOnsetScore ?? 1, 0, accuracy: 0.0001)
+        XCTAssertEqual(result.candidates.first?.censScore ?? 1, 0, accuracy: 0.0001)
+        XCTAssertEqual(result.candidates.first?.combinedDenseScore ?? 1, 0, accuracy: 0.0001)
+        XCTAssertNil(result.bestCandidate)
+    }
+
+    func testDenseRerankZeroesFeatureScoresWhenOffsetCoverageIsInsufficient() {
+        let queryWindow = MicFeatureWindow(frames: makeDensePatternFrames(offsetMS: 0))
+        let localFrames = Array(makeDensePatternFrames(offsetMS: 4_000).prefix(3))
+        let candidates = [
+            makeCandidate(offsetMS: 4_000, voteCount: 20, voteDensity: 0.80)
+        ]
+        let configuration = AmbientSyncDenseReranker.Configuration(
+            minimumComparableFrameCount: 4,
+            minimumComparableDurationMS: 0,
+            refinementSearchRadiusMS: 0
+        )
+
+        let result = AmbientSyncDenseReranker(configuration: configuration).rerank(
+            queryWindow: queryWindow,
+            localFrames: localFrames,
+            candidates: candidates
+        )
+
+        XCTAssertEqual(result.candidates.first?.comparableFrameCount, 3)
+        XCTAssertEqual(result.candidates.first?.coverageRatio ?? 0, 0.75, accuracy: 0.0001)
+        XCTAssertFalse(result.candidates.first?.hasSufficientCoverage ?? true)
+        XCTAssertEqual(result.candidates.first?.onsetScore ?? 1, 0, accuracy: 0.0001)
+        XCTAssertEqual(result.candidates.first?.subbandOnsetScore ?? 1, 0, accuracy: 0.0001)
+        XCTAssertEqual(result.candidates.first?.pcenMelScore ?? 1, 0, accuracy: 0.0001)
+        XCTAssertEqual(result.candidates.first?.chromaOnsetScore ?? 1, 0, accuracy: 0.0001)
+        XCTAssertEqual(result.candidates.first?.censScore ?? 1, 0, accuracy: 0.0001)
         XCTAssertEqual(result.candidates.first?.combinedDenseScore ?? 1, 0, accuracy: 0.0001)
         XCTAssertNil(result.bestCandidate)
     }

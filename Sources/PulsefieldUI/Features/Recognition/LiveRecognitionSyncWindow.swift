@@ -1664,8 +1664,11 @@ private struct FlowStepBadge: View {
 }
 
 private actor LiveAmbientSyncRuntime {
+    private static let matchingProcessIntervalMS = 100.0
+
     private var engine: AmbientSyncEngine
     private var streamBuffer: MicFeatureStreamBuffer
+    private var processScheduler: LiveAmbientSyncProcessScheduler
     private let queryDurationMS: Double
     private let startedHostTimeMS = PulsefieldHostClock.currentTimeMS()
 
@@ -1677,6 +1680,9 @@ private actor LiveAmbientSyncRuntime {
         self.streamBuffer = MicFeatureStreamBuffer(
             retentionDurationMS: featureConfiguration.finalLockTargetDurationMS + 1_000,
             expectedHopMS: featureConfiguration.featureHopMS
+        )
+        self.processScheduler = LiveAmbientSyncProcessScheduler(
+            minimumQueryEndpointIntervalMS: Self.matchingProcessIntervalMS
         )
     }
 
@@ -1707,6 +1713,12 @@ private actor LiveAmbientSyncRuntime {
         }
 
         streamBuffer.append(frames)
+
+        guard let queryEndpointRecordedTimeMS = streamBuffer.latestRecordedTimeMS,
+              processScheduler.shouldProcess(queryEndpointRecordedTimeMS: queryEndpointRecordedTimeMS)
+        else {
+            return nil
+        }
 
         guard let queryWindow = streamBuffer.latestWindow(durationMS: queryDurationMS) else {
             return nil
@@ -1743,6 +1755,44 @@ private actor LiveAmbientSyncRuntime {
         }
 
         return latencyMS
+    }
+}
+
+struct LiveAmbientSyncProcessScheduler: Equatable, Sendable {
+    let minimumQueryEndpointIntervalMS: Double
+    private var lastProcessedQueryEndpointRecordedTimeMS: Double?
+
+    init(minimumQueryEndpointIntervalMS: Double) {
+        precondition(
+            minimumQueryEndpointIntervalMS >= 0 && minimumQueryEndpointIntervalMS.isFinite,
+            "minimumQueryEndpointIntervalMS must be finite and non-negative."
+        )
+
+        self.minimumQueryEndpointIntervalMS = minimumQueryEndpointIntervalMS
+    }
+
+    mutating func shouldProcess(queryEndpointRecordedTimeMS: Double) -> Bool {
+        guard queryEndpointRecordedTimeMS.isFinite else {
+            return true
+        }
+
+        guard let lastProcessedQueryEndpointRecordedTimeMS else {
+            self.lastProcessedQueryEndpointRecordedTimeMS = queryEndpointRecordedTimeMS
+            return true
+        }
+
+        let elapsedMS = queryEndpointRecordedTimeMS - lastProcessedQueryEndpointRecordedTimeMS
+        guard elapsedMS >= 0 else {
+            self.lastProcessedQueryEndpointRecordedTimeMS = queryEndpointRecordedTimeMS
+            return true
+        }
+
+        guard elapsedMS >= minimumQueryEndpointIntervalMS else {
+            return false
+        }
+
+        self.lastProcessedQueryEndpointRecordedTimeMS = queryEndpointRecordedTimeMS
+        return true
     }
 }
 

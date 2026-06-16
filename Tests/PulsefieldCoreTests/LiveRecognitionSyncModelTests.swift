@@ -55,6 +55,19 @@ final class LiveRecognitionSyncModelTests: XCTestCase {
         XCTAssertEqual(anchor.referenceTimeMS(atHostTimeMS: anchorHostTimeMS + 2_000), 180_000)
     }
 
+    func testAmbientProcessSchedulerThrottlesUntilQueryEndpointCadenceElapses() {
+        var scheduler = LiveAmbientSyncProcessScheduler(minimumQueryEndpointIntervalMS: 100)
+
+        XCTAssertTrue(scheduler.shouldProcess(queryEndpointRecordedTimeMS: 1_000))
+        XCTAssertFalse(scheduler.shouldProcess(queryEndpointRecordedTimeMS: 1_050))
+        XCTAssertFalse(scheduler.shouldProcess(queryEndpointRecordedTimeMS: 1_099.9))
+        XCTAssertTrue(scheduler.shouldProcess(queryEndpointRecordedTimeMS: 1_100))
+        XCTAssertFalse(scheduler.shouldProcess(queryEndpointRecordedTimeMS: 1_150))
+        XCTAssertTrue(scheduler.shouldProcess(queryEndpointRecordedTimeMS: 900))
+        XCTAssertFalse(scheduler.shouldProcess(queryEndpointRecordedTimeMS: 950))
+        XCTAssertTrue(scheduler.shouldProcess(queryEndpointRecordedTimeMS: 1_000))
+    }
+
     @MainActor
     func testMode3InferenceMockOptionDefaultsFalse() async throws {
         let endpoint = RecordingInferenceEndpoint()

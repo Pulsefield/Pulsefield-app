@@ -9,6 +9,7 @@ public struct MicFeatureStreamBuffer: Equatable, Sendable {
     private var frames: [MicFeatureFrame] = []
     private var queryStartIndex: Int = 0
     private var pendingAudioSamples: [Float] = []
+    private var pendingAudioStartSampleIndex: Int = 0
     private var pendingAudioStartRecordedTimeMS: Double?
     private var pendingAudioStartHostTimeMS: Double?
     private var pendingAudioSampleRate: Double?
@@ -33,9 +34,36 @@ public struct MicFeatureStreamBuffer: Equatable, Sendable {
         self.payloadExtractor = payloadExtractor
     }
 
+    public var latestRecordedTimeMS: Double? {
+        frames.last?.recordedTimeMS
+    }
+
+    public static func == (lhs: MicFeatureStreamBuffer, rhs: MicFeatureStreamBuffer) -> Bool {
+        lhs.continuityResetCount == rhs.continuityResetCount
+            && lhs.retentionDurationMS == rhs.retentionDurationMS
+            && lhs.expectedHopMS == rhs.expectedHopMS
+            && lhs.maximumGapHops == rhs.maximumGapHops
+            && lhs.frames == rhs.frames
+            && lhs.queryStartIndex == rhs.queryStartIndex
+            && lhs.activePendingAudioSamples == rhs.activePendingAudioSamples
+            && lhs.pendingAudioStartRecordedTimeMS == rhs.pendingAudioStartRecordedTimeMS
+            && lhs.pendingAudioStartHostTimeMS == rhs.pendingAudioStartHostTimeMS
+            && lhs.pendingAudioSampleRate == rhs.pendingAudioSampleRate
+            && lhs.pendingAudioInputChannelCount == rhs.pendingAudioInputChannelCount
+            && lhs.lastChunkEndRecordedTimeMS == rhs.lastChunkEndRecordedTimeMS
+            && lhs.lastChunkEndHostTimeMS == rhs.lastChunkEndHostTimeMS
+            && lhs.payloadExtractor == rhs.payloadExtractor
+    }
+
     public mutating func append(_ newFrames: [MicFeatureFrame]) {
-        for frame in newFrames.sorted(by: { $0.recordedTimeMS < $1.recordedTimeMS }) {
-            append(frame, detectFeatureGap: true)
+        if Self.framesAreSortedByRecordedTime(newFrames) {
+            for frame in newFrames {
+                append(frame, detectFeatureGap: true)
+            }
+        } else {
+            for frame in newFrames.sorted(by: { $0.recordedTimeMS < $1.recordedTimeMS }) {
+                append(frame, detectFeatureGap: true)
+            }
         }
     }
 
@@ -108,15 +136,16 @@ public struct MicFeatureStreamBuffer: Equatable, Sendable {
         }
 
         let earliestRecordedTimeMS = latest.recordedTimeMS - durationMS
-        let continuousFrames = frames[queryStartIndex...].filter { frame in
-            frame.recordedTimeMS >= earliestRecordedTimeMS
-        }
-
-        guard !continuousFrames.isEmpty else {
+        let windowStartIndex = lowerBoundFrameIndex(
+            in: frames,
+            from: queryStartIndex,
+            timeMS: earliestRecordedTimeMS
+        )
+        guard windowStartIndex < frames.endIndex else {
             return nil
         }
 
-        return MicFeatureWindow(frames: Array(continuousFrames))
+        return MicFeatureWindow(frames: Array(frames[windowStartIndex..<frames.endIndex]))
     }
 
     private mutating func append(_ frame: MicFeatureFrame, detectFeatureGap: Bool) {
@@ -158,6 +187,7 @@ public struct MicFeatureStreamBuffer: Equatable, Sendable {
 
     private mutating func resetPendingAudio() {
         pendingAudioSamples.removeAll(keepingCapacity: true)
+        pendingAudioStartSampleIndex = 0
         pendingAudioStartRecordedTimeMS = nil
         pendingAudioStartHostTimeMS = nil
         pendingAudioSampleRate = nil
@@ -190,8 +220,9 @@ public struct MicFeatureStreamBuffer: Equatable, Sendable {
         let hopDurationMS = Double(featureHopSizeSamples) / sampleRate * 1_000
         var generatedFrames: [MicFeatureFrame] = []
 
-        while pendingAudioSamples.count >= featureWindowSizeSamples {
-            let windowSamples = Array(pendingAudioSamples.prefix(featureWindowSizeSamples))
+        while activePendingAudioSampleCount >= featureWindowSizeSamples {
+            let windowEndSampleIndex = pendingAudioStartSampleIndex + featureWindowSizeSamples
+            let windowSamples = Array(pendingAudioSamples[pendingAudioStartSampleIndex..<windowEndSampleIndex])
             let featureWindow = MicFeatureAudioWindow(
                 monoSamples: windowSamples,
                 sampleRate: sampleRate,
@@ -210,13 +241,14 @@ public struct MicFeatureStreamBuffer: Equatable, Sendable {
             generatedFrames.append(frame)
             append(frame, detectFeatureGap: false)
 
-            pendingAudioSamples.removeFirst(featureHopSizeSamples)
+            pendingAudioStartSampleIndex += featureHopSizeSamples
             windowStartRecordedTimeMS += hopDurationMS
             windowStartHostTimeMS += hopDurationMS
         }
 
         pendingAudioStartRecordedTimeMS = windowStartRecordedTimeMS
         pendingAudioStartHostTimeMS = windowStartHostTimeMS
+        compactConsumedPendingAudioIfNeeded()
 
         return generatedFrames
     }
@@ -227,9 +259,7 @@ public struct MicFeatureStreamBuffer: Equatable, Sendable {
         }
 
         let earliestRetainedTimeMS = latest.recordedTimeMS - retentionDurationMS
-        let removalCount = frames.prefix { frame in
-            frame.recordedTimeMS < earliestRetainedTimeMS
-        }.count
+        let removalCount = lowerBoundFrameIndex(in: frames, from: frames.startIndex, timeMS: earliestRetainedTimeMS)
 
         guard removalCount > 0 else {
             return
@@ -237,5 +267,59 @@ public struct MicFeatureStreamBuffer: Equatable, Sendable {
 
         frames.removeFirst(removalCount)
         queryStartIndex = max(0, queryStartIndex - removalCount)
+    }
+
+    private var activePendingAudioSampleCount: Int {
+        pendingAudioSamples.count - pendingAudioStartSampleIndex
+    }
+
+    private var activePendingAudioSamples: ArraySlice<Float> {
+        pendingAudioSamples[pendingAudioStartSampleIndex..<pendingAudioSamples.endIndex]
+    }
+
+    private mutating func compactConsumedPendingAudioIfNeeded() {
+        guard pendingAudioStartSampleIndex > 0 else {
+            return
+        }
+
+        if pendingAudioStartSampleIndex == pendingAudioSamples.count {
+            pendingAudioSamples.removeAll(keepingCapacity: true)
+            pendingAudioStartSampleIndex = 0
+            return
+        }
+
+        guard pendingAudioStartSampleIndex >= 4_096
+            || pendingAudioStartSampleIndex * 2 >= pendingAudioSamples.count
+        else {
+            return
+        }
+
+        pendingAudioSamples.removeFirst(pendingAudioStartSampleIndex)
+        pendingAudioStartSampleIndex = 0
+    }
+
+    private func lowerBoundFrameIndex(
+        in frames: [MicFeatureFrame],
+        from startIndex: Int,
+        timeMS: Double
+    ) -> Int {
+        var lowerBound = startIndex
+        var upperBound = frames.count
+        while lowerBound < upperBound {
+            let middle = (lowerBound + upperBound) / 2
+            if frames[middle].recordedTimeMS < timeMS {
+                lowerBound = middle + 1
+            } else {
+                upperBound = middle
+            }
+        }
+
+        return lowerBound
+    }
+
+    private static func framesAreSortedByRecordedTime(_ frames: [MicFeatureFrame]) -> Bool {
+        !frames.indices.dropFirst().contains { index in
+            frames[frames.index(before: index)].recordedTimeMS > frames[index].recordedTimeMS
+        }
     }
 }

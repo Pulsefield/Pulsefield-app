@@ -61,7 +61,9 @@ public extension AmbientSyncEngine {
                 minimumFeatureAgreementCount: 2,
                 maximumDenseLandmarkDisagreementMS: 100,
                 timingEvidenceFeatures: [.onsetEnvelope, .pcenMel, .chromaOnset, .cens],
-                robustEvidenceFeatures: [.pcenMel, .cens]
+                robustEvidenceFeatures: [.pcenMel, .cens],
+                maximumRefinedCandidateCount: 2,
+                refinementCandidateScoreMargin: 0.08
             ),
             finalRerankerConfiguration: AmbientSyncDenseReranker.Configuration = AmbientSyncDenseReranker.Configuration(
                 weights: AmbientSyncDenseReranker.FeatureWeights(
@@ -86,7 +88,9 @@ public extension AmbientSyncEngine {
                 minimumDenseMargin: 0.02,
                 minimumFeatureAgreementCount: 2,
                 maximumDenseLandmarkDisagreementMS: 180,
-                timingEvidenceFeatures: [.onsetEnvelope, .pcenMel, .chromaOnset, .cens]
+                timingEvidenceFeatures: [.onsetEnvelope, .pcenMel, .chromaOnset, .cens],
+                maximumRefinedCandidateCount: 2,
+                refinementCandidateScoreMargin: 0.08
             ),
             minimumReadinessDurationMS: Double? = nil,
             minimumFinalQueryDurationMS: Double? = nil,

@@ -161,6 +161,7 @@ public struct AmbientSyncEngine: Equatable, Sendable {
             histogram: histogram,
             topCandidate: topCoarseCandidate
         )
+        let queryFramesAreSorted = Self.framesAreSortedByRecordedTime(queryWindow.frames)
 
         let timingResult = AmbientSyncDenseReranker(
             configuration: configuration.provisionalRerankerConfiguration
@@ -169,6 +170,7 @@ public struct AmbientSyncEngine: Equatable, Sendable {
             queryWindow: queryWindow,
             localFrames: reference.frames,
             localFramesAreSorted: true,
+            queryFramesAreSorted: queryFramesAreSorted,
             candidates: histogram.candidates
         )
         diagnostics = makeDiagnostics(
@@ -355,6 +357,7 @@ public struct AmbientSyncEngine: Equatable, Sendable {
             queryWindow: queryWindow,
             localFrames: reference.frames,
             localFramesAreSorted: true,
+            queryFramesAreSorted: queryFramesAreSorted,
             candidates: histogram.candidates
         )
         diagnostics = makeDiagnostics(

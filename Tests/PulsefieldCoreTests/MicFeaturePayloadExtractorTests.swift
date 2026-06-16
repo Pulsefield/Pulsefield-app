@@ -102,6 +102,22 @@ final class MicFeaturePayloadExtractorTests: XCTestCase {
         XCTAssertEqual(resetPayload.onsetEnvelope, 0, accuracy: 0.0001)
     }
 
+    func testExtractorRebuildsFrequencyMappingWhenSampleRateChanges() {
+        let configuration = MicFeaturePayloadExtractor.Configuration()
+        var extractor = MicFeaturePayloadExtractor(configuration: configuration)
+
+        _ = extractor.extract(from: makeSineWindow(sampleRate: 8_000, sampleCount: 1_024, startSample: 0))
+        extractor.reset()
+        let payload = extractor.extract(from: makeSineWindow(sampleRate: 16_000, sampleCount: 2_048, startSample: 0))
+
+        XCTAssertEqual(payload.subbandOnset.count, configuration.subbandCount)
+        XCTAssertEqual(payload.pcenMel.count, configuration.melBandCount)
+        XCTAssertEqual(payload.chroma.count, configuration.chromaBinCount)
+        XCTAssertEqual(payload.cens.count, configuration.chromaBinCount)
+        XCTAssertEqual(dominantIndex(in: payload.chroma), 9)
+        XCTAssertGreaterThan(payload.chroma[9], 0.5)
+    }
+
     private func makeSineWindow(
         frequency: Double = 440,
         amplitude: Double = 0.5,

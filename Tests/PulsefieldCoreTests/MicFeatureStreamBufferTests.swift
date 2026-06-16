@@ -6,6 +6,8 @@ final class MicFeatureStreamBufferTests: XCTestCase {
         let configuration = MicFeaturePayloadExtractor.Configuration()
         var buffer = MicFeatureStreamBuffer(retentionDurationMS: 120, expectedHopMS: 2)
 
+        XCTAssertNil(buffer.latestRecordedTimeMS)
+
         let firstFrames = buffer.append(
             makeChunk(samples: [1, 2, 3], recordedStartTimeMS: 1_000, hostStartTimeMS: 10_000),
             featureWindowSizeSamples: 4,
@@ -26,7 +28,55 @@ final class MicFeatureStreamBufferTests: XCTestCase {
         XCTAssertEqual(secondFrames.map(\.cens.count), [configuration.chromaBinCount, configuration.chromaBinCount])
         XCTAssertTrue(secondFrames.allSatisfy { $0.energyDBFS.isFinite })
         XCTAssertTrue(secondFrames.allSatisfy { $0.snrDB != nil })
+        XCTAssertEqual(buffer.latestRecordedTimeMS, 1_006)
         XCTAssertEqual(buffer.latestWindow(durationMS: 20)?.frames.map(\.recordedTimeMS), [1_004, 1_006])
+    }
+
+    func testAudioDrainUsesOnlyUnconsumedSamplesAcrossChunks() {
+        var buffer = MicFeatureStreamBuffer(retentionDurationMS: 120, expectedHopMS: 2)
+        var windows: [[Float]] = []
+        let makePayload: (MicFeatureAudioWindow) -> MicFeaturePayload = { featureWindow in
+            windows.append(featureWindow.monoSamples)
+            return MicFeaturePayload(
+                onsetEnvelope: 0,
+                subbandOnset: [],
+                pcenMel: [],
+                chroma: [],
+                cens: [],
+                landmarkHashes: [],
+                energyDBFS: -20,
+                snrDB: 0
+            )
+        }
+
+        let firstFrames = buffer.append(
+            makeChunk(samples: [1, 2, 3], recordedStartTimeMS: 0, hostStartTimeMS: 1_000),
+            featureWindowSizeSamples: 4,
+            featureHopSizeSamples: 2,
+            makePayload: makePayload
+        )
+        let secondFrames = buffer.append(
+            makeChunk(samples: [4, 5, 6, 7], recordedStartTimeMS: 3, hostStartTimeMS: 1_003),
+            featureWindowSizeSamples: 4,
+            featureHopSizeSamples: 2,
+            makePayload: makePayload
+        )
+        let thirdFrames = buffer.append(
+            makeChunk(samples: [8, 9], recordedStartTimeMS: 7, hostStartTimeMS: 1_007),
+            featureWindowSizeSamples: 4,
+            featureHopSizeSamples: 2,
+            makePayload: makePayload
+        )
+
+        XCTAssertTrue(firstFrames.isEmpty)
+        XCTAssertEqual(secondFrames.map(\.recordedTimeMS), [4, 6])
+        XCTAssertEqual(thirdFrames.map(\.recordedTimeMS), [8])
+        XCTAssertEqual(windows, [
+            [1, 2, 3, 4],
+            [3, 4, 5, 6],
+            [5, 6, 7, 8]
+        ])
+        XCTAssertEqual(buffer.latestWindow(durationMS: 20)?.frames.map(\.recordedTimeMS), [4, 6, 8])
     }
 
     func testAudioChunkGapStartsNewFeatureContinuitySegment() {
@@ -87,10 +137,28 @@ final class MicFeatureStreamBufferTests: XCTestCase {
 
         let window = buffer.latestWindow(durationMS: 80)
 
+        XCTAssertEqual(buffer.latestRecordedTimeMS, 1_060)
         XCTAssertEqual(window?.frames.map(\.recordedTimeMS), [1_000, 1_020, 1_040, 1_060])
         XCTAssertEqual(window?.endpointRecordedTimeMS, 1_060)
         XCTAssertEqual(window?.endpointHostTimeMS, 10_060)
         XCTAssertEqual(window?.landmarkCount, 4)
+    }
+
+    func testAppendSortsOutOfOrderFramesBeforeGapDetection() {
+        var buffer = MicFeatureStreamBuffer(retentionDurationMS: 120, expectedHopMS: 20)
+
+        buffer.append([
+            makeFrame(recordedTimeMS: 1_040, hostTimeMS: 10_040, landmarkHashes: [13]),
+            makeFrame(recordedTimeMS: 1_000, hostTimeMS: 10_000, landmarkHashes: [11]),
+            makeFrame(recordedTimeMS: 1_020, hostTimeMS: 10_020, landmarkHashes: [12])
+        ])
+
+        let window = buffer.latestWindow(durationMS: 80)
+
+        XCTAssertEqual(buffer.continuityResetCount, 0)
+        XCTAssertEqual(buffer.latestRecordedTimeMS, 1_040)
+        XCTAssertEqual(window?.frames.map(\.recordedTimeMS), [1_000, 1_020, 1_040])
+        XCTAssertEqual(window?.landmarkCount, 3)
     }
 
     func testLatestWindowDoesNotCrossFeatureContinuityReset() {
