@@ -13,6 +13,7 @@
 		05D731648C444F05C9C38616 /* AmbientSyncEngineDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F918C570A525B811ACF4FC /* AmbientSyncEngineDiagnostics.swift */; };
 		06DDCFD6D8C1A39B8B77B06E /* LocalAudioLibraryDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75A5FB5A3BCAE43E8E2A529C /* LocalAudioLibraryDatabase.swift */; };
 		07A450E8EE9DEE0B31550226 /* AmbientSyncDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1174D86E91ECA19D27A820BC /* AmbientSyncDomain.swift */; };
+		0BA8176BBA4C75A73494B1F8 /* Mania4KGameplayFeedbackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FA59F1DABC4409F85E260D7 /* Mania4KGameplayFeedbackTests.swift */; };
 		0DEE6E284563F3714E560EC2 /* LocalAudioLibraryIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5991A36DCA3E62B56FC958F7 /* LocalAudioLibraryIndexer.swift */; };
 		0FF20CAC48AE2FCF00D82677 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 56EB7BD2459DEAB60737DD1E /* AVFoundation.framework */; };
 		0FF3A89698A64FC665C1EA12 /* RecognitionArchitecture.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEA92F2BB55484B411AD9D77 /* RecognitionArchitecture.swift */; };
@@ -33,6 +34,7 @@
 		325788A361B9162DEDC0F928 /* AmbientSyncFixtureRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37A31C8F9E6937A8CA29FAA3 /* AmbientSyncFixtureRecorder.swift */; };
 		329BB535F4258BD08E5083C1 /* DebugACRCloudRecognitionProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB648D517F669CA6872F7086 /* DebugACRCloudRecognitionProviderTests.swift */; };
 		35E05459BA1758B1B7E8477A /* MicFeaturePayloadExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0A2F8B94DABCCF88315C57 /* MicFeaturePayloadExtractor.swift */; };
+		3833A5B2D65F0A318E2343AE /* Mania4KGameplayFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16ECC150498EC7130F191895 /* Mania4KGameplayFeedback.swift */; };
 		3DFE6B740D0A897B64D2A42C /* LocalTrackResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D16F8F551D7CDA0B98C48AB /* LocalTrackResolver.swift */; };
 		3F1D36EFC2BF0CF0F7EB130B /* SystemAudioCaptureSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BF0A1D410B19C4728AE4349 /* SystemAudioCaptureSource.swift */; };
 		3FF7EAFB864A0A01EEB36C3D /* SystemAudioClipCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F705FE69D426FC405381CC13 /* SystemAudioClipCaptureService.swift */; };
@@ -213,6 +215,7 @@
 		13621072D594A7CD021F2B13 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		15115A0AE08C960A360BA635 /* MicFeatureStreamBufferTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicFeatureStreamBufferTests.swift; sourceTree = "<group>"; };
 		1566D4A2453B11FD004842DC /* mania-4k-play-experience-design.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "mania-4k-play-experience-design.md"; sourceTree = "<group>"; };
+		16ECC150498EC7130F191895 /* Mania4KGameplayFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mania4KGameplayFeedback.swift; sourceTree = "<group>"; };
 		17DCB31FB4118757EAD79704 /* PulsefieldCoreTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PulsefieldCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1828C7BE7D1353529A44AC64 /* InferenceEndpointWebSocketClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InferenceEndpointWebSocketClient.swift; sourceTree = "<group>"; };
 		1839C9D03AECACBE9D7880E8 /* ambient-sync-engine-stage-plan.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "ambient-sync-engine-stage-plan.md"; sourceTree = "<group>"; };
@@ -225,6 +228,7 @@
 		29923F0604586898F5BC337B /* LocalMusicDirectoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalMusicDirectoryStore.swift; sourceTree = "<group>"; };
 		29B6C98909AAEFF35D9B16F1 /* recognition-architecture.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "recognition-architecture.md"; sourceTree = "<group>"; };
 		2B9C3F3A44ABB51B7D053A8E /* AmbientSyncReferenceIndexBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncReferenceIndexBuilderTests.swift; sourceTree = "<group>"; };
+		2FA59F1DABC4409F85E260D7 /* Mania4KGameplayFeedbackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mania4KGameplayFeedbackTests.swift; sourceTree = "<group>"; };
 		3173DDC419C0938E1D24C676 /* PulsefieldACRCloudDebugCLI */ = {isa = PBXFileReference; includeInIndex = 0; path = PulsefieldACRCloudDebugCLI; sourceTree = BUILT_PRODUCTS_DIR; };
 		32340577D99A930BA703401F /* AmbientSyncEngineGates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncEngineGates.swift; sourceTree = "<group>"; };
 		323DAE9135C600CD9EF24DE1 /* AmbientSyncOffsetTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncOffsetTracker.swift; sourceTree = "<group>"; };
@@ -269,6 +273,7 @@
 		9AD875058E105B569F3F3F40 /* UnavailableRecognitionProviderClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnavailableRecognitionProviderClient.swift; sourceTree = "<group>"; };
 		9B4C1174D9F3E6865C67129B /* AudioClipCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioClipCaptureService.swift; sourceTree = "<group>"; };
 		9BAF8E8D435CA620D624CE54 /* Mania4KPlaySessionModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mania4KPlaySessionModelTests.swift; sourceTree = "<group>"; };
+		A32E38369E61ADB5DB38FCA3 /* mania-4k-gameplay-visual-feedback-spec.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "mania-4k-gameplay-visual-feedback-spec.md"; sourceTree = "<group>"; };
 		A387EEA1983387E2E36565AD /* PulsefieldCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = PulsefieldCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		A965E3EAFC5B81B62C56142A /* byo-music-recognition-ambient-matching-spec.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "byo-music-recognition-ambient-matching-spec.md"; sourceTree = "<group>"; };
 		A9C0AFD64ABA7C7C86048235 /* CascadingRecognitionServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CascadingRecognitionServiceTests.swift; sourceTree = "<group>"; };
@@ -296,6 +301,7 @@
 		E508A37754B1BA46F8326CE3 /* AmbientSyncOffsetHistogram.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncOffsetHistogram.swift; sourceTree = "<group>"; };
 		E522B477DC378F5CF8AB9C4C /* RecognitionServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionServiceProtocol.swift; sourceTree = "<group>"; };
 		E8F918C570A525B811ACF4FC /* AmbientSyncEngineDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncEngineDiagnostics.swift; sourceTree = "<group>"; };
+		EA77344F0B3C83B64A838B19 /* mania-4k-gameplay-visual-feedback-plan.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "mania-4k-gameplay-visual-feedback-plan.md"; sourceTree = "<group>"; };
 		EB648D517F669CA6872F7086 /* DebugACRCloudRecognitionProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugACRCloudRecognitionProviderTests.swift; sourceTree = "<group>"; };
 		EB7AFC1792774B07CAF50615 /* PulsefieldMac.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PulsefieldMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		ED4A20CA439FE4F3513DB1A2 /* CascadingRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CascadingRecognitionService.swift; sourceTree = "<group>"; };
@@ -392,6 +398,7 @@
 		0ADA427D0279624FD7001F4E /* Mania4K */ = {
 			isa = PBXGroup;
 			children = (
+				16ECC150498EC7130F191895 /* Mania4KGameplayFeedback.swift */,
 				552F8D0AE49927D0558A9DBC /* Mania4KOffsetCalibrationModel.swift */,
 				65931740476AF6B6432DB7FF /* Mania4KPlaySessionModel.swift */,
 			);
@@ -534,6 +541,7 @@
 				6F9387C5804051FD90CC2C18 /* known-track-ambient-sync-multi-stage-matching-spec.md */,
 				73B35F8D96050AB0DFD88478 /* local-music-matching-current-diagnostics.md */,
 				ABB4A7B3D34FA7A4C3FF6455 /* mania-4k-core-gameplay-contracts.md */,
+				A32E38369E61ADB5DB38FCA3 /* mania-4k-gameplay-visual-feedback-spec.md */,
 				B81A87963031612ECD437EB9 /* mania-4k-judgement-engine-spec.md */,
 				1566D4A2453B11FD004842DC /* mania-4k-play-experience-design.md */,
 				F9DD7295C58E266CD8B5F1EC /* real-path-recognition-ambient-sync-scene-design.md */,
@@ -569,6 +577,7 @@
 				B2E5A4D715D8CFE3E004CF00 /* LocalAudioLibraryIndexerTests.swift */,
 				22D44B66A82BA504E482BC78 /* LocalLibraryDashboardModelTests.swift */,
 				EE665E134535975B24A1E332 /* LocalTrackResolverTests.swift */,
+				2FA59F1DABC4409F85E260D7 /* Mania4KGameplayFeedbackTests.swift */,
 				81CE9B56AE5FDD881A5C4C60 /* Mania4KNoteRenderLayoutTests.swift */,
 				E245947146687B15D9DEC7BF /* Mania4KOffsetCalibrationModelTests.swift */,
 				9BAF8E8D435CA620D624CE54 /* Mania4KPlaySessionModelTests.swift */,
@@ -583,6 +592,7 @@
 			isa = PBXGroup;
 			children = (
 				1839C9D03AECACBE9D7880E8 /* ambient-sync-engine-stage-plan.md */,
+				EA77344F0B3C83B64A838B19 /* mania-4k-gameplay-visual-feedback-plan.md */,
 				333E4D546E88B031812D5CE9 /* mania-4k-ui-scene-research-plan.md */,
 			);
 			path = "execution-plan";
@@ -981,6 +991,7 @@
 				DDA020C2C77C3D38F434521F /* LocalAudioLibraryIndexerTests.swift in Sources */,
 				96727F336BF2101E88CF66B9 /* LocalLibraryDashboardModelTests.swift in Sources */,
 				BDDF99E1182F9FACB65B03C9 /* LocalTrackResolverTests.swift in Sources */,
+				0BA8176BBA4C75A73494B1F8 /* Mania4KGameplayFeedbackTests.swift in Sources */,
 				CB7D87478FF3F706E7CDF5E4 /* Mania4KNoteRenderLayoutTests.swift in Sources */,
 				A4AC1E68D0C2CF1A7357F537 /* Mania4KOffsetCalibrationModelTests.swift in Sources */,
 				5C3FAFADD702D6CFFE48A72B /* Mania4KPlaySessionModelTests.swift in Sources */,
@@ -1047,6 +1058,7 @@
 				2FDA8645F7D0651B0F796C44 /* LocalMusicDirectoryStore.swift in Sources */,
 				3DFE6B740D0A897B64D2A42C /* LocalTrackResolver.swift in Sources */,
 				BB04DF61AB24DA410A01CDE5 /* Mania4KDomain.swift in Sources */,
+				3833A5B2D65F0A318E2343AE /* Mania4KGameplayFeedback.swift in Sources */,
 				266E6E61B60E7AE54E6D6CEB /* Mania4KOffsetCalibrationModel.swift in Sources */,
 				1787F44AD3393A1EA967905E /* Mania4KPlaySessionModel.swift in Sources */,
 				35E05459BA1758B1B7E8477A /* MicFeaturePayloadExtractor.swift in Sources */,

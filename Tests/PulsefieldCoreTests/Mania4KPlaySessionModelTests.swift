@@ -770,6 +770,66 @@ final class Mania4KPlaySessionModelTests: XCTestCase {
         XCTAssertEqual(model.playFrame?.score.missCount, 0)
     }
 
+    func testSessionFeedbackKeepsNoteLockMissWhileLatestJudgementIsPerfect() async throws {
+        let model = try modelWithInMemoryChart(objects: [
+            tap(.left, 1_000),
+            tap(.left, 1_100)
+        ])
+        model.selectBeatmapFile(URL(fileURLWithPath: "/tmp/chart.osu"))
+        model.selectAudioFile(URL(fileURLWithPath: "/tmp/audio.mp3"))
+        let started = await model.startPlay()
+        XCTAssertTrue(started)
+
+        let handled = await model.handleInput(input(.left, .press, 1_100, 0))
+
+        XCTAssertTrue(handled)
+        XCTAssertEqual(model.playFrame?.latestJudgement?.judgement, .perfect)
+
+        let presentation = model.gameplayFeedback.judgementPresentation(atChartTimeMs: 1_100)
+        XCTAssertEqual(presentation?.event.judgement, .miss)
+        XCTAssertEqual(model.gameplayFeedback.judgementEventBatches.last?.events.map(\.judgement) ?? [], [.miss, .perfect])
+    }
+
+    func testSessionFeedbackRecordsAutoAdvancedMissWithoutInput() async throws {
+        let clock = FakeMania4KAudioClock()
+        let model = try modelWithInMemoryChart(objects: [tap(.left, 100)], clock: clock)
+        model.selectBeatmapFile(URL(fileURLWithPath: "/tmp/chart.osu"))
+        model.selectAudioFile(URL(fileURLWithPath: "/tmp/audio.mp3"))
+        let started = await model.startPlay()
+        XCTAssertTrue(started)
+
+        await clock.setAudioTimeMs(301)
+        let ticked = await model.tick()
+
+        XCTAssertTrue(ticked)
+        XCTAssertEqual(model.playFrame?.latestJudgement?.judgement, .miss)
+        let presentation = model.gameplayFeedback.judgementPresentation(
+            atChartTimeMs: model.playFrame?.gameplayChartTimeMs ?? 301
+        )
+        XCTAssertEqual(presentation?.event.judgement, .miss)
+    }
+
+    func testSessionKeyboardRepeatAndDuplicatePressDoNotUpdateLaneInputFeedbackTransition() async throws {
+        let model = try modelWithInMemoryChart(objects: [tap(.right, 10_000)])
+        model.selectBeatmapFile(URL(fileURLWithPath: "/tmp/chart.osu"))
+        model.selectAudioFile(URL(fileURLWithPath: "/tmp/audio.mp3"))
+        let started = await model.startPlay()
+        XCTAssertTrue(started)
+
+        let pressed = await model.handleKeyboardInput(key: "d", isPressed: true, isRepeat: false)
+        XCTAssertTrue(pressed)
+        let acceptedSequenceNumber = try XCTUnwrap(
+            model.gameplayFeedback.latestLaneInputTransitions[.left]?.sequenceNumber
+        )
+
+        let repeated = await model.handleKeyboardInput(key: "d", isPressed: true, isRepeat: true)
+        let duplicated = await model.handleKeyboardInput(key: "d", isPressed: true, isRepeat: false)
+
+        XCTAssertFalse(repeated)
+        XCTAssertFalse(duplicated)
+        XCTAssertEqual(model.gameplayFeedback.latestLaneInputTransitions[.left]?.sequenceNumber, acceptedSequenceNumber)
+    }
+
     func testSessionAudioLifecycleAwaitsClockTransitions() async throws {
         let clock = FakeMania4KAudioClock()
         let model = try modelWithInMemoryChart(objects: [tap(.left, 1_000)], clock: clock)
