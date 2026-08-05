@@ -31,6 +31,7 @@ public final class Mania4KPlaySessionModel {
     public private(set) var activeConfiguration: Mania4KPlayConfiguration?
     public private(set) var phase: Mania4KPlayPhase
     public private(set) var playFrame: Mania4KPlayFrame?
+    public private(set) var gameplayFeedback: Mania4KGameplayFeedbackState
     public private(set) var liveInputLaneStates: [Mania4KLaneState]
     public private(set) var backendSessionID: String?
     public private(set) var backendSessionStatus: String
@@ -89,6 +90,7 @@ public final class Mania4KPlaySessionModel {
         self.streamFactory = streamFactory
         self.inferenceEndpointClientFactory = inferenceEndpointClientFactory
         self.phase = .setup
+        self.gameplayFeedback = Mania4KGameplayFeedbackState()
         self.liveInputLaneStates = Self.makeLaneStates(pressedLanes: [])
         self.backendSessionID = nil
         self.backendSessionStatus = "Idle"
@@ -423,7 +425,11 @@ public final class Mania4KPlaySessionModel {
             if let currentEngine = engine {
                 preparedEngine = currentEngine
             }
-            _ = preparedEngine.advance(to: initialTiming.gameplayChartTimeMs)
+            let initialUpdate = preparedEngine.advance(to: initialTiming.gameplayChartTimeMs)
+            gameplayFeedback.recordJudgementEvents(
+                initialUpdate.judgementEvents,
+                atChartTimeMs: initialTiming.gameplayChartTimeMs
+            )
             engine = preparedEngine
             publishFrame(timing: initialTiming)
 
@@ -540,7 +546,11 @@ public final class Mania4KPlaySessionModel {
             }
 
             if var engine {
-                _ = engine.advance(to: timing.gameplayChartTimeMs)
+                let update = engine.advance(to: timing.gameplayChartTimeMs)
+                gameplayFeedback.recordJudgementEvents(
+                    update.judgementEvents,
+                    atChartTimeMs: timing.gameplayChartTimeMs
+                )
                 self.engine = engine
             }
 
@@ -577,6 +587,7 @@ public final class Mania4KPlaySessionModel {
             return false
         }
 
+        gameplayFeedback.recordInput(input, atUITimeMs: PulsefieldHostClock.currentTimeMS())
         commitLiveInputState(input)
         let handled = await enqueueGameplayInput(input, usesLiveChartTime: true)
         if !handled {
@@ -591,6 +602,7 @@ public final class Mania4KPlaySessionModel {
             return false
         }
 
+        gameplayFeedback.recordInput(input, atUITimeMs: PulsefieldHostClock.currentTimeMS())
         commitLiveInputState(input)
         let handled = await enqueueGameplayInput(input)
         if !handled {
@@ -701,7 +713,11 @@ public final class Mania4KPlaySessionModel {
         guard var engine else {
             return false
         }
-        _ = engine.handle(input)
+        let update = engine.handle(input)
+        gameplayFeedback.recordJudgementEvents(
+            update.judgementEvents,
+            atChartTimeMs: input.chartTimeMs
+        )
         self.engine = engine
         publishFrame(timing: frameTiming(gameplayChartTimeMs: input.chartTimeMs))
         return true
@@ -718,6 +734,7 @@ public final class Mania4KPlaySessionModel {
         metadata = nil
         audioMetadata = nil
         playFrame = nil
+        gameplayFeedback = Mania4KGameplayFeedbackState()
         phase = .setup
         streamCursor = nil
         streamCompleteThroughChartTimeMs = -.infinity
@@ -917,6 +934,7 @@ public final class Mania4KPlaySessionModel {
     }
 
     private func publishFrame(timing: Mania4KFrameTiming) {
+        gameplayFeedback.advanceJudgementTime(to: timing.gameplayChartTimeMs)
         guard let metadata, let engine else {
             return
         }
