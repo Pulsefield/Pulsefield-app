@@ -1286,7 +1286,7 @@ private struct Mania4KOffsetCalibrationView: View {
                 Mania4KLiveLaneView(
                     lane: calibrationLane,
                     frame: calibrationFrame,
-                    laneState: nil,
+                    brightness: Mania4KLaneFeedbackBrightness(receptor: 0, lane: 0),
                     noteColor: Mania4KStyle.accentGreen,
                     keyLabel: Mania4KOffsetCalibrationModel.calibrationKey.uppercased()
                 )
@@ -1911,28 +1911,36 @@ private struct Mania4KPlaySceneView: View {
             playHUD
 
             GeometryReader { proxy in
-                ZStack {
-                    LinearGradient(
-                        colors: [
-                            Mania4KStyle.stageFill,
-                            Color(red: 0.02, green: 0.025, blue: 0.035)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
+                TimelineView(.animation) { _ in
+                    let uiTimeMs = PulsefieldHostClock.currentTimeMS()
 
-                    Mania4KGridOverlay(spacing: 42, opacity: 0.10)
+                    ZStack {
+                        LinearGradient(
+                            colors: [
+                                Mania4KStyle.stageFill,
+                                Color(red: 0.02, green: 0.025, blue: 0.035)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
 
-                    playField
-                        .frame(width: playFieldWidth(for: proxy.size.width))
-                        .padding(.bottom, 22)
+                        Mania4KGridOverlay(spacing: 42, opacity: 0.10)
 
-                    if let frame = model.playFrame, let latest = frame.latestJudgement {
-                        judgementBurst(for: latest)
-                            .position(x: proxy.size.width / 2, y: max(proxy.size.height * 0.34, 120))
+                        playField(atUITimeMs: uiTimeMs)
+                            .frame(width: playFieldWidth(for: proxy.size.width))
+                            .padding(.bottom, 22)
+
+                        if let frame = model.playFrame,
+                           let presentation = model.gameplayFeedback.judgementPresentation(atChartTimeMs: frame.gameplayChartTimeMs) {
+                            judgementBurst(for: presentation.event)
+                                .opacity(presentation.opacity)
+                                .scaleEffect(presentation.scale)
+                                .offset(y: presentation.verticalOffset)
+                                .position(x: proxy.size.width / 2, y: max(proxy.size.height * 0.34, 120))
+                        }
+
+                        overlayState
                     }
-
-                    overlayState
                 }
             }
         }
@@ -2039,7 +2047,7 @@ private struct Mania4KPlaySceneView: View {
         .frame(minWidth: 76, alignment: .trailing)
     }
 
-    private var playField: some View {
+    private func playField(atUITimeMs uiTimeMs: Double) -> some View {
         GeometryReader { proxy in
             let laneSpacing: CGFloat = 8
             let laneWidth = max((proxy.size.width - laneSpacing * 3) / 4, 48)
@@ -2049,7 +2057,7 @@ private struct Mania4KPlaySceneView: View {
                     Mania4KLiveLaneView(
                         lane: lane,
                         frame: model.playFrame,
-                        laneState: visualLaneState(for: lane),
+                        brightness: model.gameplayFeedback.laneBrightness(for: lane, atUITimeMs: uiTimeMs),
                         noteColor: noteColor(for: lane.rawValue),
                         keyLabel: model.keyBindings.displayLabel(for: lane)
                     )
@@ -2058,17 +2066,6 @@ private struct Mania4KPlaySceneView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         }
-    }
-
-    private func visualLaneState(for lane: Mania4KLane) -> Mania4KLaneState {
-        let frameState = model.playFrame?.laneStates.first(where: { $0.lane == lane })
-        let liveState = model.liveInputLaneStates.first(where: { $0.lane == lane })
-
-        return Mania4KLaneState(
-            lane: lane,
-            isPressed: liveState?.isPressed ?? frameState?.isPressed ?? false,
-            holdingObjectID: frameState?.holdingObjectID
-        )
     }
 
     @ViewBuilder
@@ -2194,16 +2191,9 @@ private struct Mania4KPlaySceneView: View {
 private struct Mania4KLiveLaneView: View {
     let lane: Mania4KLane
     let frame: Mania4KPlayFrame?
-    let laneState: Mania4KLaneState?
+    let brightness: Mania4KLaneFeedbackBrightness
     let noteColor: Color
     let keyLabel: String
-
-    @State private var pressHighlight = 0.0
-    @State private var releaseAfterglow = 0.0
-
-    private var isPressed: Bool {
-        laneState?.isPressed == true
-    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -2214,7 +2204,7 @@ private struct Mania4KLiveLaneView: View {
                     .fill(Mania4KStyle.laneFill)
 
                 Rectangle()
-                    .fill(noteColor.opacity(0.22 * pressHighlight + 0.06 * releaseAfterglow))
+                    .fill(noteColor.opacity(brightness.lane))
                     .blendMode(.plusLighter)
 
                 if let frame {
@@ -2230,7 +2220,7 @@ private struct Mania4KLiveLaneView: View {
                     .frame(height: 58)
                     .overlay(
                         RoundedRectangle(cornerRadius: 5)
-                            .fill(noteColor.opacity(0.46 * pressHighlight + 0.10 * releaseAfterglow))
+                            .fill(noteColor.opacity(brightness.receptor))
                             .blendMode(.plusLighter)
                     )
                     .overlay(
@@ -2250,13 +2240,6 @@ private struct Mania4KLiveLaneView: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(noteColor.opacity(0.22), lineWidth: 1)
         )
-        .onAppear {
-            pressHighlight = isPressed ? 1 : 0
-            releaseAfterglow = 0
-        }
-        .onChange(of: isPressed) { _, newValue in
-            animatePressFeedback(isPressed: newValue)
-        }
     }
 
     private var receptorLine: some View {
@@ -2304,22 +2287,6 @@ private struct Mania4KLiveLaneView: View {
             .shadow(color: noteColor.opacity(0.45), radius: 10, x: 0, y: 0)
     }
 
-    private func animatePressFeedback(isPressed: Bool) {
-        if isPressed {
-            withAnimation(.timingCurve(0.20, 0.95, 0.35, 1.0, duration: 0.035)) {
-                pressHighlight = 1
-                releaseAfterglow = 0
-            }
-        } else {
-            releaseAfterglow = max(releaseAfterglow, pressHighlight)
-            withAnimation(.timingCurve(0.16, 0.0, 0.35, 1.0, duration: 0.055)) {
-                pressHighlight = 0
-            }
-            withAnimation(.easeOut(duration: 0.12)) {
-                releaseAfterglow = 0
-            }
-        }
-    }
 }
 
 struct Mania4KNoteRenderLayout {
