@@ -273,7 +273,6 @@
 		9AD875058E105B569F3F3F40 /* UnavailableRecognitionProviderClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnavailableRecognitionProviderClient.swift; sourceTree = "<group>"; };
 		9B4C1174D9F3E6865C67129B /* AudioClipCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioClipCaptureService.swift; sourceTree = "<group>"; };
 		9BAF8E8D435CA620D624CE54 /* Mania4KPlaySessionModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mania4KPlaySessionModelTests.swift; sourceTree = "<group>"; };
-		A32E38369E61ADB5DB38FCA3 /* mania-4k-gameplay-visual-feedback-spec.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "mania-4k-gameplay-visual-feedback-spec.md"; sourceTree = "<group>"; };
 		A387EEA1983387E2E36565AD /* PulsefieldCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = PulsefieldCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		A965E3EAFC5B81B62C56142A /* byo-music-recognition-ambient-matching-spec.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "byo-music-recognition-ambient-matching-spec.md"; sourceTree = "<group>"; };
 		A9C0AFD64ABA7C7C86048235 /* CascadingRecognitionServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CascadingRecognitionServiceTests.swift; sourceTree = "<group>"; };
@@ -301,7 +300,6 @@
 		E508A37754B1BA46F8326CE3 /* AmbientSyncOffsetHistogram.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncOffsetHistogram.swift; sourceTree = "<group>"; };
 		E522B477DC378F5CF8AB9C4C /* RecognitionServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionServiceProtocol.swift; sourceTree = "<group>"; };
 		E8F918C570A525B811ACF4FC /* AmbientSyncEngineDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncEngineDiagnostics.swift; sourceTree = "<group>"; };
-		EA77344F0B3C83B64A838B19 /* mania-4k-gameplay-visual-feedback-plan.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "mania-4k-gameplay-visual-feedback-plan.md"; sourceTree = "<group>"; };
 		EB648D517F669CA6872F7086 /* DebugACRCloudRecognitionProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugACRCloudRecognitionProviderTests.swift; sourceTree = "<group>"; };
 		EB7AFC1792774B07CAF50615 /* PulsefieldMac.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PulsefieldMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		ED4A20CA439FE4F3513DB1A2 /* CascadingRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CascadingRecognitionService.swift; sourceTree = "<group>"; };
@@ -541,7 +539,6 @@
 				6F9387C5804051FD90CC2C18 /* known-track-ambient-sync-multi-stage-matching-spec.md */,
 				73B35F8D96050AB0DFD88478 /* local-music-matching-current-diagnostics.md */,
 				ABB4A7B3D34FA7A4C3FF6455 /* mania-4k-core-gameplay-contracts.md */,
-				A32E38369E61ADB5DB38FCA3 /* mania-4k-gameplay-visual-feedback-spec.md */,
 				B81A87963031612ECD437EB9 /* mania-4k-judgement-engine-spec.md */,
 				1566D4A2453B11FD004842DC /* mania-4k-play-experience-design.md */,
 				F9DD7295C58E266CD8B5F1EC /* real-path-recognition-ambient-sync-scene-design.md */,
@@ -592,7 +589,6 @@
 			isa = PBXGroup;
 			children = (
 				1839C9D03AECACBE9D7880E8 /* ambient-sync-engine-stage-plan.md */,
-				EA77344F0B3C83B64A838B19 /* mania-4k-gameplay-visual-feedback-plan.md */,
 				333E4D546E88B031812D5CE9 /* mania-4k-ui-scene-research-plan.md */,
 			);
 			path = "execution-plan";
