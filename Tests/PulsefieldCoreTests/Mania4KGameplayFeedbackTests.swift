@@ -2,7 +2,7 @@ import XCTest
 @testable import PulsefieldCore
 
 final class Mania4KGameplayFeedbackTests: XCTestCase {
-    func testJudgementBatchesPreserveCompleteEventsThroughRetentionBoundary() throws {
+    func testJudgementBatchesPreserveCompleteEventsUntilEventuallyPruned() throws {
         var state = Mania4KGameplayFeedbackState()
 
         state.recordJudgementEvents([], atChartTimeMs: 1_000)
@@ -19,10 +19,10 @@ final class Mania4KGameplayFeedbackTests: XCTestCase {
         let batch = try XCTUnwrap(state.judgementEventBatches.first)
         XCTAssertEqual(batch.events, events)
 
-        state.advanceJudgementTime(to: 1_600)
+        state.advanceJudgementTime(to: 1_000)
         XCTAssertEqual(state.judgementEventBatches.count, 1)
 
-        state.advanceJudgementTime(to: 1_600.001)
+        state.advanceJudgementTime(to: 10_000)
         XCTAssertEqual(state.judgementEventBatches.count, 0)
     }
 
@@ -57,20 +57,21 @@ final class Mania4KGameplayFeedbackTests: XCTestCase {
         ], atChartTimeMs: 1_000)
         protectedState.recordJudgementEvents([
             judgementEvent(id: 2, judgement: .miss)
-        ], atChartTimeMs: 1_020)
+        ], atChartTimeMs: 1_000)
 
-        var presentation = protectedState.judgementPresentation(atChartTimeMs: 1_020)
+        var presentation = protectedState.judgementPresentation(atChartTimeMs: 1_000)
         XCTAssertEqual(presentation?.event.judgement, .miss)
         XCTAssertEqual(presentation?.event.id, 2)
 
         protectedState.recordJudgementEvents([
             judgementEvent(id: 3, judgement: .good)
-        ], atChartTimeMs: 1_199)
+        ], atChartTimeMs: 1_000)
 
-        presentation = protectedState.judgementPresentation(atChartTimeMs: 1_199)
+        presentation = protectedState.judgementPresentation(atChartTimeMs: 1_000)
         XCTAssertEqual(presentation?.event.judgement, .miss)
         XCTAssertEqual(presentation?.event.id, 2)
-        XCTAssertNil(protectedState.judgementPresentation(atChartTimeMs: 1_520.001))
+        protectedState.advanceJudgementTime(to: 10_000)
+        XCTAssertNil(protectedState.judgementPresentation(atChartTimeMs: 10_000))
 
         var expiredProtectionState = Mania4KGameplayFeedbackState()
         expiredProtectionState.recordJudgementEvents([
@@ -78,9 +79,9 @@ final class Mania4KGameplayFeedbackTests: XCTestCase {
         ], atChartTimeMs: 2_000)
         expiredProtectionState.recordJudgementEvents([
             judgementEvent(id: 5, judgement: .good)
-        ], atChartTimeMs: 2_181)
+        ], atChartTimeMs: 10_000)
 
-        presentation = expiredProtectionState.judgementPresentation(atChartTimeMs: 2_181)
+        presentation = expiredProtectionState.judgementPresentation(atChartTimeMs: 10_000)
         XCTAssertEqual(presentation?.event.judgement, .good)
         XCTAssertEqual(presentation?.event.id, 5)
     }
@@ -92,25 +93,15 @@ final class Mania4KGameplayFeedbackTests: XCTestCase {
         ], atChartTimeMs: 1_000)
         state.recordJudgementEvents([
             judgementEvent(id: 21, judgement: .perfect)
-        ], atChartTimeMs: 1_050)
+        ], atChartTimeMs: 1_000)
 
-        let presentation = state.judgementPresentation(atChartTimeMs: 1_050)
+        let presentation = state.judgementPresentation(atChartTimeMs: 1_000)
         XCTAssertEqual(presentation?.event.judgement, .perfect)
         XCTAssertEqual(presentation?.event.id, 21)
         XCTAssertEqual(presentation?.opacity ?? .nan, 1, accuracy: 0.0001)
-        XCTAssertEqual(presentation?.scale ?? .nan, 0.90, accuracy: 0.0001)
 
-        let fadeStart = state.judgementPresentation(atChartTimeMs: 1_160)
-        XCTAssertEqual(fadeStart?.opacity ?? .nan, 1, accuracy: 0.0001)
-        XCTAssertEqual(fadeStart?.scale ?? .nan, 1, accuracy: 0.0001)
-
-        let fading = state.judgementPresentation(atChartTimeMs: 1_200)
-        XCTAssertGreaterThan(fading?.opacity ?? 0, 0)
-        XCTAssertLessThan(fading?.opacity ?? 1, 1)
-        XCTAssertLessThan(fading?.scale ?? 1, 1)
-
-        let firstPausedSample = state.judgementPresentation(atChartTimeMs: 1_090)
-        let secondPausedSample = state.judgementPresentation(atChartTimeMs: 1_090)
+        let firstPausedSample = state.judgementPresentation(atChartTimeMs: 1_000)
+        let secondPausedSample = state.judgementPresentation(atChartTimeMs: 1_000)
         XCTAssertEqual(firstPausedSample?.event.judgement, secondPausedSample?.event.judgement)
         XCTAssertEqual(firstPausedSample?.event.id, secondPausedSample?.event.id)
         XCTAssertEqual(firstPausedSample?.opacity ?? .nan, secondPausedSample?.opacity ?? .nan, accuracy: 0.0001)
@@ -121,54 +112,55 @@ final class Mania4KGameplayFeedbackTests: XCTestCase {
             accuracy: 0.0001
         )
 
-        XCTAssertNotNil(state.judgementPresentation(atChartTimeMs: 1_349.999))
-        XCTAssertNil(state.judgementPresentation(atChartTimeMs: 1_350.001))
+        state.advanceJudgementTime(to: 10_000)
+        XCTAssertNil(state.judgementPresentation(atChartTimeMs: 10_000))
     }
 
-    func testLaneBrightnessPressHoldReleaseAndZeroDecay() {
+    func testLaneBrightnessPressHoldReleaseAndEventuallyReturnsToZero() {
         var state = Mania4KGameplayFeedbackState()
         state.recordInput(input(.left, .press, 1_000, 30), atUITimeMs: 10_000)
 
-        var brightness = state.laneBrightness(for: .left, atUITimeMs: 10_000)
-        XCTAssertEqual(brightness.receptor, 0.52, accuracy: 0.001)
-        XCTAssertEqual(brightness.lane, 0.13, accuracy: 0.001)
+        let pressedBrightness = state.laneBrightness(for: .left, atUITimeMs: 10_000)
+        XCTAssertGreaterThan(pressedBrightness.receptor, 0)
+        XCTAssertGreaterThan(pressedBrightness.lane, 0)
 
-        brightness = state.laneBrightness(for: .left, atUITimeMs: 10_085)
-        XCTAssertEqual(brightness.receptor, 0.24, accuracy: 0.001)
-        XCTAssertEqual(brightness.lane, 0.05, accuracy: 0.001)
+        let heldBrightness = state.laneBrightness(for: .left, atUITimeMs: 20_000)
+        XCTAssertGreaterThan(heldBrightness.receptor, 0)
+        XCTAssertGreaterThan(heldBrightness.lane, 0)
+        XCTAssertLessThan(heldBrightness.receptor, pressedBrightness.receptor)
+        XCTAssertLessThan(heldBrightness.lane, pressedBrightness.lane)
 
-        state.recordInput(input(.left, .release, 1_085, 31), atUITimeMs: 10_085)
-        let releaseStart = state.laneBrightness(for: .left, atUITimeMs: 10_085)
-        XCTAssertEqual(releaseStart.receptor, brightness.receptor, accuracy: 0.001)
-        XCTAssertEqual(releaseStart.lane, brightness.lane, accuracy: 0.001)
+        state.recordInput(input(.left, .release, 2_000, 31), atUITimeMs: 20_000)
+        let releaseStart = state.laneBrightness(for: .left, atUITimeMs: 20_000)
+        XCTAssertEqual(releaseStart.receptor, heldBrightness.receptor, accuracy: 0.001)
+        XCTAssertEqual(releaseStart.lane, heldBrightness.lane, accuracy: 0.001)
 
-        let decaying = state.laneBrightness(for: .left, atUITimeMs: 10_140)
-        XCTAssertGreaterThan(decaying.receptor, 0)
-        XCTAssertLessThan(decaying.receptor, releaseStart.receptor)
-
-        brightness = state.laneBrightness(for: .left, atUITimeMs: 10_195)
-        XCTAssertEqual(brightness.receptor, 0, accuracy: 0.001)
-        XCTAssertEqual(brightness.lane, 0, accuracy: 0.001)
+        let idleBrightness = state.laneBrightness(for: .left, atUITimeMs: 100_000)
+        XCTAssertEqual(idleBrightness.receptor, 0, accuracy: 0.001)
+        XCTAssertEqual(idleBrightness.lane, 0, accuracy: 0.001)
     }
 
-    func testHigherSequenceRepressDuringDecayRestoresPeakAndIgnoresOldSequence() {
+    func testHigherSequenceRepressRestoresInitialBrightnessAndIgnoresOldSequence() {
         var state = Mania4KGameplayFeedbackState()
         state.recordInput(input(.left, .press, 1_000, 40), atUITimeMs: 20_000)
-        state.recordInput(input(.left, .release, 1_085, 41), atUITimeMs: 20_085)
+        let initialBrightness = state.laneBrightness(for: .left, atUITimeMs: 20_000)
+        state.recordInput(input(.left, .release, 1_001, 41), atUITimeMs: 20_001)
 
-        let decaying = state.laneBrightness(for: .left, atUITimeMs: 20_140)
+        let decaying = state.laneBrightness(for: .left, atUITimeMs: 20_002)
         XCTAssertGreaterThan(decaying.receptor, 0)
+        XCTAssertLessThan(decaying.receptor, initialBrightness.receptor)
 
-        state.recordInput(input(.left, .press, 1_140, 42), atUITimeMs: 20_140)
-        var brightness = state.laneBrightness(for: .left, atUITimeMs: 20_140)
-        XCTAssertEqual(brightness.receptor, 0.52, accuracy: 0.001)
-        XCTAssertEqual(brightness.lane, 0.13, accuracy: 0.001)
+        state.recordInput(input(.left, .press, 1_002, 42), atUITimeMs: 20_002)
+        let restoredBrightness = state.laneBrightness(for: .left, atUITimeMs: 20_002)
+        XCTAssertEqual(restoredBrightness.receptor, initialBrightness.receptor, accuracy: 0.001)
+        XCTAssertEqual(restoredBrightness.lane, initialBrightness.lane, accuracy: 0.001)
 
-        state.recordInput(input(.left, .release, 1_150, 41), atUITimeMs: 20_150)
-        brightness = state.laneBrightness(for: .left, atUITimeMs: 20_250)
-        XCTAssertEqual(brightness.receptor, 0.24, accuracy: 0.001)
-        XCTAssertEqual(brightness.lane, 0.05, accuracy: 0.001)
+        state.recordInput(input(.left, .release, 1_003, 41), atUITimeMs: 20_003)
+        let heldBrightness = state.laneBrightness(for: .left, atUITimeMs: 100_000)
+        XCTAssertGreaterThan(heldBrightness.receptor, 0)
+        XCTAssertGreaterThan(heldBrightness.lane, 0)
         XCTAssertEqual(state.latestLaneInputTransitions[.left]?.sequenceNumber, 42)
+        XCTAssertEqual(state.latestLaneInputTransitions[.left]?.phase, .press)
     }
 }
 

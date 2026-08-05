@@ -335,24 +335,24 @@ private struct JudgementPresentationParameters: Equatable, Sendable {
         switch judgement {
         case .perfect:
             self.pulseMs = 60
-            self.fadeStartMs = 110
-            self.endMs = 300
+            self.fadeStartMs = 180
+            self.endMs = 280
             self.protectionMs = 0
             self.startScale = 0.90
             self.endScale = 0.98
             self.endVerticalOffset = 0
         case .good:
             self.pulseMs = 70
-            self.fadeStartMs = 130
-            self.endMs = 360
+            self.fadeStartMs = 200
+            self.endMs = 320
             self.protectionMs = 80
             self.startScale = 0.90
             self.endScale = 0.98
             self.endVerticalOffset = 0
         case .miss:
             self.pulseMs = 70
-            self.fadeStartMs = 180
-            self.endMs = 500
+            self.fadeStartMs = 260
+            self.endMs = 400
             self.protectionMs = 180
             self.startScale = 1.08
             self.endScale = 0.98
