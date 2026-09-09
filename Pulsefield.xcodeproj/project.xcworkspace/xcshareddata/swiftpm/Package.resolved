@@ -1,0 +1,23 @@
+{
+  "pins": [
+    {
+      "identity": "sonalign",
+      "kind": "remoteSourceControl",
+      "location": "https://github.com/Pulsefield/sonalign",
+      "state": {
+        "revision": "79a2a519f533624f74e4806e5156e93aa02eba0c",
+        "version": "0.1.0"
+      }
+    },
+    {
+      "identity": "swift-protobuf",
+      "kind": "remoteSourceControl",
+      "location": "https://github.com/apple/swift-protobuf.git",
+      "state": {
+        "revision": "f6506eaa86ed2e01cb0ae14a75035b7fdbf0918f",
+        "version": "1.38.0"
+      }
+    }
+  ],
+  "version": 2
+}

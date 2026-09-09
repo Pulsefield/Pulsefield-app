@@ -1,5 +1,5 @@
 ---
-commit: c4e4d1127c42d945cab919567b12bd1b6f015e1e
+commit: 82381d34e8166050531919b070131117bb1e13ee
 ---
 
 # Pulsefield
@@ -40,7 +40,7 @@ The local library and manual beatmap loading paths exist to support and verify t
 - Normalize ACRCloud matches into Pulsefield recognition snapshots and canonical track queries.
 - Resolve the recognized track against the local library and require confirmation when the match is ambiguous.
 - Build an ambient sync reference index from the selected local asset.
-- Run live microphone feature extraction and multi-stage ambient sync until a final lock is reached.
+- Run live microphone feature extraction and Sonalign alignment until a final lock is reached.
 - Send the selected audio path and locked reference time to the configured inference websocket.
 - Receive and buffer hit-object tokens from the inference endpoint for streaming readiness diagnostics.
 
@@ -101,6 +101,34 @@ xcodebuild -scheme PulsefieldMac -destination 'platform=macOS' test
 xcodebuild -scheme PulsefieldiOS -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO
 xcodebuild -scheme PulsefieldACRCloudDebugCLI -destination 'platform=macOS' build
 ```
+
+## Sonalign dependency
+
+`PulsefieldCore` consumes [Sonalign 0.1.0](https://github.com/Pulsefield/sonalign/releases/tag/v0.1.0)
+as an exact SwiftPM dependency in `project.yml`. Xcode downloads the released Apple
+XCFramework and verifies its pinned checksum. Building the app needs neither a local
+Sonalign checkout nor a Rust toolchain.
+
+`AmbientSyncSessionEngine` uses Sonalign for the default V2 live and fixture replay
+paths. Capture, decoding, resampling, PCEN extraction and recorded-time propagation
+remain in Pulsefield. Each native session is serialized on its processing worker;
+processing errors invalidate the session and propagate to the existing failure path.
+The Swift engine remains the comparison oracle and the backend for V1 or custom
+configurations that Sonalign's current Swift API cannot express. Diagnostics absent
+from the released API remain unavailable.
+
+The optional parity tool installs the released Rust CLI from crates.io and compares
+it with the Swift oracle using identical feature windows:
+
+```sh
+cargo install sonalign --version 0.1.0 --locked --root .build/sonalign
+python3 Tools/check_sonalign_parity.py --suites synthetic
+```
+
+Omit `--suites synthetic` to include the local private fixture corpus. CI runs the
+synthetic comparison. To upgrade Sonalign, update the exact version in `project.yml`,
+the CLI version in the parity tool/workflow, regenerate the Xcode project and resolve
+packages, then run the app tests and parity comparison before committing the new pin.
 
 ## Recognition configuration
 

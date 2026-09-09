@@ -796,14 +796,14 @@ public extension AmbientSyncFixtureReplayRunner where ReferenceIndex == AmbientS
                 try builder.index(forSourceURL: input.fixture.targetAudioURL)
             },
             engineFactory: { input in
-                let engineBox = AmbientSyncEngineReplayBox(
-                    AmbientSyncEngine(
+                let engineBox = try AmbientSyncEngineReplayBox(
+                    AmbientSyncSessionEngine(
                         referenceIndex: input.referenceIndex,
                         configuration: engineConfiguration
                     )
                 )
                 return AmbientSyncFixtureReplayEngine<AmbientSyncReferenceIndex> { engineInput in
-                    engineBox.process(
+                    try engineBox.process(
                         queryWindow: engineInput.queryWindow,
                         elapsedMS: engineInput.elapsedMS
                     )
@@ -814,23 +814,25 @@ public extension AmbientSyncFixtureReplayRunner where ReferenceIndex == AmbientS
 }
 
 private final class AmbientSyncEngineReplayBox: @unchecked Sendable {
+    // The factory transfers exclusive session ownership here; every processing
+    // call is serialized, and the native handle never escapes the box.
     private let lock = NSLock()
-    private var engine: AmbientSyncEngine
+    private let engine: AmbientSyncSessionEngine
 
-    init(_ engine: AmbientSyncEngine) {
+    init(_ engine: AmbientSyncSessionEngine) {
         self.engine = engine
     }
 
     func process(
         queryWindow: MicFeatureWindow,
         elapsedMS: Double
-    ) -> AmbientSyncSnapshot {
+    ) throws -> AmbientSyncSnapshot {
         lock.lock()
         defer {
             lock.unlock()
         }
 
-        return engine.process(
+        return try engine.process(
             queryWindow: queryWindow,
             elapsedMS: elapsedMS
         )

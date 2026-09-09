@@ -277,7 +277,9 @@ public final class LiveRecognitionSyncModel {
         statusMessage = "Starting ambient sync"
         flowTask = Task { [weak self] in
             await self?.startAmbientSync(for: selectedResolveResult.asset, musicSource: selectedMusicSource)
-            self?.flowTask = nil
+            if !Task.isCancelled {
+                self?.flowTask = nil
+            }
         }
     }
 
@@ -441,10 +443,11 @@ public final class LiveRecognitionSyncModel {
     private func startAmbientSync(for asset: LocalAudioAsset, musicSource: MusicSource) async {
         await stopAmbientSyncAndWait(markStopped: false)
         guard !Task.isCancelled else {
-            flowTask = nil
             return
         }
 
+        let sessionID = UUID()
+        ambientSessionID = sessionID
         ambientReferenceAsset = asset
         didRequestPlaySessionForAmbientLock = false
         startInferenceSession(for: asset, musicSource: musicSource)
@@ -458,7 +461,7 @@ public final class LiveRecognitionSyncModel {
                 try builder.index(forSourceDisplayPath: sourceDisplayPath)
             }.value
 
-            try Task.checkCancellation()
+            try requireCurrentAmbientStart(sessionID: sessionID)
 
             referenceSummary = AmbientReferenceSummary(
                 assetFileName: asset.fileName,
@@ -468,18 +471,35 @@ public final class LiveRecognitionSyncModel {
                 landmarkCount: referenceIndex.landmarks.count
             )
 
-            try await startAmbientStream(referenceIndex: referenceIndex, musicSource: musicSource)
-            latestAmbientSnapshot = nil
-            ambientUpdateCount = 0
-            latestFrameBatchCount = 0
-            phase = .ambientSyncing
-            statusMessage = "Ambient sync listening"
-        } catch is CancellationError {
-            stopInferenceSession(markStopped: false)
+            try await startAmbientStream(referenceIndex: referenceIndex, musicSource: musicSource, sessionID: sessionID)
+            try completeAmbientStart(sessionID: sessionID)
+        } catch {
+            failAmbientStart(error, sessionID: sessionID)
+        }
+    }
+
+    private func requireCurrentAmbientStart(sessionID: UUID) throws {
+        try Task.checkCancellation()
+        guard ambientSessionID == sessionID else { throw CancellationError() }
+    }
+
+    private func completeAmbientStart(sessionID: UUID) throws {
+        try requireCurrentAmbientStart(sessionID: sessionID)
+        latestAmbientSnapshot = nil
+        ambientUpdateCount = 0
+        latestFrameBatchCount = 0
+        phase = .ambientSyncing
+        statusMessage = "Ambient sync listening"
+    }
+
+    private func failAmbientStart(_ error: Error, sessionID: UUID) {
+        guard ambientSessionID == sessionID else { return }
+        ambientSessionID = nil
+        stopInferenceSession(markStopped: false)
+        if error is CancellationError {
             statusMessage = "Stopped"
             phase = .idle
-        } catch {
-            stopInferenceSession(markStopped: false)
+        } else {
             fail(error.localizedDescription)
         }
     }
@@ -505,7 +525,12 @@ public final class LiveRecognitionSyncModel {
         }
     }
 
-    private func startAmbientStream(referenceIndex: AmbientSyncReferenceIndex, musicSource: MusicSource) async throws {
+    private func startAmbientStream(
+        referenceIndex: AmbientSyncReferenceIndex,
+        musicSource: MusicSource,
+        sessionID: UUID
+    ) async throws {
+        try requireCurrentAmbientStart(sessionID: sessionID)
         let featureConfiguration = referenceIndex.featureConfiguration
         let streamConfiguration = AmbientMicFeatureStreamService.Configuration(
             retentionDurationMS: featureConfiguration.finalLockTargetDurationMS + 1_000,
@@ -514,6 +539,7 @@ public final class LiveRecognitionSyncModel {
             featureHopSizeSamples: featureConfiguration.featureHopSizeSamples
         )
         let session = LiveAmbientSyncSession(
+            id: sessionID,
             referenceIndex: referenceIndex,
             streamConfiguration: streamConfiguration,
             musicSource: musicSource,
@@ -528,14 +554,10 @@ public final class LiveRecognitionSyncModel {
                 }
             }
         )
-        ambientSessionID = session.id
-
         do {
             try await session.start()
+            try requireCurrentAmbientStart(sessionID: sessionID)
         } catch {
-            if ambientSessionID == session.id {
-                ambientSessionID = nil
-            }
             await session.stopAndWait()
             throw error
         }
@@ -587,18 +609,21 @@ public final class LiveRecognitionSyncModel {
         ambientSession?.stop()
         ambientSession = nil
         ambientReferenceAsset = nil
+        latestAmbientSnapshot = nil
+        ambientReferencePlaybackAnchor = nil
         didRequestPlaySessionForAmbientLock = false
         stopInferenceSession(markStopped: false)
-        fail("Ambient audio capture failed: \(error.localizedDescription)")
+        fail("Ambient sync failed: \(error.localizedDescription)")
     }
 
     #if DEBUG
+    @discardableResult
     func debugInjectAmbientSyncState(
         referenceSummary: AmbientReferenceSummary,
         snapshot: AmbientSyncSnapshot,
         updateCount: Int,
         frameBatchCount: Int
-    ) {
+    ) -> UUID {
         self.referenceSummary = referenceSummary
         latestAmbientSnapshot = snapshot
         ambientReferencePlaybackAnchor = snapshot.estimate.map {
@@ -610,8 +635,18 @@ public final class LiveRecognitionSyncModel {
         }
         ambientUpdateCount = updateCount
         latestFrameBatchCount = frameBatchCount
-        ambientSessionID = UUID()
+        let sessionID = UUID()
+        ambientSessionID = sessionID
         phase = .ambientSyncing
+        return sessionID
+    }
+
+    func debugCompleteAmbientStart(sessionID: UUID) throws {
+        try completeAmbientStart(sessionID: sessionID)
+    }
+
+    func debugFailAmbientStart(_ error: Error, sessionID: UUID) {
+        failAmbientStart(error, sessionID: sessionID)
     }
 
     func debugApplyAmbientFinalLock(
@@ -1666,16 +1701,16 @@ private struct FlowStepBadge: View {
 private actor LiveAmbientSyncRuntime {
     private static let matchingProcessIntervalMS = 100.0
 
-    private var engine: AmbientSyncEngine
+    private let referenceIndex: AmbientSyncReferenceIndex
+    private var engine: AmbientSyncSessionEngine?
     private var streamBuffer: MicFeatureStreamBuffer
     private var processScheduler: LiveAmbientSyncProcessScheduler
     private let queryDurationMS: Double
     private let startedHostTimeMS = PulsefieldHostClock.currentTimeMS()
 
     init(referenceIndex: AmbientSyncReferenceIndex) {
-        let engine = AmbientSyncEngine(referenceIndex: referenceIndex)
-        let featureConfiguration = engine.configuration.featureConfiguration
-        self.engine = engine
+        let featureConfiguration = referenceIndex.featureConfiguration
+        self.referenceIndex = referenceIndex
         self.queryDurationMS = featureConfiguration.finalLockTargetDurationMS
         self.streamBuffer = MicFeatureStreamBuffer(
             retentionDurationMS: featureConfiguration.finalLockTargetDurationMS + 1_000,
@@ -1686,16 +1721,30 @@ private actor LiveAmbientSyncRuntime {
         )
     }
 
+    func prepare() throws {
+        // Await construction on this worker before starting capture, so an
+        // initialization failure cannot race the UI's transition to listening.
+        try Task.checkCancellation()
+        let preparedEngine = try AmbientSyncSessionEngine(referenceIndex: referenceIndex)
+        try Task.checkCancellation()
+        engine = preparedEngine
+    }
+
+    func discardPreparedEngine() {
+        engine = nil
+    }
+
     func run(
         frameStream: AsyncStream<[MicFeatureFrame]>,
         onUpdate: @escaping @Sendable (LiveAmbientSyncUpdate) async -> Void
-    ) async {
+    ) async throws {
+        defer { engine = nil }
         for await frames in frameStream {
             guard !Task.isCancelled else {
                 return
             }
 
-            guard let update = append(frames: frames) else {
+            guard let update = try append(frames: frames) else {
                 continue
             }
 
@@ -1707,7 +1756,7 @@ private actor LiveAmbientSyncRuntime {
         }
     }
 
-    private func append(frames: [MicFeatureFrame]) -> LiveAmbientSyncUpdate? {
+    private func append(frames: [MicFeatureFrame]) throws -> LiveAmbientSyncUpdate? {
         guard !Task.isCancelled else {
             return nil
         }
@@ -1731,7 +1780,8 @@ private actor LiveAmbientSyncRuntime {
         let processStartedHostTimeMS = PulsefieldHostClock.currentTimeMS()
         let elapsedMS = processStartedHostTimeMS - startedHostTimeMS
         // This full ambient matching pass is CPU-heavy when called for every mic feature batch.
-        let snapshot = engine.process(queryWindow: queryWindow, elapsedMS: elapsedMS)
+        guard let engine else { return nil }
+        let snapshot = try engine.process(queryWindow: queryWindow, elapsedMS: elapsedMS)
         let receivedHostTimeMS = PulsefieldHostClock.currentTimeMS()
         return LiveAmbientSyncUpdate(
             snapshot: snapshot,
@@ -1797,7 +1847,7 @@ struct LiveAmbientSyncProcessScheduler: Equatable, Sendable {
 }
 
 private final class LiveAmbientSyncSession: @unchecked Sendable {
-    let id = UUID()
+    let id: UUID
 
     private let streamSource: LiveAmbientFeatureStreamSource
     private let runtime: LiveAmbientSyncRuntime
@@ -1808,12 +1858,14 @@ private final class LiveAmbientSyncSession: @unchecked Sendable {
     private var processingTask: Task<Void, Never>?
 
     init(
+        id: UUID,
         referenceIndex: AmbientSyncReferenceIndex,
         streamConfiguration: AmbientMicFeatureStreamService.Configuration,
         musicSource: MusicSource,
         onUpdate: @escaping @Sendable (LiveAmbientSyncUpdate, UUID) async -> Void,
         onFailure: @escaping @Sendable (Error, UUID) async -> Void
     ) {
+        self.id = id
         streamSource = LiveAmbientFeatureStreamSource(
             musicSource: musicSource,
             configuration: streamConfiguration
@@ -1828,6 +1880,13 @@ private final class LiveAmbientSyncSession: @unchecked Sendable {
     }
 
     func start() async throws {
+        do {
+            try await runtime.prepare()
+            try Task.checkCancellation()
+        } catch {
+            await runtime.discardPreparedEngine()
+            throw error
+        }
         var continuation: AsyncStream<[MicFeatureFrame]>.Continuation!
         let frameStream = AsyncStream<[MicFeatureFrame]> { streamContinuation in
             continuation = streamContinuation
@@ -1835,9 +1894,14 @@ private final class LiveAmbientSyncSession: @unchecked Sendable {
         let streamContinuation = continuation!
         frameContinuation = streamContinuation
 
-        processingTask = Task { [id, runtime, onUpdate] in
-            await runtime.run(frameStream: frameStream) { update in
-                await onUpdate(update, id)
+        processingTask = Task { [id, runtime, onUpdate, onFailure] in
+            do {
+                try await runtime.run(frameStream: frameStream) { update in
+                    await onUpdate(update, id)
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                await onFailure(error, id)
             }
         }
 
@@ -1850,6 +1914,7 @@ private final class LiveAmbientSyncSession: @unchecked Sendable {
                     self?.handleStreamFailure(error)
                 }
             )
+            try Task.checkCancellation()
         } catch {
             await stopAndWait()
             throw error

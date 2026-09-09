@@ -1,0 +1,42 @@
+name: Sonalign release parity
+
+on:
+  push:
+    paths:
+      - 'project.yml'
+      - 'Tools/check_sonalign_parity.py'
+      - 'Tools/swift_sync_parity.swift'
+      - 'Sources/PulsefieldCore/Services/AmbientSync/**'
+      - 'Sources/PulsefieldCore/Domain/AmbientSyncDomain.swift'
+      - '.github/workflows/sonalign-parity.yml'
+  pull_request:
+    paths:
+      - 'project.yml'
+      - 'Tools/check_sonalign_parity.py'
+      - 'Tools/swift_sync_parity.swift'
+      - 'Sources/PulsefieldCore/Services/AmbientSync/**'
+      - 'Sources/PulsefieldCore/Domain/AmbientSyncDomain.swift'
+      - '.github/workflows/sonalign-parity.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  parity:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the released replay CLI from crates.io
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          cargo +1.98.1 install sonalign --version 0.1.0 --locked --root .build/sonalign
+      - name: Compare against the Swift oracle without private recordings
+        run: python3 Tools/check_sonalign_parity.py --suites synthetic --output .build/sonalign-parity-ci
+      - name: Save comparison results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonalign-parity
+          path: .build/sonalign-parity-ci/summary.json
+          if-no-files-found: ignore

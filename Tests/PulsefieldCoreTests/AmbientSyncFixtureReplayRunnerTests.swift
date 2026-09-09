@@ -69,6 +69,9 @@ final class AmbientSyncFixtureReplayRunnerTests: XCTestCase {
         XCTAssertEqual(result.events.map(\.sequence), Array(0..<result.events.count))
         XCTAssertEqual(result.events.map(\.timing.elapsedMS), result.events.map(\.timing.elapsedMS).sorted())
 
+        let spectral = try XCTUnwrap(result.events.last?.diagnostics.spectral)
+        XCTAssertNil(spectral.firstHalfCorrelation, "The default replay must use released Sonalign diagnostics.")
+
         let jsonl = try String(contentsOf: result.traceOutputURL, encoding: .utf8)
         XCTAssertEqual(jsonl.split(separator: "\n").count, result.events.count)
     }

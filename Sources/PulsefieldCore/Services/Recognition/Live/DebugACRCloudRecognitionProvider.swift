@@ -143,6 +143,7 @@ public struct ACRCloudFileScanConfiguration: Equatable, Sendable {
     }
 
     private static func commonExecutableDirectories() -> [String] {
+        #if os(macOS)
         let homePath = FileManager.default.homeDirectoryForCurrentUser.path
         let pythonVersions = ["3.13", "3.12", "3.11", "3.10", "3.9", "3.8"]
         let userPythonDirectories = pythonVersions.map { "\(homePath)/Library/Python/\($0)/bin" }
@@ -158,6 +159,9 @@ public struct ACRCloudFileScanConfiguration: Equatable, Sendable {
             "/usr/sbin",
             "/sbin"
         ]
+        #else
+        return []
+        #endif
     }
 
     private static func expandedExecutablePath(_ executablePath: String) -> String {
@@ -629,6 +633,7 @@ public struct ACRCloudFileScanClient: Sendable {
         arguments: [String],
         environment: [String: String]
     ) throws -> (exitCode: Int32, output: String) {
+        #if os(macOS)
         guard let resolvedExecutablePath = ACRCloudFileScanConfiguration.resolveExecutablePath(
             executablePath,
             environment: environment
@@ -664,6 +669,13 @@ public struct ACRCloudFileScanClient: Sendable {
             ?? String(decoding: outputData, as: UTF8.self)
 
         return (process.terminationStatus, output)
+        #else
+        throw RecognitionFailure(
+            title: "ACRCloud CLI Not Available",
+            message: "The filescan command-line client requires macOS.",
+            recoverySuggestion: "Use the ACRCloud Identification API on this platform."
+        )
+        #endif
     }
 
     private static func recoverySuggestion(for output: String) -> String {

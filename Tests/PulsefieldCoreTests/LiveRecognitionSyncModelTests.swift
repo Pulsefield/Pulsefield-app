@@ -5,7 +5,7 @@ import XCTest
 
 final class LiveRecognitionSyncModelTests: XCTestCase {
     @MainActor
-    func testStopClearsAmbientSyncStatusState() throws {
+    func testStopClearsAmbientStateAndRejectsObsoleteStartupCallbacks() throws {
         let model = LiveRecognitionSyncModel(database: try LocalAudioLibraryDatabase.openInMemory())
         let summary = AmbientReferenceSummary(
             assetFileName: "track.wav",
@@ -26,7 +26,7 @@ final class LiveRecognitionSyncModelTests: XCTestCase {
             )
         )
 
-        model.debugInjectAmbientSyncState(
+        let stoppedSessionID = model.debugInjectAmbientSyncState(
             referenceSummary: summary,
             snapshot: snapshot,
             updateCount: 3,
@@ -34,6 +34,8 @@ final class LiveRecognitionSyncModelTests: XCTestCase {
         )
 
         model.stop()
+        XCTAssertThrowsError(try model.debugCompleteAmbientStart(sessionID: stoppedSessionID))
+        model.debugFailAmbientStart(CancellationError(), sessionID: stoppedSessionID)
 
         XCTAssertEqual(model.phase, .idle)
         XCTAssertEqual(model.statusMessage, "Stopped")
@@ -41,6 +43,19 @@ final class LiveRecognitionSyncModelTests: XCTestCase {
         XCTAssertNil(model.latestAmbientSnapshot)
         XCTAssertEqual(model.ambientUpdateCount, 0)
         XCTAssertEqual(model.latestFrameBatchCount, 0)
+
+        let replacementSessionID = model.debugInjectAmbientSyncState(
+            referenceSummary: summary, snapshot: snapshot, updateCount: 2, frameBatchCount: 4
+        )
+        // An older start may finish cleanup after a replacement has begun.
+        model.debugFailAmbientStart(NSError(domain: "old startup", code: 1), sessionID: stoppedSessionID)
+        XCTAssertThrowsError(try model.debugCompleteAmbientStart(sessionID: stoppedSessionID))
+        XCTAssertEqual(model.phase, .ambientSyncing)
+        XCTAssertEqual(model.latestAmbientSnapshot, snapshot)
+        XCTAssertEqual(model.ambientUpdateCount, 2)
+
+        try model.debugCompleteAmbientStart(sessionID: replacementSessionID)
+        XCTAssertEqual(model.statusMessage, "Ambient sync listening")
     }
 
     func testAmbientReferencePlaybackAnchorClampsAtTrackDuration() {

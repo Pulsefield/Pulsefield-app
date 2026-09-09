@@ -21,6 +21,9 @@ fileGroups:
   - docs
 
 packages:
+  Sonalign:
+    url: https://github.com/Pulsefield/sonalign
+    exactVersion: "0.1.0"
   PulsefieldProtocol:
     path: ../pulsefield-protocol
   SwiftProtobuf:
@@ -84,6 +87,7 @@ targets:
       - sdk: Accelerate.framework
       - package: PulsefieldProtocol
       - package: SwiftProtobuf
+      - package: Sonalign
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.pulsefield.core
