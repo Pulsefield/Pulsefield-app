@@ -1008,11 +1008,13 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
         queryEvidence: AmbientSyncDenseQueryEvidence,
         allowRefinement: Bool
     ) -> AmbientSyncDenseOffsetEvaluation {
+        var evaluationsByFramePairs: [[AmbientSyncDenseFramePair]: AmbientSyncDenseOffsetEvaluation] = [:]
         var bestEvaluation = evaluateDenseOffset(
             offsetMS: coarseOffsetMS,
             queryFrames: queryFrames,
             localFrames: localFrames,
-            queryEvidence: queryEvidence
+            queryEvidence: queryEvidence,
+            evaluationsByFramePairs: &evaluationsByFramePairs
         )
 
         if Self.isDominatingDenseEvaluation(bestEvaluation, queryEvidence: queryEvidence) {
@@ -1029,7 +1031,8 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
                 offsetMS: coarseOffsetMS - deltaMS,
                 queryFrames: queryFrames,
                 localFrames: localFrames,
-                queryEvidence: queryEvidence
+                queryEvidence: queryEvidence,
+                evaluationsByFramePairs: &evaluationsByFramePairs
             )
             if Self.isHigherDenseEvaluation(
                 lhs: lowerEvaluation,
@@ -1046,7 +1049,8 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
                 offsetMS: coarseOffsetMS + deltaMS,
                 queryFrames: queryFrames,
                 localFrames: localFrames,
-                queryEvidence: queryEvidence
+                queryEvidence: queryEvidence,
+                evaluationsByFramePairs: &evaluationsByFramePairs
             )
             if Self.isHigherDenseEvaluation(
                 lhs: upperEvaluation,
@@ -1069,7 +1073,8 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
         offsetMS: Double,
         queryFrames: [MicFeatureFrame],
         localFrames: [MicFeatureFrame],
-        queryEvidence: AmbientSyncDenseQueryEvidence
+        queryEvidence: AmbientSyncDenseQueryEvidence,
+        evaluationsByFramePairs: inout [[AmbientSyncDenseFramePair]: AmbientSyncDenseOffsetEvaluation]
     ) -> AmbientSyncDenseOffsetEvaluation {
         guard queryEvidence.usableFrameCount >= configuration.minimumComparableFrameCount,
               queryEvidence.usableDurationMS >= configuration.minimumComparableDurationMS
@@ -1082,9 +1087,32 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
             )
         }
 
+        var framePairs: [AmbientSyncDenseFramePair] = []
+        framePairs.reserveCapacity(queryFrames.count)
+        var totalFrameTimeErrorMS = 0.0
+        forEachAlignedFramePair(
+            queryFrames: queryFrames,
+            localFrames: localFrames,
+            offsetMS: offsetMS
+        ) { queryFrameIndex, localFrameIndex, timeErrorMS in
+            framePairs.append(AmbientSyncDenseFramePair(queryIndex: queryFrameIndex, localIndex: localFrameIndex))
+            totalFrameTimeErrorMS += timeErrorMS
+        }
+        let meanFrameTimeErrorMS = framePairs.isEmpty
+            ? Double.infinity
+            : totalFrameTimeErrorMS / Double(framePairs.count)
+
+        // Nearest-frame alignment is constant between frame boundaries. Refined offsets
+        // with exactly the same pairs share all feature scores, but retain their own
+        // timing error so refinement still selects the best timestamp within that span.
+        if var cachedEvaluation = evaluationsByFramePairs[framePairs] {
+            cachedEvaluation.offsetMS = offsetMS
+            cachedEvaluation.meanFrameTimeErrorMS = meanFrameTimeErrorMS
+            return cachedEvaluation
+        }
+
         var matchedFrameCount = 0
         var comparableFrameCount = 0
-        var totalFrameTimeErrorMS = 0.0
         var onsetAccumulator = AmbientSyncCosineAccumulator()
         var subbandOnsetAccumulator = AmbientSyncCosineAccumulator()
         var pcenMelAccumulator = AmbientSyncCosineAccumulator()
@@ -1099,13 +1127,11 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
         var previousWeight = 1.0
         var shouldAccumulateFeatureScores = true
 
-        forEachAlignedFramePair(
-            queryFrames: queryFrames,
-            localFrames: localFrames,
-            offsetMS: offsetMS
-        ) { queryFrameIndex, queryFrame, localFrame, timeErrorMS in
+        for pair in framePairs {
+            let queryFrameIndex = pair.queryIndex
+            let queryFrame = queryFrames[queryFrameIndex]
+            let localFrame = localFrames[pair.localIndex]
             matchedFrameCount += 1
-            totalFrameTimeErrorMS += timeErrorMS
             if queryEvidence.isUsableQueryFrame(at: queryFrameIndex),
                isUsableDenseFrame(localFrame) {
                 comparableFrameCount += 1
@@ -1178,21 +1204,20 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
         let coverageRatio = queryEvidence.coverageFrameCount == 0
             ? 0
             : Double(matchedFrameCount) / Double(queryEvidence.coverageFrameCount)
-        let meanFrameTimeErrorMS = matchedFrameCount == 0
-            ? Double.infinity
-            : totalFrameTimeErrorMS / Double(matchedFrameCount)
         let hasSufficientCoverage = comparableFrameCount >= configuration.minimumComparableFrameCount
             && queryEvidence.usableDurationMS >= configuration.minimumComparableDurationMS
             && coverageRatio >= configuration.minimumCoverageRatio
 
         guard hasSufficientCoverage else {
-            return AmbientSyncDenseOffsetEvaluation(
+            let evaluation = AmbientSyncDenseOffsetEvaluation(
                 offsetMS: offsetMS,
                 comparableFrameCount: comparableFrameCount,
                 coverageRatio: coverageRatio,
                 hasSufficientCoverage: false,
                 meanFrameTimeErrorMS: meanFrameTimeErrorMS
             )
+            evaluationsByFramePairs[framePairs] = evaluation
+            return evaluation
         }
 
         let scores = AmbientSyncDenseOffsetScores(
@@ -1210,7 +1235,7 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
             censScore: scores.censScore
         )
 
-        return AmbientSyncDenseOffsetEvaluation(
+        let evaluation = AmbientSyncDenseOffsetEvaluation(
             offsetMS: offsetMS,
             comparableFrameCount: comparableFrameCount,
             coverageRatio: coverageRatio,
@@ -1223,6 +1248,8 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
             censScore: scores.censScore,
             combinedDenseScore: combinedDenseScore
         )
+        evaluationsByFramePairs[framePairs] = evaluation
+        return evaluation
     }
 
     private static func canStillReachSufficientCoverage(
@@ -1261,11 +1288,11 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
             queryFrames: queryFrames,
             localFrames: localFrames,
             offsetMS: offsetMS
-        ) { queryFrameIndex, _, localFrame, timeErrorMS in
+        ) { queryFrameIndex, localFrameIndex, timeErrorMS in
             matchedFrameCount += 1
             totalFrameTimeErrorMS += timeErrorMS
             if queryEvidence.isUsableQueryFrame(at: queryFrameIndex),
-               isUsableDenseFrame(localFrame) {
+               isUsableDenseFrame(localFrames[localFrameIndex]) {
                 comparableFrameCount += 1
             }
         }
@@ -1290,7 +1317,7 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
         queryFrames: [MicFeatureFrame],
         localFrames: [MicFeatureFrame],
         offsetMS: Double,
-        _ body: (Int, MicFeatureFrame, MicFeatureFrame, Double) -> Void
+        _ body: (Int, Int, Double) -> Void
     ) {
         guard let firstQueryFrame = queryFrames.first,
               let lastQueryFrame = queryFrames.last
@@ -1314,34 +1341,34 @@ public struct AmbientSyncDenseReranker: Equatable, Sendable {
                 localIndex += 1
             }
 
-            var bestFrame: MicFeatureFrame?
+            var bestFrameIndex: Int?
             if localIndex < localEndIndex {
-                bestFrame = localFrames[localIndex]
+                bestFrameIndex = localIndex
             }
             if localIndex > localStartIndex {
                 let previousFrame = localFrames[localIndex - 1]
-                if let currentBest = bestFrame {
+                if let currentBestIndex = bestFrameIndex {
                     let previousDistance = abs(previousFrame.recordedTimeMS - localTimeMS)
-                    let bestDistance = abs(currentBest.recordedTimeMS - localTimeMS)
+                    let bestDistance = abs(localFrames[currentBestIndex].recordedTimeMS - localTimeMS)
                     if previousDistance < bestDistance {
-                        bestFrame = previousFrame
+                        bestFrameIndex = localIndex - 1
                     }
                 } else {
-                    bestFrame = previousFrame
+                    bestFrameIndex = localIndex - 1
                 }
             }
 
-            guard let localFrame = bestFrame
+            guard let bestFrameIndex
             else {
                 continue
             }
 
-            let timeErrorMS = abs(localFrame.recordedTimeMS - localTimeMS)
+            let timeErrorMS = abs(localFrames[bestFrameIndex].recordedTimeMS - localTimeMS)
             guard timeErrorMS <= configuration.maximumFrameTimeErrorMS else {
                 continue
             }
 
-            body(queryFrameIndex, queryFrame, localFrame, timeErrorMS)
+            body(queryFrameIndex, bestFrameIndex, timeErrorMS)
         }
     }
 
@@ -1626,12 +1653,17 @@ private struct AmbientSyncDenseQueryEvidence: Equatable, Sendable {
     }
 }
 
+private struct AmbientSyncDenseFramePair: Hashable, Sendable {
+    let queryIndex: Int
+    let localIndex: Int
+}
+
 private struct AmbientSyncDenseOffsetEvaluation: Equatable, Sendable {
-    let offsetMS: Double
+    var offsetMS: Double
     let comparableFrameCount: Int
     let coverageRatio: Double
     let hasSufficientCoverage: Bool
-    let meanFrameTimeErrorMS: Double
+    var meanFrameTimeErrorMS: Double
     let onsetScore: Double
     let subbandOnsetScore: Double
     let pcenMelScore: Double

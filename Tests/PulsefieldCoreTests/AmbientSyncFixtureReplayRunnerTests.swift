@@ -137,7 +137,7 @@ final class AmbientSyncFixtureReplayRunnerTests: XCTestCase {
         )
     }
 
-    func testReplayStepDurationSamplesTraceAndIncludesFixtureTail() throws {
+    func testReplaySamplesTailAndKeepsLiveWindowAfterLock() throws {
         let workingDirectory = try makeTemporaryDirectory()
         addTeardownBlock {
             try? FileManager.default.removeItem(at: workingDirectory)
@@ -151,7 +151,7 @@ final class AmbientSyncFixtureReplayRunnerTests: XCTestCase {
         let targetAudioURL = workingDirectory.appendingPathComponent("target.caf")
         let fixtureAudioURL = fixtureDirectoryURL.appendingPathComponent("take-01.caf")
         try Data([0x70, 0x66, 0x6C, 0x64]).write(to: targetAudioURL, options: .atomic)
-        try writeGeneratedCAF(to: fixtureAudioURL, durationSeconds: 3.2)
+        try writeGeneratedCAF(to: fixtureAudioURL, durationSeconds: 6.2)
         try writeSidecar(
             audioFileName: fixtureAudioURL.lastPathComponent,
             targetAudioURL: targetAudioURL,
@@ -171,9 +171,9 @@ final class AmbientSyncFixtureReplayRunnerTests: XCTestCase {
             engineFactory: { _ in
                 AmbientSyncFixtureReplayEngine<Int> { input in
                     AmbientSyncSnapshot(
-                        state: .listening,
-                        phase: .none,
-                        stage: .readiness,
+                        state: .locked,
+                        phase: .final,
+                        stage: .tracking,
                         diagnostics: AmbientSyncDiagnostics(
                             queryDurationMS: input.queryWindow.durationMS,
                             activeFrameFraction: 1,
@@ -190,7 +190,8 @@ final class AmbientSyncFixtureReplayRunnerTests: XCTestCase {
         XCTAssertLessThan(result.events.count, 10)
         XCTAssertGreaterThan(result.events.count, 1)
         XCTAssertEqual(result.events.map(\.sequence), Array(0..<result.events.count))
-        XCTAssertGreaterThan(result.events.last?.timing.elapsedMS ?? 0, 3_000)
+        XCTAssertGreaterThan(result.events.last?.timing.elapsedMS ?? 0, 6_000)
+        XCTAssertGreaterThan(result.events.last?.timing.queryDurationMS ?? 0, 4_900)
     }
 
     func testDiscoverFixturesIgnoresAudioFileNameWithPathSeparators() throws {

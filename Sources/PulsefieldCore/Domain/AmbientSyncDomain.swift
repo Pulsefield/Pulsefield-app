@@ -504,6 +504,18 @@ public struct AmbientSyncOffsetTrackDiagnostics: Codable, Equatable, Sendable {
     }
 }
 
+/// Correlations describe temporal spectral agreement, not calibrated probabilities.
+public struct AmbientSyncSpectralDiagnostics: Codable, Equatable, Sendable {
+    public let globalSearch: Bool
+    public let correlation: Double
+    public let competingPeakMargin: Double?
+    public let firstHalfCorrelation: Double
+    public let secondHalfCorrelation: Double
+    public let recentCorrelation: Double
+    public let freshEvidenceMS: Double
+    public let coastMS: Double
+}
+
 public struct AmbientSyncDiagnostics: Codable, Equatable, Sendable {
     public let queryDurationMS: Double
     public let activeFrameFraction: Double
@@ -528,6 +540,7 @@ public struct AmbientSyncDiagnostics: Codable, Equatable, Sendable {
     public let offsetTrackerStable: Bool
     public let offsetTracks: [AmbientSyncOffsetTrackDiagnostics]
     public let candidates: [AmbientSyncCandidateDiagnostics]
+    public let spectral: AmbientSyncSpectralDiagnostics?
 
     public init(
         queryDurationMS: Double,
@@ -552,7 +565,8 @@ public struct AmbientSyncDiagnostics: Codable, Equatable, Sendable {
         offsetTrackerConfirmed: Bool = false,
         offsetTrackerStable: Bool = false,
         offsetTracks: [AmbientSyncOffsetTrackDiagnostics] = [],
-        candidates: [AmbientSyncCandidateDiagnostics] = []
+        candidates: [AmbientSyncCandidateDiagnostics] = [],
+        spectral: AmbientSyncSpectralDiagnostics? = nil
     ) {
         self.queryDurationMS = queryDurationMS
         self.activeFrameFraction = activeFrameFraction
@@ -577,6 +591,7 @@ public struct AmbientSyncDiagnostics: Codable, Equatable, Sendable {
         self.offsetTrackerStable = offsetTrackerStable
         self.offsetTracks = offsetTracks
         self.candidates = candidates
+        self.spectral = spectral
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -603,6 +618,7 @@ public struct AmbientSyncDiagnostics: Codable, Equatable, Sendable {
         case offsetTrackerStable
         case offsetTracks
         case candidates
+        case spectral
     }
 
     public init(from decoder: Decoder) throws {
@@ -650,7 +666,8 @@ public struct AmbientSyncDiagnostics: Codable, Equatable, Sendable {
             candidates: try container.decodeIfPresent(
                 [AmbientSyncCandidateDiagnostics].self,
                 forKey: .candidates
-            ) ?? []
+            ) ?? [],
+            spectral: try container.decodeIfPresent(AmbientSyncSpectralDiagnostics.self, forKey: .spectral)
         )
     }
 }

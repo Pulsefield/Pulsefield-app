@@ -7,15 +7,19 @@ public struct AmbientSyncEngine: Equatable, Sendable {
     public private(set) var confirmedLockElapsedMS: Double?
     public private(set) var finalLockElapsedMS: Double?
 
+    private var spectralEngine: AmbientSyncSpectralEngine?
+
     var offsetTracker: AmbientSyncOffsetTracker
     var acceptedTrackID: Int?
 
     public init(
         reference: Reference,
-        configuration: Configuration = .v1
+        configuration: Configuration = .v2
     ) {
         self.reference = reference
         self.configuration = configuration
+        self.spectralEngine = configuration.usesSpectralCorrelation
+            ? AmbientSyncSpectralEngine(reference: reference, configuration: configuration) : nil
         self.offsetTracker = AmbientSyncOffsetTracker(
             configuration: AmbientSyncOffsetTracker.Configuration(
                 maximumTrackCount: configuration.histogramConfiguration.maximumCandidateCount,
@@ -26,7 +30,7 @@ public struct AmbientSyncEngine: Equatable, Sendable {
 
     public init(
         referenceIndex: any AmbientSyncEngineReferenceIndex,
-        configuration: Configuration = .v1
+        configuration: Configuration = .v2
     ) {
         self.init(
             reference: Reference(
@@ -44,6 +48,14 @@ public struct AmbientSyncEngine: Equatable, Sendable {
         queryWindow: MicFeatureWindow,
         elapsedMS: Double
     ) -> AmbientSyncSnapshot {
+        if var spectralEngine {
+            let result = spectralEngine.process(query: queryWindow, elapsedMS: elapsedMS)
+            self.spectralEngine = spectralEngine
+            firstProvisionalLockElapsedMS = result.firstProvisionalLockElapsedMS
+            confirmedLockElapsedMS = result.confirmedLockElapsedMS
+            finalLockElapsedMS = result.finalLockElapsedMS
+            return result
+        }
         let queryLandmarks = Self.landmarks(from: queryWindow.frames)
         let readiness = readinessMetrics(
             queryWindow: queryWindow,

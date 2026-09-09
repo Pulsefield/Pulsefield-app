@@ -2,6 +2,8 @@ import Foundation
 
 public extension AmbientSyncEngine {
     struct Configuration: Equatable, Sendable {
+        /// v1 retains landmark retrieval for comparisons; v2 estimates spectral delay directly.
+        public let usesSpectralCorrelation: Bool
         public let featureConfiguration: AmbientSyncFeatureConfiguration
         public let histogramConfiguration: AmbientSyncOffsetHistogram.Configuration
         public let provisionalRerankerConfiguration: AmbientSyncDenseReranker.Configuration
@@ -31,6 +33,7 @@ public extension AmbientSyncEngine {
         public let diagnosticCandidateLimit: Int
 
         public init(
+            usesSpectralCorrelation: Bool = false,
             featureConfiguration: AmbientSyncFeatureConfiguration = .v1,
             histogramConfiguration: AmbientSyncOffsetHistogram.Configuration = AmbientSyncOffsetHistogram.Configuration(
                 binWidthMS: 20,
@@ -138,6 +141,7 @@ public extension AmbientSyncEngine {
             precondition(offsetStabilityHistoryCount > 0, "offsetStabilityHistoryCount must be positive.")
             precondition(diagnosticCandidateLimit > 0, "diagnosticCandidateLimit must be positive.")
 
+            self.usesSpectralCorrelation = usesSpectralCorrelation
             self.featureConfiguration = featureConfiguration
             self.histogramConfiguration = histogramConfiguration
             self.provisionalRerankerConfiguration = provisionalRerankerConfiguration
@@ -170,5 +174,6 @@ public extension AmbientSyncEngine {
         }
 
         public static let v1 = Configuration()
+        public static let v2 = Configuration(usesSpectralCorrelation: true)
     }
 }

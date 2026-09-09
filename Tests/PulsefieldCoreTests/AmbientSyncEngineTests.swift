@@ -2,10 +2,18 @@ import XCTest
 @testable import PulsefieldCore
 
 final class AmbientSyncEngineTests: XCTestCase {
+    // Preserve the v1 regression suite while v2 has separate spectral behavior tests.
+    private func legacyEngine(
+        reference: AmbientSyncEngine.Reference,
+        configuration: AmbientSyncEngine.Configuration = .v1
+    ) -> AmbientSyncEngine {
+        AmbientSyncEngine(reference: reference, configuration: configuration)
+    }
+
     func testCleanDeterministicQueryReachesProvisionalAndFinalLock() throws {
         let queryFrames = makePatternFrames(startMS: 0, count: 320)
         let referenceFrames = makePatternFrames(startMS: 4_000, count: 320)
-        var engine = AmbientSyncEngine(
+        var engine = legacyEngine(
             reference: AmbientSyncEngine.Reference(
                 sourceDisplayPath: "/tmp/reference.wav",
                 frames: referenceFrames
@@ -46,7 +54,7 @@ final class AmbientSyncEngineTests: XCTestCase {
         let referenceFrames = spectralProvisionalReferenceFrames(
             from: makePatternFrames(startMS: 4_000, count: 320)
         )
-        var engine = AmbientSyncEngine(
+        var engine = legacyEngine(
             reference: AmbientSyncEngine.Reference(
                 sourceDisplayPath: "/tmp/reference.wav",
                 frames: referenceFrames
@@ -82,7 +90,7 @@ final class AmbientSyncEngineTests: XCTestCase {
         let denseDecoyReference = robustFeatureMismatchFrames(
             from: makePatternFrames(startMS: 8_000, count: 320)
         )
-        var engine = AmbientSyncEngine(
+        var engine = legacyEngine(
             reference: AmbientSyncEngine.Reference(
                 sourceDisplayPath: "/tmp/reference.wav",
                 frames: matchingReference + denseDecoyReference
@@ -141,7 +149,7 @@ final class AmbientSyncEngineTests: XCTestCase {
             ),
             minimumCoarseAmbiguousDenseMargin: 1.01
         )
-        var engine = AmbientSyncEngine(
+        var engine = legacyEngine(
             reference: AmbientSyncEngine.Reference(
                 sourceDisplayPath: "/tmp/reference.wav",
                 frames: referenceFrames
@@ -184,7 +192,7 @@ final class AmbientSyncEngineTests: XCTestCase {
     func testFinalLockContinuesTrackingOnShortTrackingWindow() throws {
         let queryFrames = makePatternFrames(startMS: 0, count: 420)
         let referenceFrames = makePatternFrames(startMS: 4_000, count: 420)
-        var engine = AmbientSyncEngine(
+        var engine = legacyEngine(
             reference: AmbientSyncEngine.Reference(
                 sourceDisplayPath: "/tmp/reference.wav",
                 frames: referenceFrames
@@ -216,7 +224,7 @@ final class AmbientSyncEngineTests: XCTestCase {
     func testConsecutiveShortWindowsPromoteConfirmedWithTimestamp() throws {
         let queryFrames = makePatternFrames(startMS: 0, count: 320)
         let referenceFrames = makePatternFrames(startMS: 4_000, count: 320)
-        var engine = AmbientSyncEngine(
+        var engine = legacyEngine(
             reference: AmbientSyncEngine.Reference(
                 sourceDisplayPath: "/tmp/reference.wav",
                 frames: referenceFrames
@@ -252,7 +260,7 @@ final class AmbientSyncEngineTests: XCTestCase {
             makePatternFrames(startMS: 22_000, count: 140),
             hashBase: 40_000
         )
-        var engine = AmbientSyncEngine(
+        var engine = legacyEngine(
             reference: AmbientSyncEngine.Reference(
                 sourceDisplayPath: "/tmp/reference.wav",
                 frames: initialReferenceFrames + replacementReferenceFrames
@@ -309,7 +317,7 @@ final class AmbientSyncEngineTests: XCTestCase {
             makePatternFrames(startMS: 22_000, count: 320),
             hashBase: 40_000
         )
-        var engine = AmbientSyncEngine(
+        var engine = legacyEngine(
             reference: AmbientSyncEngine.Reference(
                 sourceDisplayPath: "/tmp/reference.wav",
                 frames: initialReferenceFrames + replacementReferenceFrames
@@ -366,7 +374,7 @@ final class AmbientSyncEngineTests: XCTestCase {
             makePatternFrames(startMS: 11_200, count: 140),
             hashBase: 40_000
         )
-        var engine = AmbientSyncEngine(
+        var engine = legacyEngine(
             reference: AmbientSyncEngine.Reference(
                 sourceDisplayPath: "/tmp/reference.wav",
                 frames: initialReferenceFrames + replacementReferenceFrames
@@ -403,7 +411,7 @@ final class AmbientSyncEngineTests: XCTestCase {
         let referenceFrames = denseFeatureMismatchFrames(
             from: makePatternFrames(startMS: 4_000, count: 180)
         )
-        var engine = AmbientSyncEngine(
+        var engine = legacyEngine(
             reference: AmbientSyncEngine.Reference(
                 sourceDisplayPath: "/tmp/reference.wav",
                 frames: referenceFrames
@@ -426,7 +434,7 @@ final class AmbientSyncEngineTests: XCTestCase {
     func testPostFinalRobustFailurePreservesFinalPhase() throws {
         let queryFrames = makePatternFrames(startMS: 0, count: 700)
         let referenceFrames = makePatternFrames(startMS: 4_000, count: 700)
-        var engine = AmbientSyncEngine(
+        var engine = legacyEngine(
             reference: AmbientSyncEngine.Reference(
                 sourceDisplayPath: "/tmp/reference.wav",
                 frames: referenceFrames
@@ -474,7 +482,7 @@ final class AmbientSyncEngineTests: XCTestCase {
             makePatternFrames(startMS: 22_000, count: 140),
             hashBase: 40_000
         )
-        var engine = AmbientSyncEngine(
+        var engine = legacyEngine(
             reference: AmbientSyncEngine.Reference(
                 sourceDisplayPath: "/tmp/reference.wav",
                 frames: initialReferenceFrames + replacementReferenceFrames
@@ -612,7 +620,7 @@ final class AmbientSyncEngineTests: XCTestCase {
     func testLowSignalWithholdsBeforeCoarseRetrieval() throws {
         let queryFrames = makePatternFrames(startMS: 0, count: 180, energyDBFS: -110)
         let referenceFrames = makePatternFrames(startMS: 4_000, count: 180)
-        var engine = AmbientSyncEngine(
+        var engine = legacyEngine(
             reference: AmbientSyncEngine.Reference(
                 sourceDisplayPath: "/tmp/reference.wav",
                 frames: referenceFrames
@@ -635,7 +643,7 @@ final class AmbientSyncEngineTests: XCTestCase {
         let queryFrames = makePatternFrames(startMS: 0, count: 320)
         let firstReference = makePatternFrames(startMS: 4_000, count: 320)
         let repeatedReference = makePatternFrames(startMS: 8_000, count: 320)
-        var engine = AmbientSyncEngine(
+        var engine = legacyEngine(
             reference: AmbientSyncEngine.Reference(
                 sourceDisplayPath: "/tmp/reference.wav",
                 frames: firstReference + repeatedReference

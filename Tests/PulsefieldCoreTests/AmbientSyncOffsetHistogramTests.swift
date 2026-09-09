@@ -466,6 +466,41 @@ final class AmbientSyncOffsetHistogramTests: XCTestCase {
         XCTAssertEqual(prunedCandidate.offsetMS, 8_055, accuracy: 0.001)
     }
 
+    func testDenseRerankRefinesTimingWhenNeighboringOffsetsHaveIdenticalFeatureScores() throws {
+        let queryWindow = MicFeatureWindow(frames: makeDensePatternFrames(offsetMS: 0))
+        let localFrames = makeSlightlyPerturbedDensePatternFrames(offsetMS: 4_000)
+        let result = makeDenseRerankerForShortFixture().rerank(
+            queryWindow: queryWindow,
+            localFrames: localFrames,
+            candidates: [makeCandidate(offsetMS: 4_007, voteCount: 20, voteDensity: 0.80)]
+        )
+        let directResult = AmbientSyncDenseReranker(
+            configuration: AmbientSyncDenseReranker.Configuration(
+                minimumComparableFrameCount: 4,
+                minimumComparableDurationMS: 0,
+                refinementSearchRadiusMS: 0
+            )
+        ).rerank(
+            queryWindow: queryWindow,
+            localFrames: localFrames,
+            candidates: [makeCandidate(offsetMS: 4_002, voteCount: 20, voteDensity: 0.80)]
+        )
+        let refined = try XCTUnwrap(result.bestCandidate)
+        let direct = try XCTUnwrap(directResult.bestCandidate)
+
+        // The 5 ms refinement grid cannot reach 4,000 ms. All nearby offsets
+        // select the same frames, so timing error must still select 4,002 ms.
+        XCTAssertEqual(refined.offsetMS, 4_002)
+        XCTAssertEqual(refined.coarseOffsetMS, 4_007)
+        XCTAssertEqual(refined.onsetScore, direct.onsetScore)
+        XCTAssertEqual(refined.subbandOnsetScore, direct.subbandOnsetScore)
+        XCTAssertEqual(refined.pcenMelScore, direct.pcenMelScore)
+        XCTAssertEqual(refined.chromaOnsetScore, direct.chromaOnsetScore)
+        XCTAssertEqual(refined.censScore, direct.censScore)
+        XCTAssertEqual(refined.combinedDenseScore, direct.combinedDenseScore)
+        XCTAssertLessThan(refined.combinedDenseScore, 1)
+    }
+
     func testDenseRerankProgressiveRefinesCandidatesInsideCoarseScoreMargin() throws {
         let queryWindow = MicFeatureWindow(frames: makeDensePatternFrames(offsetMS: 0))
         let localFrames = makeDensePatternFrames(offsetMS: 4_000)

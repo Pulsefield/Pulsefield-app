@@ -627,11 +627,8 @@ public final class AmbientSyncFixtureReplayRunner<ReferenceIndex: Sendable>: @un
                 nextReplayEndpointMS = endpointMS + replayStepDurationMS
             }
 
-            let desiredDurationMS = queryDurationMS(
-                endpointMS: endpointMS,
-                previousSnapshot: previousSnapshot,
-                finalLockElapsedMS: finalLockElapsedMS
-            )
+            // Match the live runtime's fixed window, including after a lock.
+            let desiredDurationMS = configuration.featureConfiguration.finalLockTargetDurationMS
             let earliestMS = endpointMS - desiredDurationMS
             while startIndex < endIndex, fixtureFrames[startIndex].recordedTimeMS < earliestMS {
                 startIndex += 1
@@ -676,26 +673,6 @@ public final class AmbientSyncFixtureReplayRunner<ReferenceIndex: Sendable>: @un
         }
 
         return events
-    }
-
-    private func queryDurationMS(
-        endpointMS: Double,
-        previousSnapshot: AmbientSyncSnapshot?,
-        finalLockElapsedMS: Double?
-    ) -> Double {
-        if finalLockElapsedMS != nil || previousSnapshot?.phase == .final {
-            return configuration.featureConfiguration.trackingQueryDurationMS
-        }
-
-        if endpointMS >= configuration.featureConfiguration.finalLockMinimumDurationMS {
-            return configuration.featureConfiguration.finalLockTargetDurationMS
-        }
-
-        if endpointMS >= configuration.featureConfiguration.firstLockMinimumDurationMS {
-            return configuration.featureConfiguration.firstLockTargetDurationMS
-        }
-
-        return configuration.featureConfiguration.speculativeQueryDurationMS
     }
 
     private func defaultTraceOutputURL(for fixture: AmbientSyncFixtureReplayFixture) -> URL {
@@ -802,7 +779,7 @@ public extension AmbientSyncFixtureReplayRunner where ReferenceIndex == AmbientS
         configuration: Configuration = Configuration(),
         fileManager: FileManager = .default,
         referenceIndexBuilder: AmbientSyncReferenceIndexBuilder? = nil,
-        engineConfiguration: AmbientSyncEngine.Configuration = .v1
+        engineConfiguration: AmbientSyncEngine.Configuration = .v2
     ) {
         let builder = referenceIndexBuilder ?? AmbientSyncReferenceIndexBuilder(
             configuration: AmbientSyncReferenceIndexBuilder.Configuration(

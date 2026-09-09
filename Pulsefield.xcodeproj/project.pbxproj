@@ -10,6 +10,7 @@
 		000CDEB89D978210FC127069 /* CanonicalTrackDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = D500FFA522E2376979CED6AA /* CanonicalTrackDomain.swift */; };
 		02BD03125AEA567B23286D53 /* PulsefieldCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A387EEA1983387E2E36565AD /* PulsefieldCore.framework */; };
 		0345859B9F00E739D5B01D5B /* InferenceEndpointWebSocketClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1828C7BE7D1353529A44AC64 /* InferenceEndpointWebSocketClient.swift */; };
+		0456E687A638DF70BF5940E3 /* AmbientSyncSpectralEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5FFBA84A857133FBE13D8D /* AmbientSyncSpectralEngine.swift */; };
 		05D731648C444F05C9C38616 /* AmbientSyncEngineDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F918C570A525B811ACF4FC /* AmbientSyncEngineDiagnostics.swift */; };
 		06DDCFD6D8C1A39B8B77B06E /* LocalAudioLibraryDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75A5FB5A3BCAE43E8E2A529C /* LocalAudioLibraryDatabase.swift */; };
 		07A450E8EE9DEE0B31550226 /* AmbientSyncDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1174D86E91ECA19D27A820BC /* AmbientSyncDomain.swift */; };
@@ -35,6 +36,7 @@
 		329BB535F4258BD08E5083C1 /* DebugACRCloudRecognitionProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB648D517F669CA6872F7086 /* DebugACRCloudRecognitionProviderTests.swift */; };
 		35E05459BA1758B1B7E8477A /* MicFeaturePayloadExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0A2F8B94DABCCF88315C57 /* MicFeaturePayloadExtractor.swift */; };
 		3833A5B2D65F0A318E2343AE /* Mania4KGameplayFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16ECC150498EC7130F191895 /* Mania4KGameplayFeedback.swift */; };
+		391DF66550264D14A37F8624 /* AmbientSyncSpectralMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CDF8BE82F83D2852FB9382C /* AmbientSyncSpectralMatcher.swift */; };
 		3DFE6B740D0A897B64D2A42C /* LocalTrackResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D16F8F551D7CDA0B98C48AB /* LocalTrackResolver.swift */; };
 		3F1D36EFC2BF0CF0F7EB130B /* SystemAudioCaptureSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BF0A1D410B19C4728AE4349 /* SystemAudioCaptureSource.swift */; };
 		3FF7EAFB864A0A01EEB36C3D /* SystemAudioClipCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F705FE69D426FC405381CC13 /* SystemAudioClipCaptureService.swift */; };
@@ -61,6 +63,7 @@
 		79A78B41EC226018D2E55F11 /* RecognitionDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE86054D09DCC083F246CB0C /* RecognitionDomain.swift */; };
 		8C51F3CF07D7D1D3CF174AC7 /* MicFeatureStreamBuffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D234442CBC0035196DB3E68C /* MicFeatureStreamBuffer.swift */; };
 		8D87C1D8530DAC119BF60B00 /* AmbientSyncReferenceIndexBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B9C3F3A44ABB51B7D053A8E /* AmbientSyncReferenceIndexBuilderTests.swift */; };
+		8DCEBC3738D75421056EE1F8 /* AmbientSyncSpectralEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC83D54B7523A7FBE78DC8F4 /* AmbientSyncSpectralEngineTests.swift */; };
 		8E3BC3B5DBE5DEB535E3D5D7 /* PulsefieldUI.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A9C81D865B64C6D256B24F2B /* PulsefieldUI.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		92E245E5EFD540B91AC38971 /* CascadingRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED4A20CA439FE4F3513DB1A2 /* CascadingRecognitionService.swift */; };
 		93DBC35911FB30D2FD45D2A3 /* AmbientSyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95F2ADD1DEF8706D09D7D062 /* AmbientSyncEngine.swift */; };
@@ -273,6 +276,7 @@
 		9AD875058E105B569F3F3F40 /* UnavailableRecognitionProviderClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnavailableRecognitionProviderClient.swift; sourceTree = "<group>"; };
 		9B4C1174D9F3E6865C67129B /* AudioClipCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioClipCaptureService.swift; sourceTree = "<group>"; };
 		9BAF8E8D435CA620D624CE54 /* Mania4KPlaySessionModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mania4KPlaySessionModelTests.swift; sourceTree = "<group>"; };
+		9CDF8BE82F83D2852FB9382C /* AmbientSyncSpectralMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncSpectralMatcher.swift; sourceTree = "<group>"; };
 		A387EEA1983387E2E36565AD /* PulsefieldCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = PulsefieldCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		A965E3EAFC5B81B62C56142A /* byo-music-recognition-ambient-matching-spec.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "byo-music-recognition-ambient-matching-spec.md"; sourceTree = "<group>"; };
 		A9C0AFD64ABA7C7C86048235 /* CascadingRecognitionServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CascadingRecognitionServiceTests.swift; sourceTree = "<group>"; };
@@ -285,6 +289,7 @@
 		B81A87963031612ECD437EB9 /* mania-4k-judgement-engine-spec.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "mania-4k-judgement-engine-spec.md"; sourceTree = "<group>"; };
 		B9566A07B9B06F55AF2ABF97 /* ambient-sync-cold-index-and-live-lock-status.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "ambient-sync-cold-index-and-live-lock-status.md"; sourceTree = "<group>"; };
 		BC7F35314F8729D151EB7084 /* AmbientMicFeatureStreamService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientMicFeatureStreamService.swift; sourceTree = "<group>"; };
+		BC83D54B7523A7FBE78DC8F4 /* AmbientSyncSpectralEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncSpectralEngineTests.swift; sourceTree = "<group>"; };
 		BEFC56F5F1D0A58C6ED5BD3A /* PulsefieldiOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PulsefieldiOSApp.swift; sourceTree = "<group>"; };
 		C01A60D735C381292553A5F8 /* UnavailableLiveRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnavailableLiveRecognitionService.swift; sourceTree = "<group>"; };
 		CA0A2F8B94DABCCF88315C57 /* MicFeaturePayloadExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicFeaturePayloadExtractor.swift; sourceTree = "<group>"; };
@@ -299,11 +304,13 @@
 		E245947146687B15D9DEC7BF /* Mania4KOffsetCalibrationModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mania4KOffsetCalibrationModelTests.swift; sourceTree = "<group>"; };
 		E508A37754B1BA46F8326CE3 /* AmbientSyncOffsetHistogram.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncOffsetHistogram.swift; sourceTree = "<group>"; };
 		E522B477DC378F5CF8AB9C4C /* RecognitionServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionServiceProtocol.swift; sourceTree = "<group>"; };
+		E7144BD1D2288ED8F0698ABA /* traffic-fixture-alignment-report-20260909.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "traffic-fixture-alignment-report-20260909.md"; sourceTree = "<group>"; };
 		E8F918C570A525B811ACF4FC /* AmbientSyncEngineDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncEngineDiagnostics.swift; sourceTree = "<group>"; };
 		EB648D517F669CA6872F7086 /* DebugACRCloudRecognitionProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugACRCloudRecognitionProviderTests.swift; sourceTree = "<group>"; };
 		EB7AFC1792774B07CAF50615 /* PulsefieldMac.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PulsefieldMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		ED4A20CA439FE4F3513DB1A2 /* CascadingRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CascadingRecognitionService.swift; sourceTree = "<group>"; };
 		EE665E134535975B24A1E332 /* LocalTrackResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalTrackResolverTests.swift; sourceTree = "<group>"; };
+		EF5FFBA84A857133FBE13D8D /* AmbientSyncSpectralEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientSyncSpectralEngine.swift; sourceTree = "<group>"; };
 		F45F8208B52EF6BC2629EBDD /* MicrophonePermissionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophonePermissionService.swift; sourceTree = "<group>"; };
 		F705FE69D426FC405381CC13 /* SystemAudioClipCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioClipCaptureService.swift; sourceTree = "<group>"; };
 		F9DD7295C58E266CD8B5F1EC /* real-path-recognition-ambient-sync-scene-design.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "real-path-recognition-ambient-sync-scene-design.md"; sourceTree = "<group>"; };
@@ -486,6 +493,8 @@
 				323DAE9135C600CD9EF24DE1 /* AmbientSyncOffsetTracker.swift */,
 				95016FBD95CC37729305B4B1 /* AmbientSyncReferenceIndexBinaryCacheCodec.swift */,
 				1C7010027830EEB3B5B09BC4 /* AmbientSyncReferenceIndexBuilder.swift */,
+				EF5FFBA84A857133FBE13D8D /* AmbientSyncSpectralEngine.swift */,
+				9CDF8BE82F83D2852FB9382C /* AmbientSyncSpectralMatcher.swift */,
 				CA0A2F8B94DABCCF88315C57 /* MicFeaturePayloadExtractor.swift */,
 				D234442CBC0035196DB3E68C /* MicFeatureStreamBuffer.swift */,
 				7BF0A1D410B19C4728AE4349 /* SystemAudioCaptureSource.swift */,
@@ -544,6 +553,7 @@
 				F9DD7295C58E266CD8B5F1EC /* real-path-recognition-ambient-sync-scene-design.md */,
 				29B6C98909AAEFF35D9B16F1 /* recognition-architecture.md */,
 				279883F0FED22764769D789B /* swiftui-guidelines.md */,
+				E7144BD1D2288ED8F0698ABA /* traffic-fixture-alignment-report-20260909.md */,
 			);
 			path = design;
 			sourceTree = "<group>";
@@ -567,6 +577,7 @@
 				FDEDA6AC9C11275546BCEC3D /* AmbientSyncFixtureReplayRunnerTests.swift */,
 				FD389549C6F4C934EA3E5197 /* AmbientSyncOffsetHistogramTests.swift */,
 				2B9C3F3A44ABB51B7D053A8E /* AmbientSyncReferenceIndexBuilderTests.swift */,
+				BC83D54B7523A7FBE78DC8F4 /* AmbientSyncSpectralEngineTests.swift */,
 				A9C0AFD64ABA7C7C86048235 /* CascadingRecognitionServiceTests.swift */,
 				EB648D517F669CA6872F7086 /* DebugACRCloudRecognitionProviderTests.swift */,
 				1DE68EF31E67DA9DAA7378F3 /* InferenceEndpointWebSocketClientTests.swift */,
@@ -980,6 +991,7 @@
 				46B8BBAB28C248F523ABCF3F /* AmbientSyncFixtureReplayRunnerTests.swift in Sources */,
 				2B2DD81F687FAE2980DB05E7 /* AmbientSyncOffsetHistogramTests.swift in Sources */,
 				8D87C1D8530DAC119BF60B00 /* AmbientSyncReferenceIndexBuilderTests.swift in Sources */,
+				8DCEBC3738D75421056EE1F8 /* AmbientSyncSpectralEngineTests.swift in Sources */,
 				2AD790A5ACB1EFFDA192D181 /* CascadingRecognitionServiceTests.swift in Sources */,
 				329BB535F4258BD08E5083C1 /* DebugACRCloudRecognitionProviderTests.swift in Sources */,
 				728A04DA71A0DF4C5696005F /* InferenceEndpointWebSocketClientTests.swift in Sources */,
@@ -1040,6 +1052,8 @@
 				D294F231300A83B5A026CE26 /* AmbientSyncOffsetTracker.swift in Sources */,
 				AADF3FC7C3908A46B10E1605 /* AmbientSyncReferenceIndexBinaryCacheCodec.swift in Sources */,
 				4F7E59C7A3F4EAA4DFCA7F58 /* AmbientSyncReferenceIndexBuilder.swift in Sources */,
+				0456E687A638DF70BF5940E3 /* AmbientSyncSpectralEngine.swift in Sources */,
+				391DF66550264D14A37F8624 /* AmbientSyncSpectralMatcher.swift in Sources */,
 				6FD2A9A3A03105AE1C5CD6B9 /* AudioClipCaptureService.swift in Sources */,
 				E2A8570789AC186771AAE508 /* BeatmapDomain.swift in Sources */,
 				49BD393871163EE821A80748 /* BeatmapGenerationService.swift in Sources */,
